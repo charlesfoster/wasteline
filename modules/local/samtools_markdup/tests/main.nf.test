@@ -1,0 +1,79 @@
+nextflow_process {
+
+    name "Test Process SAMTOOLS_MARKDUP"
+    script "../main.nf"
+    process "SAMTOOLS_MARKDUP"
+    tag "modules"
+    tag "modules_local"
+    tag "samtools_markdup"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/assets/samplesheet.csv"), file("\$projectDir/assets/schema_input.json") ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.bam.collect { m, b, i -> [ file(b.toString()).name, file(i.toString()).name ] }, process.out.stats.collect { m, f -> file(f.toString()).name }).match() }
+            )
+        }
+    }
+
+    // Duplicates are flagged (never removed): all reads are still in the output, and the stats say how many
+    // were flagged. Amplicon reads of the synthetic dataset carry natural duplicates.
+    test("flags duplicates, keeps every read, indexes the BAM - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'MIX_A' ], file("\$projectDir/tests/fixtures/markdup/MIX_A_1_4000.bam"), file("\$projectDir/tests/fixtures/markdup/MIX_A_1_4000.bam.bai") ]
+                """
+            }
+        }
+
+        then {
+            def stats = file(process.out.stats[0][1].toString()).readLines().findAll { line -> line.contains(': ') }.collectEntries { line -> [ (line.split(': ')[0]): line.split(': ')[1] ] }
+            assertAll(
+                { assert process.success },
+                { assert file(process.out.bam[0][1].toString()).name.endsWith('.markdup.bam') },
+                { assert file(process.out.bam[0][2].toString()).name.endsWith('.markdup.bam.bai') },
+                { assert (stats['READ'] as int) == 2270 && stats['WRITTEN'] == stats['READ'] }, // nothing removed
+                { assert (stats['DUPLICATE PAIR'] as int) > 0 }
+            )
+        }
+    }
+
+    // A sample without mapped reads (a clean negative control) must not stop the run
+    test("a header-only BAM passes through - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'EMPTY' ], file("\$projectDir/tests/fixtures/markdup/EMPTY.bam"), file("\$projectDir/tests/fixtures/markdup/EMPTY.bam.bai") ]
+                """
+            }
+        }
+
+        then {
+            def stats = file(process.out.stats[0][1].toString()).readLines().findAll { line -> line.contains(': ') }.collectEntries { line -> [ (line.split(': ')[0]): line.split(': ')[1] ] }
+            assertAll(
+                { assert process.success },
+                { assert stats['READ'] == '0' && stats['DUPLICATE PAIR'] == '0' },
+                { assert file(process.out.bam[0][1].toString()).exists() }
+            )
+        }
+    }
+}

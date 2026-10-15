@@ -28,6 +28,7 @@ qualimap, kraken2 as a default, snpEff.
 | D10 | Legacy zero-byte `.demix` files (the old pipeline's `|| touch` on failure) are never aggregated: `make_samplesheet.py --from-results` skips them with a reason, and the workflow records the sample in `demix_status.tsv` with status `missing` and reason `empty demix file (failed in the old pipeline)`. |
 | D11 | Boolean CLI params break on Nextflow >= 26.04 with the strict parser (strings, not booleans). Handled in the integration round (typed `params` block or an explicit actionable error); see CLAUDE.md gotchas. |
 | D12 | Minimum Nextflow is **26.04.0** (was 25.10.4). Boolean/number CLI params only convert correctly through a typed `params {}` block under Nextflow >= 26.04's strict parser; on 25.10 included scripts and config saw unconverted strings (e.g. `--save_bam false` still published the BAM, silently), so older versions are refused rather than mis-run. h2seq and monty already use 26.04. Made by the integration agent; reversible if production Linux hosts cannot run 26.04. |
+| D13 | **Probe-capture data (e.g. Twist) is supported** via `--protocol amplicon|capture` (default `amplicon`). `capture`: no primer trimming (IVAR_TRIM skipped; reads go straight from alignment to sorted/indexed BAM), no amplicon-dropout analysis (amplicon outputs/section omitted, QC dropout rule not applied), duplicate handling per `--duplicates auto|mark|none` (`auto` = mark for capture, none for amplicon; samtools excludes DUP-flagged reads from depth/variant counting by default). `--skip_primer_trimming` also exists for pre-trimmed amplicon data. Primer scheme/BED are ignored with a warning in capture. The protocol is recorded in run_info. Synthetic capture test data live in `tests/data_capture/` (tests/data is unchanged). |
 | D9 | `freyja demix --version` only ever reports the data bundled in the package, so it cannot confirm an external dataset. The authoritative barcode record is the dataset's own `last_barcode_update.txt` + sha256s. `freyja_reported_barcode_version` is filled only for `source=container`; otherwise null, with the container's bundled version in `freyja_bundled_barcode_version`. This supersedes the "parsed from demix --version against that exact dataset" wording in §5.13. |
 | D5 | Per-sample consensus genomes are kept (F17 changed), built from the ivar-based Freyja variants TSV (no LoFreq). pangolin/nextclade/pango-collapse are dropped. |
 
@@ -228,6 +229,13 @@ bundled example `aggregated_result.tsv` inside the Freyja container to see it.
 - `summary/samplesheet.csv` is published in every mode that has an input sheet. Aggregate mode writes no `barcode_version.json`
   (it demixes nothing). BUILD_REPORT_DATA/RENDER_REPORT do not emit `topic: versions` (it deadlocked PROVENANCE), so their
   python/jinja2 versions are only in `run_info.containers`.
+- **Capture protocol (D13) contract:** `run_info.json` gains top-level `protocol`, `primer_trimming`, `duplicates` (effective
+  values; the last two `null` in modes without reads). Capture runs have no `amplicon_coverage.tsv`, `amplicons_total` and
+  `amplicons_dropped` are `NA` and `amplicon_dropout` is never raised. New per-sample files `samples/<s>/bam/<s>.markdup_stats.txt`
+  and `<s>.{mapped|primertrimmed}.markdup.bam(.bai)` (duplicates are flagged, never removed; the unmarked BAM is not published when
+  marking is on); `<s>.mapped.bam`/`<s>.mapped.flagstat` appear when nothing was trimmed. Report header gains `protocol`,
+  `primer_trimming`, `duplicates`. `tests/data_capture/truth.json` adds `protocol`, `n_duplicate_pairs`,
+  `expected_duplicate_fraction_range`. Verified: duplicate marking lowers Freyja depths (CAP_MIX mean depth 54.67 -> 45.27).
 - `make_samplesheet.py --from-results --skipped-out` writes `sample, reason, sample_type, collection_date, site`; the helper
   scripts `make_samplesheet.py`/`check_samplesheet.py` run on Python >= 3.9 (3.8 checked statically).
 - `primer_scheme` defaults to null (meaning midnight in `full`; in `demix` amplicon coverage runs only when a scheme/BED is

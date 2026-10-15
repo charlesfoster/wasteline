@@ -240,9 +240,17 @@ def check_consensus(c, out, samples, barcodes, reference):
             (out / "samples" / sample / "consensus" / f"{sample}.consensus.fa").exists(),
             f"{sample}: samples/{sample}/consensus/{sample}.consensus.fa published",
         )
-    if "PURE_C" in fasta and barcodes and Path(barcodes).exists():
+    pure = next(
+        (
+            sid
+            for sid, i in samples.items()
+            if i["true_lineage_fractions"] == {"JN.1": 1.0} and sid in fasta
+        ),
+        None,
+    )
+    if pure and barcodes and Path(barcodes).exists():
         snvs = barcode_snvs(barcodes, "JN.1")
-        seq = fasta["PURE_C"]
+        seq = fasta[pure]
         hit = sum(
             1
             for pos, alt in snvs
@@ -250,13 +258,13 @@ def check_consensus(c, out, samples, barcodes, reference):
         )
         c.check(
             snvs and hit / len(snvs) >= SNV_FRACTION_MIN,
-            f"PURE_C consensus carries the JN.1 SNVs ({hit}/{len(snvs)})",
+            f"{pure} consensus carries the JN.1 SNVs ({hit}/{len(snvs)})",
         )
-    if reference and Path(reference).exists() and "PURE_C" in fasta:
+    if reference and Path(reference).exists() and pure:
         ref = "".join(
             line for line in Path(reference).read_text().splitlines() if not line.startswith(">")
         )
-        c.check(len(fasta["PURE_C"]) == len(ref), "PURE_C consensus has the reference length")
+        c.check(len(fasta[pure]) == len(ref), f"{pure} consensus has the reference length")
 
 
 def check_published_qc_is_complete(c, out, samples):
@@ -294,6 +302,11 @@ def check_negative_controls(c, out, samples):
         if i["sample_type"] == "negative" and i["expected_demix_status"] == "ok"
     ]
     path = out / "summary" / "freyja_aggregated_controls.tsv"
+    if not controls:
+        c.check(
+            not path.exists(), "no negative control demixed ok: no freyja_aggregated_controls.tsv"
+        )
+        return
     c.check(path.exists(), "freyja_aggregated_controls.tsv exists")
     if path.exists():
         with open(path, newline="") as handle:
@@ -434,6 +447,66 @@ def check_extras(c, out, samples, extras, barcodes, reference):
                 )
 
 
+def check_capture(c, out, samples, duplicates):
+    """Probe-capture data (PLAN D13): no primers, no amplicon analysis, duplicates marked."""
+    info = json.loads((out / "pipeline_info" / "run_info.json").read_text())
+    c.check(info.get("protocol") == "capture", "run_info.json records protocol capture")
+    c.check(info.get("primer_trimming") is False, "run_info.json: primer_trimming false")
+    c.check(info.get("duplicates") == duplicates, f"run_info.json: duplicates {duplicates}")
+    c.check(
+        not (out / "summary" / "amplicon_coverage.tsv").exists()
+        and not list((out / "samples").glob("*/coverage/*amplicon_coverage.tsv")),
+        "no amplicon_coverage outputs",
+    )
+    c.check(
+        not list((out / "samples").glob("*/bam/*primertrimmed*"))
+        and not list((out / "samples").glob("*/bam/*ivar*")),
+        "no primer-trimmed BAM or ivar trim log (nothing was trimmed)",
+    )
+    traces = sorted((out / "pipeline_info").glob("execution_trace_*.txt"))
+    if traces:
+        names = {r["process"].split(":")[-1] for r in read_tsv(traces[-1])}
+        c.check(
+            not names & {"IVAR_TRIM", "AMPLICON_COVERAGE"},
+            "trace: IVAR_TRIM and AMPLICON_COVERAGE never ran",
+            str(sorted(names & {"IVAR_TRIM", "AMPLICON_COVERAGE"})),
+        )
+    qc = {r["sample"]: r for r in read_tsv(out / "summary" / "qc_summary.tsv")}
+    c.check(
+        all(r["amplicons_total"] == "NA" and r["amplicons_dropped"] == "NA" for r in qc.values()),
+        "qc_summary.tsv: amplicons_total/amplicons_dropped are NA",
+    )
+    c.check(
+        all("amplicon_dropout" not in r["qc_reasons"] for r in qc.values()),
+        "no amplicon_dropout reason anywhere",
+    )
+    html = (out / "summary" / "report.html").read_text()
+    c.check(
+        "Not applicable for protocol" in html and "Library protocol" in html,
+        "report.html: protocol in the header and the amplicon section marked not applicable",
+    )
+    for sample, truth in samples.items():
+        stats = out / "samples" / sample / "bam" / f"{sample}.markdup_stats.txt"
+        if duplicates != "mark":
+            c.check(
+                not stats.exists(), f"{sample}: no markdup stats when duplicates are not marked"
+            )
+            continue
+        c.check(
+            stats.exists(), f"{sample}: samples/{sample}/bam/{sample}.markdup_stats.txt published"
+        )
+        rng = truth.get("expected_duplicate_fraction_range")
+        if stats.exists() and rng:
+            fields = dict(
+                line.split(": ", 1) for line in stats.read_text().splitlines() if ": " in line
+            )
+            fraction = int(fields["DUPLICATE PAIR"]) / max(int(fields["EXAMINED"]), 1)
+            c.check(
+                rng[0] <= fraction <= rng[1],
+                f"{sample}: duplicate fraction {fraction:.3f} within {rng}",
+            )
+
+
 def check_report(c, out, samples, mode):
     summary = out / "summary"
     data_path, html_path = summary / "report_data.json", summary / "report.html"
@@ -463,12 +536,15 @@ def check_report(c, out, samples, mode):
         "http://" not in html and "https://" not in html,
         "report.html contains no http(s):// URL at all",
     )
-    c.check(
-        "Site_1_week_2" in html and "Site-1-week-2" not in html,
-        "report.html: sample ID Site_1_week_2 intact",
-    )
+    if "Site_1_week_2" in samples:
+        c.check(
+            "Site_1_week_2" in html and "Site-1-week-2" not in html,
+            "report.html: sample ID Site_1_week_2 intact",
+        )
     codes = {f.get("code"): f for f in data.get("run_flags", [])}
-    if mode in ("full", "demix"):
+    if mode in ("full", "demix") and any(
+        "ntc_reads" in i["expected_qc_reasons"] for i in samples.values()
+    ):
         flag = codes.get("ntc_reads")
         c.check(
             flag is not None and flag["level"] == "error" and flag.get("samples") == ["NEG_CONTAM"],
@@ -555,7 +631,16 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("outdir")
     parser.add_argument("--mode", required=True, choices=["full", "demix", "aggregate", "report"])
-    parser.add_argument("--truth", default=str(here / "data" / "truth.json"))
+    parser.add_argument(
+        "--protocol",
+        choices=["amplicon", "capture"],
+        default="amplicon",
+        help="capture: truth defaults to tests/data_capture and the capture-specific checks run",
+    )
+    parser.add_argument(
+        "--duplicates", default="mark", help="capture: effective --duplicates (mark|none)"
+    )
+    parser.add_argument("--truth", default=None, help="default: tests/data[_capture]/truth.json")
     parser.add_argument("--barcodes", default=str(here / "data" / "barcodes_test.csv"))
     parser.add_argument(
         "--reference", default=str(here.parent / "assets" / "references" / "NC_045512.fasta")
@@ -582,7 +667,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     out = Path(args.outdir)
-    truth = json.loads(Path(args.truth).read_text())
+    default_truth = here / ("data_capture" if args.protocol == "capture" else "data") / "truth.json"
+    truth = json.loads(Path(args.truth or default_truth).read_text())
     samples = truth["samples"]
     c = Checker()
 
@@ -597,7 +683,9 @@ def main(argv=None):
                 "rebuilt report.html equals the original modulo timestamps",
             )
             c.check(
-                "Site_1_week_2" in new and "https://" not in new and "http://" not in new,
+                ("Site_1_week_2" in new or "Site_1_week_2" not in samples)
+                and "https://" not in new
+                and "http://" not in new,
                 "rebuilt report.html: IDs intact, no URLs",
             )
         print(f"\n{c.total - c.failures}/{c.total} checks passed")
@@ -605,12 +693,16 @@ def main(argv=None):
 
     check_run_info(c, out, args.mode)
     if args.mode in ("full", "demix"):
-        have_amplicons = args.mode == "full" or not args.no_amplicons
+        have_amplicons = args.protocol == "amplicon" and (
+            args.mode == "full" or not args.no_amplicons
+        )
         check_demix_status(c, out, samples, args.mode)
         check_aggregate(c, out, samples, args.tolerance)
         check_qc(c, out, samples, args.mode, have_amplicons)
         check_consensus(c, out, samples, args.barcodes, args.reference)
         check_published_qc_is_complete(c, out, samples)
+        if args.protocol == "capture":
+            check_capture(c, out, samples, args.duplicates)
     else:
         check_aggregate(c, out, samples, args.tolerance)
         c.check(
@@ -619,7 +711,7 @@ def main(argv=None):
         )
     check_report(c, out, samples, args.mode)
     check_negative_controls(c, out, samples)
-    if args.mode == "aggregate":
+    if args.mode == "aggregate" and "MIX_A" in samples:
         data = json.loads((out / "summary" / "report_data.json").read_text())
         by_sample = {s["sample"]: s for s in data["samples"]}
         c.check(

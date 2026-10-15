@@ -63,6 +63,7 @@ emulation. The synthetic dataset takes about two minutes this way; real runs are
 **Fix.** There is nothing to configure for correctness. For speed, give Docker Desktop more CPUs and memory, and (if your
 Docker Desktop offers it) enable Rosetta for amd64 emulation
 <!-- UNVERIFIED: the Docker Desktop Rosetta setting was not tried here -->.
+
 Run large datasets on Linux/amd64. `-profile emulate_amd64` forces the platform flag on any Docker host. Do not use conda on
 macOS.
 
@@ -98,14 +99,14 @@ the paths are relative to. For the test profiles, launch from the repository roo
 
 ### Samplesheet validation errors
 
-| Message | Cause and fix |
-|---|---|
-| `Entry 1: Missing required field(s): fastq_2` | single-end data, or an empty `fastq_2`. Only paired-end reads are supported. |
-| `Entry 1: Missing required field(s): fastq_2, fastq_1` on every row | the wrong sheet for the mode: a demix/aggregate sheet given to `--mode full`. Conversely `Missing required field(s): depths, variants` means a FASTQ sheet was given to `--mode demix`. Required columns per mode are in [usage.md](usage.md#3-samplesheets). |
-| `Entry 2: Detected duplicate entries: [sample:A]` | two rows with the same `sample`. IDs must be unique; wasteline does not merge repeats. Concatenate the FASTQs of one sample first. |
-| `Error for field 'sample' (A B): "A B" does not match regular expression [^[A-Za-z0-9._-]+$]` | an ID with a space or other disallowed character. IDs are never rewritten, so rename it (letters, digits, `.`, `_`, `-`). |
-| `must have extension '.fq.gz' or '.fastq.gz'` | FASTQs must be gzipped and named `.fastq.gz` or `.fq.gz`, with no spaces in the path. |
-| `collection_date must be an ISO date (YYYY-MM-DD)` | fix the date or leave it empty. |
+| Message                                                                                       | Cause and fix                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Entry 1: Missing required field(s): fastq_2`                                                 | single-end data, or an empty `fastq_2`. Only paired-end reads are supported.                                                                                                                                                                                  |
+| `Entry 1: Missing required field(s): fastq_2, fastq_1` on every row                           | the wrong sheet for the mode: a demix/aggregate sheet given to `--mode full`. Conversely `Missing required field(s): depths, variants` means a FASTQ sheet was given to `--mode demix`. Required columns per mode are in [usage.md](usage.md#3-samplesheets). |
+| `Entry 2: Detected duplicate entries: [sample:A]`                                             | two rows with the same `sample`. IDs must be unique; wasteline does not merge repeats. Concatenate the FASTQs of one sample first.                                                                                                                            |
+| `Error for field 'sample' (A B): "A B" does not match regular expression [^[A-Za-z0-9._-]+$]` | an ID with a space or other disallowed character. IDs are never rewritten, so rename it (letters, digits, `.`, `_`, `-`).                                                                                                                                     |
+| `must have extension '.fq.gz' or '.fastq.gz'`                                                 | FASTQs must be gzipped and named `.fastq.gz` or `.fq.gz`, with no spaces in the path.                                                                                                                                                                         |
+| `collection_date must be an ISO date (YYYY-MM-DD)`                                            | fix the date or leave it empty.                                                                                                                                                                                                                               |
 
 `python bin/check_samplesheet.py samplesheet.csv --mode full --check-files` reports all problems in one go.
 
@@ -154,6 +155,17 @@ reference's name (the coordinates are the same when it is the same sequence), fo
 `sed 's/^MN908947\.3/NC_045512.2/' my_scheme.bed > my_scheme.NC_045512.2.bed`, or pass the matching `--fasta`. Details:
 [usage.md](usage.md#4-reference-and-primer-schemes). The check exists on purpose: with a mismatched contig `ivar trim` would
 silently trim nothing. (Reproduced with a copy of `articv4.1.bed` with the contig renamed.)
+
+### Warning: `--primer_scheme/--primer_bed are ignored`
+
+```
+WARN: --primer_scheme/--primer_bed are ignored: --protocol capture reads are not primer-trimmed and there is no amplicon-level analysis
+```
+
+**Cause.** You gave a primer scheme or BED together with `--protocol capture` or `--skip_primer_trimming`. Probe-capture
+reads have no primers to trim and no amplicons, so the scheme is not used (and the start-up contig check is skipped).
+**Fix.** Nothing is wrong; drop the option to silence the warning. If your data really are PCR amplicons, do not use
+`--protocol capture`. See [usage.md](usage.md#probe-capture-data-eg-twist---protocol-capture).
 
 ### `--pathogen` is rejected
 
@@ -376,13 +388,13 @@ The provenance and report steps always re-run (they contain the run time); 3 of 
 
 ### Warnings you can ignore
 
-| Message | Why it is harmless |
-|---|---|
-| `WARN: Unrecognized config option 'validation.monochromeLogs'` | nf-core template setting that this Nextflow version does not know. No effect on results. |
-| `WARN: nf-core pipelines do not accept positional arguments. The positional argument 'true' has been detected.` | printed with `-stub-run`/`-stub` on Nextflow 26.04 (the boolean after the flag is seen as an argument). Stub runs work. |
-| `Nextflow 26.10.0 is available - Please consider updating` | informational. Stay on >= 26.04. |
-| `Negative control NEG_E is not included in the aggregate and plot (use --include_negatives_in_aggregate to include it)` | the default (decision D8); not an error. |
-| `WARNING: 5 sample(s) have no metadata row: ...` (from `make_samplesheet.py`) | those samples simply get no date or site. |
+| Message                                                                                                                 | Why it is harmless                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `WARN: Unrecognized config option 'validation.monochromeLogs'`                                                          | nf-core template setting that this Nextflow version does not know. No effect on results.                                |
+| `WARN: nf-core pipelines do not accept positional arguments. The positional argument 'true' has been detected.`         | printed with `-stub-run`/`-stub` on Nextflow 26.04 (the boolean after the flag is seen as an argument). Stub runs work. |
+| `Nextflow 26.10.0 is available - Please consider updating`                                                              | informational. Stay on >= 26.04.                                                                                        |
+| `Negative control NEG_E is not included in the aggregate and plot (use --include_negatives_in_aggregate to include it)` | the default (decision D8); not an error.                                                                                |
+| `WARNING: 5 sample(s) have no metadata row: ...` (from `make_samplesheet.py`)                                           | those samples simply get no date or site.                                                                               |
 
 ### The run ended with `Pipeline completed with errors`
 

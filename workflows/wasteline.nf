@@ -8,6 +8,7 @@ include { BWA_INDEX              } from '../modules/nf-core/bwa/index/main'
 include { BWA_MEM                } from '../modules/nf-core/bwa/mem/main'
 include { SAMTOOLS_VIEW          } from '../modules/nf-core/samtools/view/main'
 include { SAMTOOLS_FLAGSTAT      } from '../modules/nf-core/samtools/flagstat/main'
+include { SAMTOOLS_MARKDUP       } from '../modules/local/samtools_markdup/main'
 include { BAM_MAPPED_READS       } from '../modules/local/bam_mapped_reads/main'
 include { IVAR_TRIM              } from '../modules/nf-core/ivar/trim/main'
 include { SAMTOOLS_SORT          } from '../modules/nf-core/samtools/sort/main'
@@ -39,6 +40,7 @@ include { FREYJA_DATA            } from '../subworkflows/local/freyja_data/main'
 include { FREYJA_DATA as FREYJA_DATA_COMPARE } from '../subworkflows/local/freyja_data/main'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { primerBed              } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { protocolSettings       } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { ivarOffset             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { previousRuns           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
@@ -139,10 +141,12 @@ workflow WASTELINE {
     else {
         def ch_fasta = channel.value(file(params.fasta, checkIfExists: true))
         def ch_gff = channel.value(file(params.gff, checkIfExists: true))
-        def ch_bed = channel.value(primerBed())
-        // demix mode: the primer scheme of the old results is unknown, so per-amplicon coverage is only
-        // computed when the user names one
-        def use_amplicons = mode == 'full' || params.primer_scheme || params.primer_bed
+        // library settings (protocol, trimming, duplicate handling): see protocolSettings()
+        def settings = protocolSettings(mode)
+        // amplicon-level QC and primer trimming need the primer BED; probe-capture reads have none
+        // (demix mode: the scheme of old results is unknown, so only when the user names one)
+        def use_amplicons = settings.amplicons
+        def ch_bed = use_amplicons ? channel.value(primerBed()) : channel.empty()
 
         //
         // Per-sample Freyja inputs [ meta, variants, depths ]: made from reads (full) or given (demix)
@@ -174,9 +178,6 @@ workflow WASTELINE {
                 'bai',
             )
 
-            // `ivar trim` crashes on a BAM without mapped reads (e.g. a clean negative control): those
-            // samples skip trimming and carry their (empty) BAM on; the coverage gate then records them
-            // as skipped_low_coverage downstream.
             BAM_MAPPED_READS(SAMTOOLS_VIEW.out.bam.join(SAMTOOLS_VIEW.out.bai))
             def ch_mapped = BAM_MAPPED_READS.out.counted
                 .map { meta, bam, bai, count_file -> [ meta, bam, bai, count_file.text.trim() as long ] }
@@ -185,18 +186,41 @@ workflow WASTELINE {
                     empty: true
                 }
 
-            IVAR_TRIM(ch_mapped.mapped.map { meta, bam, bai, _count -> [ meta, bam, bai ] }, ch_bed)
+            def ch_final_bam = channel.empty()
+            if (settings.primer_trimming) {
+                // `ivar trim` crashes on a BAM without mapped reads (e.g. a clean negative control): those
+                // samples skip trimming and carry their (empty) BAM on; the coverage gate then records them
+                // as skipped_low_coverage downstream.
+                IVAR_TRIM(ch_mapped.mapped.map { meta, bam, bai, _count -> [ meta, bam, bai ] }, ch_bed)
 
-            SAMTOOLS_SORT(IVAR_TRIM.out.bam, [ [:], [], [] ], 'bai')
+                SAMTOOLS_SORT(IVAR_TRIM.out.bam, [ [:], [], [] ], 'bai')
 
-            def ch_final_bam = SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.index)
-                .mix(ch_mapped.empty.map { meta, bam, bai, _count -> [ meta, bam, bai ] })
+                ch_final_bam = SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.index)
+                    .mix(ch_mapped.empty.map { meta, bam, bai, _count -> [ meta, bam, bai ] })
+            }
+            else {
+                // Probe-capture (or pre-trimmed) reads are used as aligned: no primer trimming, straight to
+                // the sorted + indexed BAM (empty BAMs sort fine and keep flowing)
+                SAMTOOLS_SORT(
+                    ch_mapped.mapped.mix(ch_mapped.empty).map { meta, bam, _bai, _count -> [ meta, bam ] },
+                    [ [:], [], [] ],
+                    'bai',
+                )
+                ch_final_bam = SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.index)
+            }
+
+            // PCR duplicates are flagged (never removed) when --duplicates says so; Freyja's pileup skips
+            // flagged reads. Near-empty BAMs pass through (checked: markdup accepts a header-only BAM).
+            if (settings.duplicates == 'mark') {
+                SAMTOOLS_MARKDUP(ch_final_bam)
+                ch_final_bam = SAMTOOLS_MARKDUP.out.bam
+            }
 
             FREYJA_VARIANTS(ch_final_bam, ch_fasta)
 
             ch_freyja_in = FREYJA_VARIANTS.out.variants.join(FREYJA_VARIANTS.out.depths)
 
-            // mapped-read counts for the QC table, from the final primer-trimmed BAM
+            // mapped-read counts for the QC table, from the final BAM
             SAMTOOLS_FLAGSTAT(ch_final_bam)
             ch_flagstat = SAMTOOLS_FLAGSTAT.out.flagstat
         }
@@ -521,7 +545,7 @@ def runInfoBase(mode) {
         [ (key.toString()): (value == null || value instanceof Boolean || value instanceof Number) ? value : value.toString() ]
     }
     // the effective primer scheme is recorded even when the default (null = midnight) applies
-    if (mode == 'full' && !params.primer_bed && !params.primer_scheme) {
+    if (protocolSettings(mode).amplicons && !params.primer_bed && !params.primer_scheme) {
         plain_params.primer_scheme = 'midnight'
     }
     def info = [
@@ -535,6 +559,10 @@ def runInfoBase(mode) {
         run_name: workflow.runName,
         start: workflow.start.toString(),
         params: plain_params,
+        // effective library settings (protocolSettings); only meaningful where reads are mapped
+        protocol: params.protocol,
+        primer_trimming: mode == 'full' ? protocolSettings(mode).primer_trimming : null,
+        duplicates: mode == 'full' ? protocolSettings(mode).duplicates : null,
         // earlier runs whose results this run builds on (demix/aggregate); barcode_version 'unknown'
         // for legacy Snakemake results, which recorded none
         previous_runs: previousRuns(mode),

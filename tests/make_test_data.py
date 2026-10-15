@@ -15,6 +15,12 @@ What it does
 Usage
 -----
     python tests/make_test_data.py --out tests/data --seed 42
+    python tests/make_test_data.py --protocol capture              # -> tests/data_capture (probe-capture data)
+
+``--protocol capture`` (PLAN D13) writes a SEPARATE dataset (tests/data_capture/) that mimics probe-capture
+libraries (e.g. Twist): fragment starts uniform over the genome (reads may overhang the genome ends), no primer
+sequences at read starts, mild depth variation, and PCR duplicates (exact copies of ~17% of the read pairs). The
+amplicon dataset in tests/data is never touched by it.
 
 Output is byte-identical for the same seed, reference, primer BED and barcode file (gzip with mtime=0; only
 ``random.Random.random()`` and ``gauss`` are used so the stream does not depend on Python-version-specific helpers).
@@ -586,11 +592,213 @@ def generate(
     return truth
 
 
+# ----------------------------------------------------------------------------------------------------------------
+# probe-capture dataset (PLAN D13): tests/data_capture
+# ----------------------------------------------------------------------------------------------------------------
+CAPTURE_SAMPLES = [
+    {
+        "id": "CAP_MIX",
+        "sample_type": "sample",
+        "date": "2026-03-02",
+        "site": "SiteC",
+        "mix": {"BA.2": 0.70, "AY.4": 0.30},
+        "pairs": 6000,
+        "pct_genome_ge_10x": [93, 100],
+    },
+    {
+        "id": "CAP_MIX3",
+        "sample_type": "sample",
+        "date": "2026-03-09",
+        "site": "SiteC",
+        "mix": {"BA.1": 0.50, "XBB.1.5": 0.30, "KP.3": 0.20},
+        "pairs": 7000,
+        "pct_genome_ge_10x": [93, 100],
+    },
+    {
+        "id": "CAP_PURE",
+        "sample_type": "sample",
+        "date": "2026-03-16",
+        "site": "SiteD",
+        "mix": {"JN.1": 1.0},
+        "pairs": 8000,
+        "pct_genome_ge_10x": [93, 100],
+    },
+    {
+        "id": "CAP_LOWCOV",
+        "sample_type": "sample",
+        "date": "2026-03-23",
+        "site": "SiteD",
+        "mix": {"BA.2": 1.0},
+        "pairs": 60,
+        "pct_genome_ge_10x": [0, 5],
+    },
+    {
+        "id": "CAP_NEG",
+        "sample_type": "negative",
+        "date": "2026-03-02",
+        "site": "SiteC",
+        "mix": {"B": 1.0},
+        "pairs": 3,
+        "pct_genome_ge_10x": [0, 5],
+    },
+]
+CAPTURE_FRAG_MEAN, CAPTURE_FRAG_SD, CAPTURE_FRAG_MIN, CAPTURE_FRAG_MAX = 300, 70, 150, 450
+CAPTURE_BIN = 1000  # depth varies per 1 kb bin (log-normal)
+CAPTURE_DEPTH_JITTER_SD = 0.15
+CAPTURE_DUP_RATE = 0.17  # share of read pairs that are exact PCR copies of an earlier pair
+CAPTURE_DUP_FRACTION_RANGE = [
+    0.10,
+    0.25,
+]  # expected share of reads flagged duplicate by samtools markdup
+
+
+def simulate_capture_sample(
+    rng: random.Random, sample: dict, genomes: dict[str, str]
+) -> tuple[bytes, bytes, dict]:
+    """2x150 reads from fragments starting uniformly over the genome, plus exact PCR duplicates."""
+    ref_len = len(next(iter(genomes.values())))
+    nbins = -(-ref_len // CAPTURE_BIN)
+    weights = [math.exp(CAPTURE_DEPTH_JITTER_SD * rng.gauss(0.0, 1.0)) for _ in range(nbins)]
+    cum = []
+    tot = 0.0
+    for w in weights:
+        tot += w
+        cum.append(tot)
+    lineages = list(sample["mix"])
+    lcum = []
+    t = 0.0
+    for lin in lineages:
+        t += sample["mix"][lin]
+        lcum.append(t)
+
+    unique: list[
+        tuple[str, str, str, str]
+    ] = []  # (seq1, qual1, seq2, qual2) of every non-duplicate pair
+    r1_lines: list[str] = []
+    r2_lines: list[str] = []
+    counts = {lin: 0 for lin in lineages}
+    n_dups = 0
+    for n in range(1, sample["pairs"] + 1):
+        if unique and rng.random() < CAPTURE_DUP_RATE:
+            s1, q1, s2, q2 = unique[int(rng.random() * len(unique))]
+            n_dups += 1
+        else:
+            li = min(bisect.bisect_left(lcum, rng.random() * t), len(lineages) - 1)
+            lin = lineages[li]
+            genome = genomes[lin]
+            counts[lin] += 1
+            flen = round(rng.gauss(CAPTURE_FRAG_MEAN, CAPTURE_FRAG_SD))
+            flen = max(CAPTURE_FRAG_MIN, min(CAPTURE_FRAG_MAX, flen))
+            b = min(bisect.bisect_left(cum, rng.random() * tot), nbins - 1)
+            centre = b * CAPTURE_BIN + int(rng.random() * CAPTURE_BIN)
+            start = max(
+                0, min(ref_len, centre - flen // 2)
+            )  # fragments may overhang the genome ends
+            frag = genome[start : start + flen]
+            if len(frag) < 60:  # too little genome left: take the terminal stretch instead
+                frag = genome[-flen:] if start > ref_len // 2 else genome[:flen]
+            if rng.random() < 0.5:
+                frag = revcomp(frag)
+            rl = min(READ_LEN, len(frag))
+            s1, q1 = _mutate_and_qual(rng, frag[:rl])
+            s2, q2 = _mutate_and_qual(rng, revcomp(frag)[:rl])
+            unique.append((s1, q1, s2, q2))
+        name = f"{sample['id']}:{n:06d}"
+        r1_lines.append(f"@{name} 1:N:0:ACGTACGT\n{s1}\n+\n{q1}\n")
+        r2_lines.append(f"@{name} 2:N:0:ACGTACGT\n{s2}\n+\n{q2}\n")
+    info = {"pairs_per_lineage": counts, "duplicate_pairs": n_dups}
+    return "".join(r1_lines).encode(), "".join(r2_lines).encode(), info
+
+
+def generate_capture(
+    out: Path,
+    seed: int = 42,
+    reference: Path = DEFAULT_REFERENCE,
+    barcodes: Path = DEFAULT_BARCODES,
+    path_prefix: str = "tests/data_capture",
+    log=lambda msg: print(msg, file=sys.stderr),
+) -> dict:
+    out = Path(out)
+    (out / "fastq").mkdir(parents=True, exist_ok=True)
+    ref = read_fasta(reference)
+    barcode_muts = read_barcodes(barcodes)
+    genomes: dict[str, str] = {}
+    mut_stats: dict[str, dict] = {}
+    for lin in sorted({lin for s in CAPTURE_SAMPLES for lin in s["mix"]}):
+        if lin not in barcode_muts:
+            raise SystemExit(f"lineage {lin} not in {barcodes}")
+        genomes[lin], mut_stats[lin] = apply_mutations(ref, barcode_muts[lin])
+    truth_samples: dict[str, dict] = {}
+    sheet_rows = []
+    for s in CAPTURE_SAMPLES:
+        rng = sample_rng(seed, "capture:" + s["id"])
+        b1, b2, info = simulate_capture_sample(rng, s, genomes)
+        write_gzip(out / "fastq" / f"{s['id']}_R1.fastq.gz", b1)
+        write_gzip(out / "fastq" / f"{s['id']}_R2.fastq.gz", b2)
+        sheet_rows.append(
+            {
+                "sample": s["id"],
+                "fastq_1": f"{path_prefix}/fastq/{s['id']}_R1.fastq.gz",
+                "fastq_2": f"{path_prefix}/fastq/{s['id']}_R2.fastq.gz",
+                "sample_type": s["sample_type"],
+                "collection_date": s["date"],
+                "site": s["site"],
+            }
+        )
+        is_low = s["pairs"] < LOW_COVERAGE_MAX_PAIRS
+        is_negative = s["sample_type"] == "negative"
+        qc_reasons = ["low_coverage"] if s["id"] == "CAP_LOWCOV" else []  # never amplicon_dropout
+        truth_samples[s["id"]] = {
+            "sample_type": s["sample_type"],
+            "true_lineage_fractions": s["mix"],
+            "realised_pairs_per_lineage": info["pairs_per_lineage"],
+            "n_read_pairs": s["pairs"],
+            "n_duplicate_pairs": info["duplicate_pairs"],
+            "expected_duplicate_fraction_range": None
+            if s["pairs"] < 1000
+            else CAPTURE_DUP_FRACTION_RANGE,
+            "expected_demix_status": "ok" if not is_low else "skipped_low_coverage",
+            "expected_qc_reasons": qc_reasons,
+            "expected_qc_status": "FAIL" if qc_reasons else "PASS",
+            "expected_in_aggregate": (not is_low) and not is_negative,
+            "expected_consensus_status": "none" if is_negative else ("empty" if is_low else "ok"),
+            "expected_pct_genome_ge_10x_range": s["pct_genome_ge_10x"],
+            "abundance_tolerance": 0.05 if not is_low else None,
+            "dropout_amplicons": [],
+        }
+    truth = {
+        "seed": seed,
+        "protocol": "capture",
+        "reference": reference.name,
+        "barcode_file": "../data/barcodes_test.csv",
+        "lineage_mutation_application": mut_stats,
+        "samples": truth_samples,
+    }
+    (out / "truth.json").write_text(json.dumps(truth, indent=2, sort_keys=True) + "\n")
+    with open(out / "samplesheet.csv", "w", newline="") as fh:
+        w = csv.DictWriter(
+            fh,
+            fieldnames=["sample", "fastq_1", "fastq_2", "sample_type", "collection_date", "site"],
+            lineterminator="\n",
+        )
+        w.writeheader()
+        w.writerows(sheet_rows)
+    return truth
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--out", type=Path, default=REPO / "tests" / "data", help="output directory")
+    ap.add_argument(
+        "--protocol",
+        choices=["amplicon", "capture"],
+        default="amplicon",
+        help="amplicon: tests/data (default); capture: tests/data_capture (probe-capture reads, PLAN D13)",
+    )
+    ap.add_argument(
+        "--out", type=Path, default=None, help="output directory (default per protocol)"
+    )
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument(
         "--primer-scheme", default="midnight", help="name of a BED in assets/primer_schemes"
@@ -599,9 +807,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--barcodes", type=Path, default=DEFAULT_BARCODES, help="small Freyja barcodes .csv (input)"
     )
-    ap.add_argument(
-        "--path-prefix", default="tests/data", help="prefix for FASTQ paths in samplesheet.csv"
-    )
+    ap.add_argument("--path-prefix", default=None, help="prefix for FASTQ paths in samplesheet.csv")
     ap.add_argument(
         "--extract-barcodes",
         type=Path,
@@ -618,13 +824,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.extract_barcodes:
         extract_barcodes(args.extract_barcodes, args.barcodes, BARCODE_LINEAGES, args.lineages_yml)
         return 0
+    if args.protocol == "capture":
+        generate_capture(
+            args.out or REPO / "tests" / "data_capture",
+            seed=args.seed,
+            reference=args.reference,
+            barcodes=args.barcodes,
+            path_prefix=args.path_prefix or "tests/data_capture",
+        )
+        return 0
     generate(
-        args.out,
+        args.out or REPO / "tests" / "data",
         seed=args.seed,
         primer_scheme=args.primer_scheme,
         reference=args.reference,
         barcodes=args.barcodes,
-        path_prefix=args.path_prefix,
+        path_prefix=args.path_prefix or "tests/data",
     )
     return 0
 

@@ -17,25 +17,25 @@ generation (FASTQ compared after decompression so a different zlib build cannot 
 
 ## Contents of `tests/data/`
 
-| File | Purpose |
-|---|---|
-| `fastq/<sample>_R1.fastq.gz`, `_R2.fastq.gz` | simulated 2x150 reads (read names `<sample>:<n>`) |
-| `samplesheet.csv` | `sample,fastq_1,fastq_2,sample_type,collection_date,site`; paths relative to the repo root (`tests/data/fastq/...`) |
-| `barcodes_test.csv` | Freyja `--barcodes` CSV subset (14 lineages x 244 mutations) |
-| `truth.json` | per sample: true lineage fractions, expected demix status, expected QC reasons, dropout amplicons and the genome intervals they leave uncovered, expected % genome >= 10x range |
-| `primer_scheme.txt` | name of the primer scheme used (`midnight`); pass `--primer_scheme midnight` |
+| File                                         | Purpose                                                                                                                                                                         |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fastq/<sample>_R1.fastq.gz`, `_R2.fastq.gz` | simulated 2x150 reads (read names `<sample>:<n>`)                                                                                                                               |
+| `samplesheet.csv`                            | `sample,fastq_1,fastq_2,sample_type,collection_date,site`; paths relative to the repo root (`tests/data/fastq/...`)                                                             |
+| `barcodes_test.csv`                          | Freyja `--barcodes` CSV subset (14 lineages x 244 mutations)                                                                                                                    |
+| `truth.json`                                 | per sample: true lineage fractions, expected demix status, expected QC reasons, dropout amplicons and the genome intervals they leave uncovered, expected % genome >= 10x range |
+| `primer_scheme.txt`                          | name of the primer scheme used (`midnight`); pass `--primer_scheme midnight`                                                                                                    |
 
 Samples:
 
-| Sample | Type | Truth | Read pairs | Notes |
-|---|---|---|---|---|
-| `MIX_A` | sample | BA.2 0.70, AY.4 0.30 | 6000 | |
-| `MIX_B` | sample | BA.1 0.50, XBB.1.5 0.30, KP.3 0.20 | 7000 | |
-| `PURE_C` | sample | JN.1 1.00 | 8000 | high depth |
-| `LOWCOV_D` | sample | BA.2 1.00 | 60 | about 0.6x; must be skipped by the coverage gate (`skipped_low_coverage`) |
-| `NEG_E` | negative | none (reference-like reads) | 3 | tiny but not empty |
-| `NEG_CONTAM` | negative | BA.2 1.00 (contamination) | 3000 | contaminated negative control: passes the coverage gate, so it is demixed (`ok`) but kept out of the aggregate/plot (D8); QC `FAIL` with `ntc_reads` |
-| `Site_1_week_2` | sample | BA.5 0.60, XBB.1.5 0.40 | 6500 | underscores in the ID (guards against ID rewriting); amplicons `nCoV-2019_7` and `nCoV-2019_22` dropped out |
+| Sample          | Type     | Truth                              | Read pairs | Notes                                                                                                                                                |
+| --------------- | -------- | ---------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MIX_A`         | sample   | BA.2 0.70, AY.4 0.30               | 6000       |                                                                                                                                                      |
+| `MIX_B`         | sample   | BA.1 0.50, XBB.1.5 0.30, KP.3 0.20 | 7000       |                                                                                                                                                      |
+| `PURE_C`        | sample   | JN.1 1.00                          | 8000       | high depth                                                                                                                                           |
+| `LOWCOV_D`      | sample   | BA.2 1.00                          | 60         | about 0.6x; must be skipped by the coverage gate (`skipped_low_coverage`)                                                                            |
+| `NEG_E`         | negative | none (reference-like reads)        | 3          | tiny but not empty                                                                                                                                   |
+| `NEG_CONTAM`    | negative | BA.2 1.00 (contamination)          | 3000       | contaminated negative control: passes the coverage gate, so it is demixed (`ok`) but kept out of the aggregate/plot (D8); QC `FAIL` with `ntc_reads` |
+| `Site_1_week_2` | sample   | BA.5 0.60, XBB.1.5 0.40            | 6500       | underscores in the ID (guards against ID rewriting); amplicons `nCoV-2019_7` and `nCoV-2019_22` dropped out                                          |
 
 `expected_zero_coverage_regions_0based_half_open` in `truth.json` lists the genome intervals no remaining amplicon
 spans (for `Site_1_week_2`: 6380-7298 and 21642-22511).
@@ -89,14 +89,14 @@ container has no bwa), sorted with the Freyja container's samtools, then `freyja
 `freyja demix --barcodes tests/data/barcodes_test.csv` (default `--eps`, no trimming). Recovered abundances
 (Freyja's `lineages`/`abundances` output):
 
-| Sample | Truth | Recovered | Genome >= 10x | Mean depth |
-|---|---|---|---|---|
-| `MIX_A` | BA.2 0.70, AY.4 0.30 | BA.2 0.709, AY.4 0.291 | 99.5% | 57x |
-| `MIX_B` | BA.1 0.50, XBB.1.5 0.30, KP.3 0.20 | BA.1 0.512, XBB.1.5 0.268, KP.3 0.191, BA.2 0.029 (spurious) | 99.5% | 66x |
-| `PURE_C` | JN.1 1.00 | JN.1 1.000 | 99.5% | 76x |
-| `Site_1_week_2` | BA.5 0.60, XBB.1.5 0.40 | BA.5 0.607, XBB.1.5 0.359, BA.2 0.034 (spurious) | 93.5% | 62x |
-| `LOWCOV_D` | BA.2 1.00 | BA.2 1.000 (but Freyja reports `coverage` 0.0) | 0.0% | 0.6x |
-| `NEG_E` | none | Freyja `demix` crashes (see below) | 0.0% | 0.0x |
+| Sample          | Truth                              | Recovered                                                    | Genome >= 10x | Mean depth |
+| --------------- | ---------------------------------- | ------------------------------------------------------------ | ------------- | ---------- |
+| `MIX_A`         | BA.2 0.70, AY.4 0.30               | BA.2 0.709, AY.4 0.291                                       | 99.5%         | 57x        |
+| `MIX_B`         | BA.1 0.50, XBB.1.5 0.30, KP.3 0.20 | BA.1 0.512, XBB.1.5 0.268, KP.3 0.191, BA.2 0.029 (spurious) | 99.5%         | 66x        |
+| `PURE_C`        | JN.1 1.00                          | JN.1 1.000                                                   | 99.5%         | 76x        |
+| `Site_1_week_2` | BA.5 0.60, XBB.1.5 0.40            | BA.5 0.607, XBB.1.5 0.359, BA.2 0.034 (spurious)             | 93.5%         | 62x        |
+| `LOWCOV_D`      | BA.2 1.00                          | BA.2 1.000 (but Freyja reports `coverage` 0.0)               | 0.0%          | 0.6x       |
+| `NEG_E`         | none                               | Freyja `demix` crashes (see below)                           | 0.0%          | 0.0x       |
 
 All true lineages are recovered within about 0.03 of truth (tolerance in `truth.json`: 0.05; the small spurious BA.2
 fractions in `MIX_B` and `Site_1_week_2` are the only extra calls, <= 0.034). Note that Freyja collapses lineages in its
@@ -110,3 +110,34 @@ Observations relevant to the pipeline:
   `TypeError: operation 'radd' not supported for dtype 'str' with dtype 'object'`. The coverage gate must prevent
   demix from running on such samples (or the failure must be recorded as `failed` with a reason).
 - `freyja variants` wrote `<prefix>.tsv` when given `--variants <prefix>` (as warned in CLAUDE.md).
+
+## Probe-capture dataset (`tests/data_capture/`)
+
+A second, separate dataset (about 2.2 MB) for `--protocol capture` (PLAN D13); `tests/data/` is not touched by it.
+
+```bash
+pixi run python tests/make_test_data.py --protocol capture        # -> tests/data_capture (seed 42)
+pixi run pytest tests/python/test_make_capture_data.py            # determinism, committed data current, tests/data untouched
+```
+
+Same lineage genomes (built from `tests/data/barcodes_test.csv`) and the same read error model, but captured-library
+reads: fragment length about N(300, 70) clipped to 150-450 bp, starts spread uniformly over the genome (a fragment can
+overhang the genome ends), mild per-kilobase depth variation (log-normal sd 0.15), **no primer sequences** at read
+starts, and **PCR duplicates**: about 17% of the read pairs are exact copies of an earlier pair. Files: `fastq/`,
+`samplesheet.csv` (paths relative to the repo root, `tests/data_capture/fastq/...`) and `truth.json` (same keys as
+`tests/data/truth.json`, plus `protocol`, `n_duplicate_pairs` and `expected_duplicate_fraction_range`; no dropout and no
+primer scheme). Use it with `--protocol capture --barcodes tests/data/barcodes_test.csv`.
+
+| Sample       | Type     | Truth                              | Read pairs | Notes                                                          |
+| ------------ | -------- | ---------------------------------- | ---------- | -------------------------------------------------------------- |
+| `CAP_MIX`    | sample   | BA.2 0.70, AY.4 0.30               | 6000       |                                                                |
+| `CAP_MIX3`   | sample   | BA.1 0.50, XBB.1.5 0.30, KP.3 0.20 | 7000       |                                                                |
+| `CAP_PURE`   | sample   | JN.1 1.00                          | 8000       |                                                                |
+| `CAP_LOWCOV` | sample   | BA.2 1.00                          | 60         | about 0.4x; `skipped_low_coverage`, QC `FAIL` (`low_coverage`) |
+| `CAP_NEG`    | negative | none (reference-like reads)        | 3          | clean negative control, QC `PASS`                              |
+
+Measured with the Freyja 2.0.5 container, `--protocol capture` (duplicates marked), test barcodes: `CAP_MIX` BA.2 0.686,
+AY.4 0.314; `CAP_MIX3` BA.1 0.493, XBB.1.5 0.289, KP.3 0.179, BA.2 0.027 (spurious), BA.5 0.012 (spurious); `CAP_PURE`
+JN.1 1.000. Mean depth with duplicates marked 45x / 52x / 60x (`CAP_MIX` is 54.7x with `--duplicates none`: marking removes the planted
+17%); genome >= 10x 100% for all three. `samtools markdup` flags 17.1-17.9% of the pairs. No `amplicon_dropout` reason can
+occur (no amplicons).

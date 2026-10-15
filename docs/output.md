@@ -211,8 +211,10 @@ QC rules (thresholds are parameters; defaults shown):
 ### `summary/amplicon_coverage.tsv`
 
 Long format, one row per sample x amplicon (7 samples x 29 midnight amplicons = 203 rows here), negative controls
-included. Only written when the primer scheme is known (always in `full`; in `demix` only with `--primer_scheme` /
-`--primer_bed`).
+included. Only written when the primer scheme is known (always in `full` with the `amplicon` protocol; in `demix` only
+with `--primer_scheme` / `--primer_bed`). **Never written for `--protocol capture` or `--skip_primer_trimming`**: there
+are no amplicons (and then `amplicons_total` / `amplicons_dropped` in `qc_summary.tsv` are `NA` and no `amplicon_dropout`
+reason is raised).
 
 ```
 sample    amplicon      start  end   mean_depth  min_depth  pct_ge_min_depth  dropped
@@ -508,6 +510,9 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fastp/<s>.fastp.json`, `.html`, `.log`                                               | fastp report and log. The JSON feeds `raw_reads`/`trimmed_reads`. Trimmed FASTQs (`<s>.fastp.fastq.gz`) are published only with `--save_trimmed_reads` <!-- UNVERIFIED: file name taken from the nf-core fastp module output pattern; not exercised in this run -->.                                                                                                                     |
 | `bam/<s>.primertrimmed.bam`, `.bai`                                                   | Reads aligned with `bwa mem` to the reference, mapped reads only, primers soft-clipped with `ivar trim`, sorted and indexed (`--save_bam`, default true). For a sample with no mapped reads (a clean control) `ivar trim` is skipped and the (empty) BAM is carried on.                                                                                                                  |
+| `bam/<s>.mapped.bam`, `.bai`                                                          | Only with `--protocol capture` or `--skip_primer_trimming`: the mapped reads as aligned (nothing trimmed), sorted and indexed. Not published when duplicates are marked (the marked BAM below replaces it).                                                                                                                                                                              |
+| `bam/<s>.<primertrimmed\|mapped>.markdup.bam`, `.bai`                                 | Only with duplicate marking (`--duplicates mark`, or `auto` with `--protocol capture`): the BAM Freyja worked on, PCR duplicates flagged (0x400), none removed. Published unless `--save_bam false`.                                                                                                                                                                                     |
+| `bam/<s>.markdup_stats.txt`                                                           | Only with duplicate marking: `samtools markdup -s` statistics (`DUPLICATE PAIR`, `EXAMINED`, ...).                                                                                                                                                                                                                                                                                       |
 | `bam/<s>.ivar_trimmed.ivar.log`                                                       | ivar trim log (often empty).                                                                                                                                                                                                                                                                                                                                                             |
 | `freyja/<s>.variants.tsv`                                                             | `freyja variants` output (ivar TSV, 20 columns: `REGION POS REF ALT REF_DP REF_RV REF_QUAL ALT_DP ALT_RV ALT_QUAL ALT_FREQ TOTAL_DP PVAL PASS GFF_FEATURE REF_CODON REF_AA ALT_CODON ALT_AA POS_AA`). With the default `--freyja_varthresh 0.0` it lists **every** alternate allele seen, including 1-read noise; filter on `ALT_FREQ` yourself. Header-only for a sample without reads. |
 | `freyja/<s>.depths`                                                                   | Four tab-separated columns, no header: contig, 1-based position, reference base, depth (Q>=20 bases), one row per genome position. All coverage QC and the consensus mask are computed from it.                                                                                                                                                                                          |
@@ -518,7 +523,7 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
 | `freyja/<s>.boot_summary.tsv`                                                         | Only with `--freyja_boot`: the sample's rows of `freyja_boot_summary.tsv` (data rows, no header).                                                                                                                                                                                                                                                                                        |
 | `freyja/<s>.boot_lineages.csv`, `.boot_summarized.csv`                                | Only with `--freyja_boot`: Freyja's bootstrap quantile tables (rows `0.025` ... `0.975`; one column per lineage / summarized group).                                                                                                                                                                                                                                                     |
 | `freyja/<s>.boot_status.json`                                                         | Only with `--freyja_boot`: `{sample, status, reason}`; `failed` with the reason when the bootstrap failed (never fatal).                                                                                                                                                                                                                                                                 |
-| `coverage/<s>.primertrimmed.flagstat`                                                 | `samtools flagstat` of the final BAM (mode `full`).                                                                                                                                                                                                                                                                                                                                      |
+| `coverage/<s>.primertrimmed.flagstat`                                                 | `samtools flagstat` of the final BAM (mode `full`); named `<s>.mapped.flagstat` when nothing was primer-trimmed.                                                                                                                                                                                                                                                                         |
 | `coverage/<s>.amplicon_coverage.tsv`                                                  | The sample's rows of `amplicon_coverage.tsv`.                                                                                                                                                                                                                                                                                                                                            |
 | `coverage/<s>.qc_row.tsv`                                                             | The sample's row of `qc_summary.tsv`.                                                                                                                                                                                                                                                                                                                                                    |
 | `variants/<s>.ivar.vcf`                                                               | The variants TSV converted to VCF (all alleles; `FILTER` is ivar's p-value filter).                                                                                                                                                                                                                                                                                                      |
@@ -603,7 +608,10 @@ ends (so a run that crashed before completion has no `success` key). Real exampl
   "command_line": "nextflow run /path/to/wasteline -profile docker --outdir ... --mode full --input ... --barcodes .../barcodes_test.csv --primer_scheme midnight ...",
   "run_name": "clever_murdock",
   "start": "2026-10-16T02:59:59.631501+11:00",
-  "params": { "outdir": "...", "mode": "full", "primer_scheme": "midnight", "...": "75 params in total" },
+  "params": { "outdir": "...", "mode": "full", "primer_scheme": "midnight", "...": "78 params in total" },
+  "protocol": "amplicon",
+  "primer_trimming": true,
+  "duplicates": "none",
   "previous_runs": [],
   "tool_versions": {
     "Nextflow": "26.04.6",
@@ -639,6 +647,11 @@ ends (so a run that crashed before completion has no `success` key). Real exampl
   "success": true
 }
 ```
+
+`protocol`, `primer_trimming` and `duplicates` are the **effective** library settings (PLAN D13): `protocol` is
+`amplicon` or `capture`; `primer_trimming` is `false` for `--protocol capture` and `--skip_primer_trimming`; `duplicates` is
+`mark` or `none` after `--duplicates auto` has been resolved. `primer_trimming` and `duplicates` are `null` in modes
+without reads (`demix`, `aggregate`). For capture data `input_checksums` has no `primer_bed`.
 
 | Key                                    | Meaning                                                                                                                                                                                                                                                      |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

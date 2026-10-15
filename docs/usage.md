@@ -20,6 +20,7 @@ Contents: [1 Prerequisites](#1-prerequisites) | [2 Modes](#2-modes-at-a-glance) 
 [15 HPC](#15-running-on-an-hpc-cluster) | [16 Updating Freyja](#16-updating-the-freyja-version-of-the-pipeline) |
 [17 Not implemented](#17-not-implemented)
 
+Library types: [probe-capture data](#probe-capture-data-eg-twist---protocol-capture) (`--protocol capture`).
 Optional extras, each with a worked example: [comparing barcode versions](#comparing-barcode-versions---compare_barcodes) (`--compare_barcodes`),
 [bootstrap intervals](#bootstrap-confidence-intervals---freyja_boot) (`--freyja_boot`),
 [variant annotation](#annotating-variants---annotate_variants) (`--annotate_variants`),
@@ -27,13 +28,13 @@ Optional extras, each with a worked example: [comparing barcode versions](#compa
 
 ## 1. Prerequisites
 
-| Need | Details |
-|---|---|
-| Nextflow **>= 26.04.0** | `manifest.nextflowVersion` is `!>=26.04.0`. Older releases cannot parse the pipeline (see [troubleshooting](troubleshooting.md#script-compilation-error-on-an-old-nextflow)). Check with `nextflow -version`; upgrade with `nextflow self-update`, or run one command with `NXF_VER=26.04.6 nextflow run ...`. |
-| A container engine | **Docker** (the tested one; Docker Desktop must be running on macOS/Windows), or Singularity/Apptainer/Podman. Conda/mamba profiles exist but are not the recommended route. |
-| Internet on the first run | Container images are pulled from `quay.io` and `community.wave.seqera.io` (Singularity/Apptainer: `depot.galaxyproject.org` and `community-cr-prod.seqera.io`). `--barcodes latest` (the default) also downloads the current Freyja data. See [offline use](#offline-use). |
+| Need                         | Details                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nextflow **>= 26.04.0**      | `manifest.nextflowVersion` is `!>=26.04.0`. Older releases cannot parse the pipeline (see [troubleshooting](troubleshooting.md#script-compilation-error-on-an-old-nextflow)). Check with `nextflow -version`; upgrade with `nextflow self-update`, or run one command with `NXF_VER=26.04.6 nextflow run ...`.                                                                                       |
+| A container engine           | **Docker** (the tested one; Docker Desktop must be running on macOS/Windows), or Singularity/Apptainer/Podman. Conda/mamba profiles exist but are not the recommended route.                                                                                                                                                                                                                         |
+| Internet on the first run    | Container images are pulled from `quay.io` and `community.wave.seqera.io` (Singularity/Apptainer: `depot.galaxyproject.org` and `community-cr-prod.seqera.io`). `--barcodes latest` (the default) also downloads the current Freyja data. See [offline use](#offline-use).                                                                                                                           |
 | Python **>= 3.9** (optional) | Only for running the helper scripts in `bin/` yourself (`make_samplesheet.py`, `check_samplesheet.py`, ...). The pipeline runs its own copies inside containers. `make_samplesheet.py` and `check_samplesheet.py` are verified on Python 3.9 (3.8 syntax is checked statically); the test-only `tests/check_outputs.py` needs Python >= 3.12 (the repository's `pixi install` environment has 3.12). |
-| Disk | One work directory (`work/`) holding every intermediate file, the results (`--outdir`), and about 16 MB per stored Freyja dataset in `--db_dir`. Delete `work/` when you are done (after which `-resume` no longer works). |
+| Disk                         | One work directory (`work/`) holding every intermediate file, the results (`--outdir`), and about 16 MB per stored Freyja dataset in `--db_dir`. Delete `work/` when you are done (after which `-resume` no longer works).                                                                                                                                                                           |
 
 Memory and CPUs: the heaviest steps are `BWA_MEM` (label `process_high`: 8 CPUs, 16 GB requested), `FASTP`, `IVAR_TRIM`
 and `SAMTOOLS_SORT` (`process_medium`: 4 CPUs, 8 GB). Requests are automatically capped at what the machine has (see
@@ -48,13 +49,13 @@ about two minutes on an M-series Mac). Use `-profile docker`, not conda, on macO
 `--mode full|demix|aggregate|report|update_db` is the **only** way to choose what runs (default `full`). Nextflow's
 `-entry` is not supported. `--outdir` is required in every mode.
 
-| Mode | Input | Does | Does not run |
-|---|---|---|---|
-| `full` (default) | FASTQ samplesheet (`--input`) | everything: trim, map, primer-trim, Freyja variants, demix, aggregate/plot, QC, consensus, report | |
-| `demix` | `--input` sheet of existing Freyja `variants` + `depths`, **or** `--previous_results <dir>` | resolve Freyja data, `freyja demix`, aggregate/plot, QC, consensus, report | fastp, bwa, ivar, `freyja variants` |
-| `aggregate` | `--input` sheet of existing `.demix` files, **or** `--demix_dir <dir>`, **or** `--previous_results <dir>[,<dir>...]` | `freyja aggregate` + plots, report | demix and everything upstream (so no QC or consensus) |
-| `report` | `--results_dir <dir>` of an earlier run | re-render `summary/report.html` | everything else |
-| `update_db` | none | download the current Freyja data into `--db_dir` and exit | everything else |
+| Mode             | Input                                                                                                                | Does                                                                                              | Does not run                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `full` (default) | FASTQ samplesheet (`--input`)                                                                                        | everything: trim, map, primer-trim, Freyja variants, demix, aggregate/plot, QC, consensus, report |                                                       |
+| `demix`          | `--input` sheet of existing Freyja `variants` + `depths`, **or** `--previous_results <dir>`                          | resolve Freyja data, `freyja demix`, aggregate/plot, QC, consensus, report                        | fastp, bwa, ivar, `freyja variants`                   |
+| `aggregate`      | `--input` sheet of existing `.demix` files, **or** `--demix_dir <dir>`, **or** `--previous_results <dir>[,<dir>...]` | `freyja aggregate` + plots, report                                                                | demix and everything upstream (so no QC or consensus) |
+| `report`         | `--results_dir <dir>` of an earlier run                                                                              | re-render `summary/report.html`                                                                   | everything else                                       |
+| `update_db`      | none                                                                                                                 | download the current Freyja data into `--db_dir` and exit                                         | everything else                                       |
 
 Input rules (checked at start-up, before any work is done): the input options that a mode accepts are `full`: `--input`;
 `demix`: `--input` or `--previous_results`; `aggregate`: `--input`, `--demix_dir` or `--previous_results`; `report` and
@@ -185,17 +186,17 @@ GFF3 annotation. Override with `--fasta` and `--gff`. Only SARS-CoV-2 is support
 `full` mode is `midnight`. The BED's contig name **must** match a contig of the reference FASTA, otherwise the run stops
 at start-up (otherwise `ivar trim` would silently trim nothing).
 
-| `--primer_scheme` | Amplicons | Primer names look like |
-|---|---|---|
-| `midnight` (default) | 29 | `nCoV-2019_1_F` |
-| `midnightv2` | 29 | `SARSCoV_1200_1_F` |
-| `articv3` | 98 | `nCoV-2019_1_F` |
-| `articv4.1` | 99 | `nCoV-2019_1_F` |
-| `articv5.3.2` | 96 | `SARS-CoV-2_400_1_F` |
-| `eden` | 14 | `SARS2_A1_F` |
-| `swift` | 343 | `covid19genome_0-200_s0_M1_F` |
-| `qiagenv1` | 223 | `QIAseq_221_LEFT` |
-| `xgen` | 343 | `covid19genome_0-200_s0_M1F` |
+| `--primer_scheme`    | Amplicons | Primer names look like        |
+| -------------------- | --------- | ----------------------------- |
+| `midnight` (default) | 29        | `nCoV-2019_1_F`               |
+| `midnightv2`         | 29        | `SARSCoV_1200_1_F`            |
+| `articv3`            | 98        | `nCoV-2019_1_F`               |
+| `articv4.1`          | 99        | `nCoV-2019_1_F`               |
+| `articv5.3.2`        | 96        | `SARS-CoV-2_400_1_F`          |
+| `eden`               | 14        | `SARS2_A1_F`                  |
+| `swift`              | 343       | `covid19genome_0-200_s0_M1_F` |
+| `qiagenv1`           | 223       | `QIAseq_221_LEFT`             |
+| `xgen`               | 343       | `covid19genome_0-200_s0_M1F`  |
 
 All nine bundled BEDs use the contig name `NC_045512.2`, the same as the bundled reference, so every scheme works as-is
 (the start-up contig check passes for each of them; verified with `-preview`). Amplicon counts were measured with
@@ -222,6 +223,47 @@ Custom BEDs: tab-separated BED6-like (`contig  start  end  name  pool  strand`),
 [qc_scripts.md](qc_scripts.md) for the naming rules). `--ivar_offset` sets `ivar trim -x` (default 5 for `swift`,
 otherwise 0). If you use a different amplicon length distribution, expect more or fewer `amplicon_dropout` flags; tune
 `--amplicon_min_depth` and `--qc_max_dropped_amplicons`.
+
+### Probe-capture data (e.g. Twist): `--protocol capture`
+
+Libraries made by **probe capture** (hybrid capture, e.g. Twist panels) are not PCR amplicons: fragments start anywhere
+on the genome and the reads do **not** begin with primer sequences. Trimming primers from them would cut real sequence
+and an "amplicon dropout" analysis has no meaning, so for these libraries use `--protocol capture` (default `amplicon`).
+
+```bash
+nextflow run charlesfoster/wasteline -profile docker \
+    --protocol capture --input samplesheet.csv --outdir results --barcodes latest
+```
+
+What changes with `--protocol capture`:
+
+|                                      | `amplicon` (default)                                  | `capture`                                                                                                               |
+| ------------------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Primer trimming (`ivar trim`)        | yes                                                   | **no**: the mapped BAM goes straight to the sorted, indexed BAM                                                         |
+| Primer scheme / BED                  | required (default `midnight`)                         | **ignored** (a warning says so; no start-up contig check)                                                               |
+| Amplicon coverage and dropout        | `amplicon_coverage.tsv`, `amplicon_dropout` QC reason | **not produced**; `amplicons_total` / `amplicons_dropped` are `NA`; the report's amplicon section says "not applicable" |
+| PCR duplicates (`--duplicates auto`) | left alone                                            | **marked** (`samtools markdup`; flagged, never removed)                                                                 |
+| BAM names                            | `<id>.primertrimmed.bam`                              | `<id>.mapped.markdup.bam` (+ `<id>.markdup_stats.txt`)                                                                  |
+
+Everything else is unchanged: Freyja variants/demix/aggregate, coverage-based QC, negative controls, consensus,
+mutations of interest, `--annotate_variants`, `--freyja_boot`, `--compare_barcodes` and the report (whose header shows the
+protocol). The protocol, whether primers were trimmed and the effective duplicate handling are recorded in
+`pipeline_info/run_info.json` (`protocol`, `primer_trimming`, `duplicates`).
+
+**Duplicates.** `--duplicates auto|mark|none` (default `auto`: `mark` for capture, `none` for amplicon). Marking flags
+duplicate read pairs (same fragment start and end) in the BAM; `freyja variants` runs `samtools mpileup`, which skips
+flagged reads, so duplicates do not count towards depth or allele frequencies. Capture libraries have high duplicate rates
+that inflate depth without adding information; amplicon libraries have many natural duplicates (every read of an amplicon
+starts at the primer), so marking them is off by default. `--duplicates mark` also works with `amplicon`;
+`--duplicates none` leaves capture duplicates in. The marking statistics are published as
+`samples/<id>/bam/<id>.markdup_stats.txt`. `qc_summary.tsv` read counts (`mapped_reads`) still include duplicates; the
+mean depth does not.
+
+**`--skip_primer_trimming`** is for amplicon reads that were already primer-trimmed elsewhere: no `ivar trim` and, as for
+capture, no amplicon-level QC (a primer scheme/BED would be ignored). It is implied by `--protocol capture`.
+
+**Not available for capture:** per-amplicon coverage/dropout. In mode `demix` the protocol only matters for the optional
+amplicon coverage (it is never computed for `capture`); demix has no BAM, so duplicates are not touched there.
 
 ## 5. Running each mode
 
@@ -328,7 +370,7 @@ that, so `container` is the sensible choice offline. With `--demix_dir` there is
 see [time series](#time-series-collection-dates)). `--compare_barcodes`, `--freyja_boot` and `--annotate_variants` are
 **ignored with a warning** in `aggregate` mode (they need variants and depths):
 
-```
+````
 WARN: --compare_barcodes is only used by --mode full and demix and is ignored in --mode aggregate
 WARN: --freyja_boot needs variants and depths: it is only used by --mode full and demix and is ignored in --mode aggregate
 WARN: --annotate_variants is only used by --mode full and demix and is ignored in --mode aggregate
@@ -340,7 +382,7 @@ plot then cannot be traced to a single dataset (the old directories are recorded
 
 ```bash
 nextflow run charlesfoster/wasteline -profile docker --mode report --results_dir results --outdir results_report
-```
+````
 
 Needs `results/pipeline_info/run_info.json`. It reuses `summary/report_data.json` when present and otherwise rebuilds it from
 the other files in `results/summary/`. Output: `results_report/summary/report.html` only. `--outdir` **must differ** from
@@ -370,14 +412,14 @@ back to a different dataset. Freyja >= 2 barcodes are `usher_barcodes.feather`.
 
 ### Choosing a dataset: `--barcodes`
 
-| Value | Meaning | `freyja_data.source` |
-|---|---|---|
-| `latest` (default) | download the current dataset with `freyja update` (needs internet), store it under `--db_dir`, use it | `latest` |
-| `container` | the snapshot bundled in the pinned Freyja container: fully offline, same data for a given pipeline release | `container` |
-| `YYYY-MM-DD` | the **newest** dataset of that day already stored in `--db_dir`; error if none | `pinned` |
-| `MM_DD_YYYY-HH-MM` or `YYYY-MM-DDTHH-MM` | one exact stored dataset (the time of day is part of the version) | `pinned` |
-| a directory | a dataset directory (as `freyja update --outdir` writes it); used verbatim and checksummed | `custom` |
-| a `.csv` or `.feather` file | a barcode file used verbatim (a bare file has no `lineages.yml`, so lineage grouping hints are not passed) | `custom` |
+| Value                                    | Meaning                                                                                                    | `freyja_data.source` |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------- |
+| `latest` (default)                       | download the current dataset with `freyja update` (needs internet), store it under `--db_dir`, use it      | `latest`             |
+| `container`                              | the snapshot bundled in the pinned Freyja container: fully offline, same data for a given pipeline release | `container`          |
+| `YYYY-MM-DD`                             | the **newest** dataset of that day already stored in `--db_dir`; error if none                             | `pinned`             |
+| `MM_DD_YYYY-HH-MM` or `YYYY-MM-DDTHH-MM` | one exact stored dataset (the time of day is part of the version)                                          | `pinned`             |
+| a directory                              | a dataset directory (as `freyja update --outdir` writes it); used verbatim and checksummed                 | `custom`             |
+| a `.csv` or `.feather` file              | a barcode file used verbatim (a bare file has no `lineages.yml`, so lineage grouping hints are not passed) | `custom`             |
 
 How `latest` works: the process `FREYJA_UPDATE` runs `freyja update --outdir` in the Freyja container, the result is named
 after the ISO form of its own `last_barcode_update.txt` (`MM_DD_YYYY-HH-MM`, for example `10_06_2026-05-25`), and is copied to
@@ -423,6 +465,7 @@ nextflow run charlesfoster/wasteline -profile docker --input samplesheet.csv --o
 `--barcodes container` uses the data bundled in the Freyja container and needs no network for the data (the images
 themselves must be available locally or in a mirror: pull them once, or use `nf-core pipelines download`).
 <!-- UNVERIFIED: `nf-core pipelines download` and a fully air-gapped run were not tried; a CI workflow (download_pipeline.yml) is meant to cover it. -->
+
 Pinned dates and custom files are also offline. A stored dataset is a plain directory: copy `--db_dir/freyja/<stamp>/` to
 the offline machine and use `--barcodes <stamp>` or `--barcodes <that directory>`. With `-profile docker` and no network,
 `--barcodes latest` fails (verified by simulating no network inside the container):
@@ -489,6 +532,7 @@ What it writes:
 
   (The full container dataset splits `AY.4` into relatives that the 14-lineage test subset does not contain; that is the kind
   of change the table makes visible.)
+
 - `summary/barcode_compare_status.tsv`: the outcome of the second demix per sample (`ok`, `skipped_low_coverage` or `failed`
   with a reason). A failed second demix is flagged, never fatal.
 - `samples/<s>/freyja/<s>.compare.demix` (+ status and depth-stat files), the raw second demix.
@@ -583,15 +627,15 @@ One consensus FASTA per **non-negative** sample (`summary/consensus_genomes.fast
 variant caller. Because `freyja_varthresh` is 0.0, the table holds every alternate allele and the thresholds are applied
 **here**:
 
-| Rule | Parameter (default) |
-|---|---|
-| A call needs total depth at the site >= | `--consensus_min_depth_variants` (10) |
-| and alt base quality >= | `--consensus_min_alt_qual` (20) |
-| SNV with ALT frequency >= this is written as the alt allele | `--consensus_freq` (0.75) |
+| Rule                                                                                                                      | Parameter (default)                                                      |
+| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| A call needs total depth at the site >=                                                                                   | `--consensus_min_depth_variants` (10)                                    |
+| and alt base quality >=                                                                                                   | `--consensus_min_alt_qual` (20)                                          |
+| SNV with ALT frequency >= this is written as the alt allele                                                               | `--consensus_freq` (0.75)                                                |
 | SNV with frequency above this and below `consensus_freq`, and enough alt reads, is written as an **IUPAC ambiguity code** | `--consensus_iupac_min_af` (0.25), `--consensus_iupac_min_alt_reads` (5) |
-| SNV at or below `consensus_iupac_min_af` is ignored (reference base) | |
-| indel with frequency >= this is applied; below it ignored, **never** IUPAC | `--indel_freq` (0.75) |
-| positions with depth below this (from the depths file, variant sites exempt) become `N` | `--consensus_min_depth` (15) |
+| SNV at or below `consensus_iupac_min_af` is ignored (reference base)                                                      |                                                                          |
+| indel with frequency >= this is applied; below it ignored, **never** IUPAC                                                | `--indel_freq` (0.75)                                                    |
+| positions with depth below this (from the depths file, variant sites exempt) become `N`                                   | `--consensus_min_depth` (15)                                             |
 
 The defaults are listed in [parameters.md](parameters.md). `--consensus_iupac false` switches ambiguity codes off (the reference base is left instead). `--skip_consensus`
 disables the whole consensus chain and its summaries. Deletions are written as `-`. `consensus_stats.tsv` gives
@@ -638,7 +682,7 @@ Mark negative controls with `sample_type=negative` (`make_samplesheet.py` does t
 
 - they are **demixed** if they pass the coverage gate, so contamination is visible, but they are **excluded from the aggregate
   and `freyja plot`** unless `--include_negatives_in_aggregate` (the log says so: `Negative control NEG_E is not included in the
-  aggregate and plot ...`). What they contain is in their own table, `summary/freyja_aggregated_controls.tsv` (the same format
+aggregate and plot ...`). What they contain is in their own table, `summary/freyja_aggregated_controls.tsv` (the same format
   as `freyja_aggregated.tsv`), and in the report's **Negative controls** section (QC, reasons, mapped reads, genome coverage,
   lineages detected). A control with no coverage (clean, as it should be) is `skipped_low_coverage` and has no row in that table;
 - a control that demixed `ok` stays `ok` in `demix_status.tsv` and in the report: being left out of the aggregate does not make
@@ -659,7 +703,7 @@ QC for ordinary samples uses the depths file (bases with Q >= 20), samtools flag
 
 - `--qc_min_depth` is the depth used for the coverage test; `PASS` needs at least `--qc_pass_min_pct` of the genome at that
   depth, below `--qc_fail_below_pct` the sample is `FAIL` (`low_coverage`), in between `WARN`.
-- An amplicon is *dropped* when its mean depth is below `--amplicon_min_depth`; more than `--qc_max_dropped_amplicons`
+- An amplicon is _dropped_ when its mean depth is below `--amplicon_min_depth`; more than `--qc_max_dropped_amplicons`
   dropped amplicons gives `WARN` (`amplicon_dropout`). The default is strict for 96/99-amplicon ARTIC schemes: raise it
   (the schema suggests 10 for them).
 - `--min_genome_coverage_for_demix` is the coverage gate of [section 7](#7-freyja-settings).
@@ -717,18 +761,18 @@ Only **docker** was exercised end-to-end for this guide (macOS/Apple Silicon); t
 and are set up to work, and the release CI matrix (`.github/workflows/nf-test.yml`) is meant to cover singularity and conda
 <!-- UNVERIFIED: singularity, apptainer, podman, conda and mamba profiles were only checked with `nextflow config`, not run; the CI matrix has not been run on GitHub -->.
 
-| Profile | Use |
-|---|---|
-| `docker` | Docker. Adds `--platform=linux/amd64` automatically on arm64 hosts. |
-| `singularity`, `apptainer` | Singularity / Apptainer (with auto-mounts). |
-| `podman` | Podman. |
-| `conda`, `mamba` | Conda/mamba environments (`environment.yml` per module). Last resort; not reliable on macOS. |
-| `locked` | Use with an engine profile (`-profile docker,locked`): pin every process to an immutable image digest (`conf/containers.lock.config`, generated by `bin/lock_containers.py`). No effect with conda/mamba. |
-| `emulate_amd64` | Force `--platform=linux/amd64` on Docker on any host. |
-| `test` | Tiny synthetic dataset from `tests/data` and `--barcodes container`; offline. Launch from the repository root. |
-| `test_stub` | Same inputs with `--barcodes latest` for `-stub-run` wiring checks (no download happens in a stub run). |
-| `test_full` | Placeholder: the `test` data with `--barcodes latest`. |
-| `debug` | Keeps work files and dumps task hashes. |
+| Profile                    | Use                                                                                                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker`                   | Docker. Adds `--platform=linux/amd64` automatically on arm64 hosts.                                                                                                                                       |
+| `singularity`, `apptainer` | Singularity / Apptainer (with auto-mounts).                                                                                                                                                               |
+| `podman`                   | Podman.                                                                                                                                                                                                   |
+| `conda`, `mamba`           | Conda/mamba environments (`environment.yml` per module). Last resort; not reliable on macOS.                                                                                                              |
+| `locked`                   | Use with an engine profile (`-profile docker,locked`): pin every process to an immutable image digest (`conf/containers.lock.config`, generated by `bin/lock_containers.py`). No effect with conda/mamba. |
+| `emulate_amd64`            | Force `--platform=linux/amd64` on Docker on any host.                                                                                                                                                     |
+| `test`                     | Tiny synthetic dataset from `tests/data` and `--barcodes container`; offline. Launch from the repository root.                                                                                            |
+| `test_stub`                | Same inputs with `--barcodes latest` for `-stub-run` wiring checks (no download happens in a stub run).                                                                                                   |
+| `test_full`                | Placeholder: the `test` data with `--barcodes latest`.                                                                                                                                                    |
+| `debug`                    | Keeps work files and dumps task hashes.                                                                                                                                                                   |
 
 Other generic profiles inherited from the nf-core template (`shifter`, `charliecloud`, `wave`, `arm64`, `gpu`) are present but not used by
 the pipeline. Do not put pipeline parameters in a custom `-c` config file (they are validated against the schema); use

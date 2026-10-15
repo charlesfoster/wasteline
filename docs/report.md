@@ -159,7 +159,10 @@ coverage, orange = dropped (< threshold), then light to dark blue for increasing
 > =10000x), grey = no data. The top bar shows, per amplicon, the fraction of non-control samples in which it dropped out:
 > a tall bar means a systematic problem (primer failure, a mutation under a primer) rather than one bad sample. The
 > amplicon number ruler is below it. Hover a cell for the amplicon and its mean depth. Needs a primer scheme (always in
-> `full`; in `demix` only with `--primer_scheme`/`--primer_bed`).
+> `full`; in `demix` only with `--primer_scheme`/`--primer_bed`). For `--protocol capture` (and `--skip_primer_trimming`)
+> the section is replaced by the note "Not applicable for protocol capture": there are no amplicons. The header's
+> "Library protocol" fact shows the protocol (and, for capture, that duplicates were marked); genome-wide depth is under
+> Coverage tracks.
 
 ## Negative controls
 

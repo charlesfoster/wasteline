@@ -254,6 +254,7 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
     <div><dt>Samples</dt><dd>{{ n_samples }}{% if n_ntc %} ({{ n_ntc }} control{{ 's' if n_ntc != 1 }}){% endif %}</dd></div>
     <div><dt>Pipeline version</dt><dd>{{ h.pipeline_version|dash }}</dd></div>
     <div><dt>Git commit</dt><dd>{% if h.git_commit %}<code>{{ h.git_commit|string|truncate(12, True, '') }}</code>{% else %}&ndash;{% endif %}</dd></div>
+    {% if h.protocol %}<div><dt>Library protocol</dt><dd>{{ h.protocol }}{% if h.protocol == 'capture' %} (no primer trimming{% if h.duplicates == 'mark' %}, duplicates marked{% endif %}){% endif %}</dd></div>{% endif %}
     <div><dt>Freyja</dt><dd>{{ h.freyja_version|dash }}</dd></div>
     <div><dt>Nextflow</dt><dd>{{ h.nextflow_version|dash }}</dd></div>
     <div><dt>Run started</dt><dd>{{ h.run_started|dash }}</dd></div>
@@ -406,6 +407,8 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
     </div>
     {% endfor %}
   </div>
+  {% elif h.protocol == 'capture' %}
+  <p class="na-note">Not applicable for protocol <b>capture</b>: probe-capture libraries have no amplicons, so there is no amplicon dropout to report (genome-wide depth is under Coverage tracks).</p>
   {% else %}
   <p class="na-note">Amplicon coverage is not available ({{ mode_note }}).</p>
   {% endif %}

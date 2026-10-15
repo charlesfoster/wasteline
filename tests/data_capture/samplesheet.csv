@@ -1,0 +1,6 @@
+sample,fastq_1,fastq_2,sample_type,collection_date,site
+CAP_MIX,tests/data_capture/fastq/CAP_MIX_R1.fastq.gz,tests/data_capture/fastq/CAP_MIX_R2.fastq.gz,sample,2026-03-02,SiteC
+CAP_MIX3,tests/data_capture/fastq/CAP_MIX3_R1.fastq.gz,tests/data_capture/fastq/CAP_MIX3_R2.fastq.gz,sample,2026-03-09,SiteC
+CAP_PURE,tests/data_capture/fastq/CAP_PURE_R1.fastq.gz,tests/data_capture/fastq/CAP_PURE_R2.fastq.gz,sample,2026-03-16,SiteD
+CAP_LOWCOV,tests/data_capture/fastq/CAP_LOWCOV_R1.fastq.gz,tests/data_capture/fastq/CAP_LOWCOV_R2.fastq.gz,sample,2026-03-23,SiteD
+CAP_NEG,tests/data_capture/fastq/CAP_NEG_R1.fastq.gz,tests/data_capture/fastq/CAP_NEG_R2.fastq.gz,negative,2026-03-02,SiteC

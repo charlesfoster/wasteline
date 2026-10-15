@@ -40,6 +40,7 @@ process QC_CONCAT {
 
     stub:
     """
-    touch qc_summary.tsv amplicon_coverage.tsv
+    touch qc_summary.tsv
+    if [ -d amplicons ] && [ -n "\$(ls -A amplicons)" ]; then touch amplicon_coverage.tsv; fi
     """
 }

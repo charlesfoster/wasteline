@@ -11,6 +11,13 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Added`
 
+- Probe-capture libraries (e.g. Twist): `--protocol capture` (default `amplicon`) skips primer trimming and the amplicon-dropout
+  analysis (no `amplicon_coverage.tsv`, `amplicons_total` / `amplicons_dropped` are `NA`, no `amplicon_dropout` QC reason, the report's
+  amplicon section says "not applicable") and marks PCR duplicates (`--duplicates auto|mark|none`; `samtools markdup`, flagged never
+  removed, so Freyja's pileup ignores them; `samples/<s>/bam/<s>.markdup_stats.txt`). `--skip_primer_trimming` covers already-trimmed
+  amplicon reads. `--primer_scheme`/`--primer_bed` are ignored with a warning in these cases. The protocol, `primer_trimming`
+  and the effective `duplicates` are recorded in `run_info.json` and the report header. Synthetic capture test data in
+  `tests/data_capture/` (`tests/make_test_data.py --protocol capture`).
 - Five run modes selected with `--mode`: `full` (FASTQ to results), `demix` (re-run `freyja demix` on existing variants
   and depths, e.g. with newer barcodes, from a samplesheet or `--previous_results`, including legacy Snakemake results),
   `aggregate` (aggregate existing `.demix` files), `report` (rebuild the HTML report of a finished run) and `update_db`

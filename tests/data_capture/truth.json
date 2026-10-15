@@ -1,0 +1,184 @@
+{
+  "barcode_file": "../data/barcodes_test.csv",
+  "lineage_mutation_application": {
+    "AY.4": {
+      "applied": 31,
+      "skipped_conflict": 0,
+      "skipped_ref_mismatch": 0,
+      "skipped_unsupported": 0
+    },
+    "B": {
+      "applied": 0,
+      "skipped_conflict": 0,
+      "skipped_ref_mismatch": 0,
+      "skipped_unsupported": 0
+    },
+    "BA.1": {
+      "applied": 52,
+      "skipped_conflict": 0,
+      "skipped_ref_mismatch": 0,
+      "skipped_unsupported": 0
+    },
+    "BA.2": {
+      "applied": 64,
+      "skipped_conflict": 0,
+      "skipped_ref_mismatch": 0,
+      "skipped_unsupported": 0
+    },
+    "JN.1": {
+      "applied": 115,
+      "skipped_conflict": 0,
+      "skipped_ref_mismatch": 0,
+      "skipped_unsupported": 0
+    },
+    "KP.3": {
+      "applied": 120,
+      "skipped_conflict": 0,
+      "skipped_ref_mismatch": 0,
+      "skipped_unsupported": 0
+    },
+    "XBB.1.5": {
+      "applied": 88,
+      "skipped_conflict": 0,
+      "skipped_ref_mismatch": 0,
+      "skipped_unsupported": 0
+    }
+  },
+  "protocol": "capture",
+  "reference": "NC_045512.fasta",
+  "samples": {
+    "CAP_LOWCOV": {
+      "abundance_tolerance": null,
+      "dropout_amplicons": [],
+      "expected_consensus_status": "empty",
+      "expected_demix_status": "skipped_low_coverage",
+      "expected_duplicate_fraction_range": null,
+      "expected_in_aggregate": false,
+      "expected_pct_genome_ge_10x_range": [
+        0,
+        5
+      ],
+      "expected_qc_reasons": [
+        "low_coverage"
+      ],
+      "expected_qc_status": "FAIL",
+      "n_duplicate_pairs": 12,
+      "n_read_pairs": 60,
+      "realised_pairs_per_lineage": {
+        "BA.2": 48
+      },
+      "sample_type": "sample",
+      "true_lineage_fractions": {
+        "BA.2": 1.0
+      }
+    },
+    "CAP_MIX": {
+      "abundance_tolerance": 0.05,
+      "dropout_amplicons": [],
+      "expected_consensus_status": "ok",
+      "expected_demix_status": "ok",
+      "expected_duplicate_fraction_range": [
+        0.1,
+        0.25
+      ],
+      "expected_in_aggregate": true,
+      "expected_pct_genome_ge_10x_range": [
+        93,
+        100
+      ],
+      "expected_qc_reasons": [],
+      "expected_qc_status": "PASS",
+      "n_duplicate_pairs": 1019,
+      "n_read_pairs": 6000,
+      "realised_pairs_per_lineage": {
+        "AY.4": 1497,
+        "BA.2": 3484
+      },
+      "sample_type": "sample",
+      "true_lineage_fractions": {
+        "AY.4": 0.3,
+        "BA.2": 0.7
+      }
+    },
+    "CAP_MIX3": {
+      "abundance_tolerance": 0.05,
+      "dropout_amplicons": [],
+      "expected_consensus_status": "ok",
+      "expected_demix_status": "ok",
+      "expected_duplicate_fraction_range": [
+        0.1,
+        0.25
+      ],
+      "expected_in_aggregate": true,
+      "expected_pct_genome_ge_10x_range": [
+        93,
+        100
+      ],
+      "expected_qc_reasons": [],
+      "expected_qc_status": "PASS",
+      "n_duplicate_pairs": 1249,
+      "n_read_pairs": 7000,
+      "realised_pairs_per_lineage": {
+        "BA.1": 2876,
+        "KP.3": 1154,
+        "XBB.1.5": 1721
+      },
+      "sample_type": "sample",
+      "true_lineage_fractions": {
+        "BA.1": 0.5,
+        "KP.3": 0.2,
+        "XBB.1.5": 0.3
+      }
+    },
+    "CAP_NEG": {
+      "abundance_tolerance": null,
+      "dropout_amplicons": [],
+      "expected_consensus_status": "none",
+      "expected_demix_status": "skipped_low_coverage",
+      "expected_duplicate_fraction_range": null,
+      "expected_in_aggregate": false,
+      "expected_pct_genome_ge_10x_range": [
+        0,
+        5
+      ],
+      "expected_qc_reasons": [],
+      "expected_qc_status": "PASS",
+      "n_duplicate_pairs": 0,
+      "n_read_pairs": 3,
+      "realised_pairs_per_lineage": {
+        "B": 3
+      },
+      "sample_type": "negative",
+      "true_lineage_fractions": {
+        "B": 1.0
+      }
+    },
+    "CAP_PURE": {
+      "abundance_tolerance": 0.05,
+      "dropout_amplicons": [],
+      "expected_consensus_status": "ok",
+      "expected_demix_status": "ok",
+      "expected_duplicate_fraction_range": [
+        0.1,
+        0.25
+      ],
+      "expected_in_aggregate": true,
+      "expected_pct_genome_ge_10x_range": [
+        93,
+        100
+      ],
+      "expected_qc_reasons": [],
+      "expected_qc_status": "PASS",
+      "n_duplicate_pairs": 1401,
+      "n_read_pairs": 8000,
+      "realised_pairs_per_lineage": {
+        "JN.1": 6599
+      },
+      "sample_type": "sample",
+      "true_lineage_fractions": {
+        "JN.1": 1.0
+      }
+    }
+  },
+  "seed": 42
+}

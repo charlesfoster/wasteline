@@ -25,7 +25,7 @@
 ## Introduction
 
 **charlesfoster/wasteline** is a [Nextflow](https://www.nextflow.io/) pipeline that estimates **SARS-CoV-2 lineage
-abundances in wastewater** from Illumina amplicon sequencing data. It trims and maps the reads, removes primers, runs
+abundances in wastewater** from Illumina amplicon or probe-capture (e.g. Twist) sequencing data. It trims and maps the reads, removes primers, runs
 [Freyja](https://github.com/andersen-lab/Freyja) to demix lineages, aggregates and plots the samples, assesses coverage, amplicon
 dropout and negative controls, builds per-sample consensus genomes, and writes a single self-contained HTML report. It is
 a port of the wastewater workflow of
@@ -39,6 +39,8 @@ profiles).
   variants/depths, for example with newer barcodes, including results from the old Snakemake pipeline, never modifying them),
   `aggregate` (aggregate and plot existing `.demix` files), `report` (re-render the HTML report of a finished run) and
   `update_db` (download the current Freyja data).
+- **Amplicon and probe-capture libraries.** `--protocol capture` handles probe-capture data (e.g. Twist): no primer trimming,
+  no amplicon-dropout analysis, PCR duplicates marked. `--skip_primer_trimming` is for already-trimmed amplicon reads.
 - **Reproducible and traceable.** One Freyja barcode dataset is resolved per run and shared by all samples
   (`--barcodes latest|container|<YYYY-MM-DD>|<stamp>|<file or directory>`); its version and checksums are recorded in
   `pipeline_info/run_info.json`, every per-sample status file, `summary/demix_status.tsv` and the report header. A run never silently falls back to
@@ -143,21 +145,21 @@ How to read each panel: [docs/report.md](docs/report.md).
 
 ## Documentation
 
-| Page | |
-|---|---|
-| [docs/QUICKSTART.md](docs/QUICKSTART.md) | test the pipeline on synthetic data |
-| [docs/usage.md](docs/usage.md) | the user guide: samplesheets, modes, Freyja data, settings, profiles, HPC |
-| [docs/parameters.md](docs/parameters.md) | every parameter |
-| [docs/output.md](docs/output.md), [docs/report.md](docs/report.md) | outputs and the HTML report |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | failure modes and fixes |
-| [docs/migration_from_snakemake.md](docs/migration_from_snakemake.md) | moving from `covid-illumina-snakemake` |
-| [docs/README.md](docs/README.md) | the full index (including developer docs) |
+| Page                                                                 |                                                                           |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| [docs/QUICKSTART.md](docs/QUICKSTART.md)                             | test the pipeline on synthetic data                                       |
+| [docs/usage.md](docs/usage.md)                                       | the user guide: samplesheets, modes, Freyja data, settings, profiles, HPC |
+| [docs/parameters.md](docs/parameters.md)                             | every parameter                                                           |
+| [docs/output.md](docs/output.md), [docs/report.md](docs/report.md)   | outputs and the HTML report                                               |
+| [docs/troubleshooting.md](docs/troubleshooting.md)                   | failure modes and fixes                                                   |
+| [docs/migration_from_snakemake.md](docs/migration_from_snakemake.md) | moving from `covid-illumina-snakemake`                                    |
+| [docs/README.md](docs/README.md)                                     | the full index (including developer docs)                                 |
 
 ## Credits
 
 charlesfoster/wasteline was written by Charles Foster, building on the Snakemake pipeline
 [`covid-illumina-snakemake`](https://github.com/charlesfoster/covid-illumina-snakemake) and on
-[Freyja](https://github.com/andersen-lab/Freyja) (Karthikeyan et al., *Nature* 2022).
+[Freyja](https://github.com/andersen-lab/Freyja) (Karthikeyan et al., _Nature_ 2022).
 
 ## Contributions and support
 

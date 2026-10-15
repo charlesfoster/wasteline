@@ -4,6 +4,7 @@
 #        -> demix on a legacy layout built from the full run
 #        -> aggregate --previous_results / --demix_dir
 #        -> report --results_dir (HTML equals the original modulo timestamps)
+#        -> probe-capture data (--protocol capture, duplicates marked vs not) and --skip_primer_trimming
 #
 # usage: tests/e2e.sh <scratch dir> [nextflow args, default: -profile docker]
 # Runs every nextflow command from <scratch dir>/launch_<step> (own .nextflow), work dirs and outputs
@@ -115,6 +116,45 @@ PYCHECK
 run report --mode report --results_dir "$SCRATCH/out_full"
 check report --mode report --original "$SCRATCH/out_full" || fail=1
 checksums "$SCRATCH/out_full" | diff - "$SCRATCH/out_full.sha256" && echo "results of the report run unchanged"
+
+# 6. probe-capture data (PLAN D13): no primer trimming, duplicates marked, no amplicon analysis
+sed "s#tests/data_capture/#$REPO/tests/data_capture/#g" "$REPO/tests/data_capture/samplesheet.csv" > "$SCRATCH/samplesheet_capture.csv"
+run capture --mode full --protocol capture --input "$SCRATCH/samplesheet_capture.csv" --barcodes "$BARCODES"
+check capture --mode full --protocol capture || fail=1
+run capture_nodup --mode full --protocol capture --duplicates none --input "$SCRATCH/samplesheet_capture.csv" --barcodes "$BARCODES"
+check capture_nodup --mode full --protocol capture --duplicates none || fail=1
+"${PY[@]}" - "$SCRATCH/out_capture/summary/qc_summary.tsv" "$SCRATCH/out_capture_nodup/summary/qc_summary.tsv" << 'PYCHECK' || fail=1
+import csv, sys
+
+def depth(path, sample):
+    rows = {r["sample"]: r for r in csv.DictReader(open(path), delimiter="\t")}
+    return float(rows[sample]["mean_depth"])
+
+ok = all(depth(sys.argv[1], s) < depth(sys.argv[2], s) for s in ("CAP_MIX", "CAP_MIX3", "CAP_PURE"))
+print(("PASS" if ok else "FAIL") + "  marked duplicates are excluded from the Freyja depths (mean depth drops with --duplicates mark)")
+sys.exit(0 if ok else 1)
+PYCHECK
+
+# 6b. --skip_primer_trimming on amplicon reads that are already trimmed (one sample)
+head -n 1 "$SCRATCH/samplesheet.csv" > "$SCRATCH/samplesheet_pure.csv"
+grep '^PURE_C,' "$SCRATCH/samplesheet.csv" >> "$SCRATCH/samplesheet_pure.csv"
+run skip_trim --mode full --skip_primer_trimming --input "$SCRATCH/samplesheet_pure.csv" --barcodes "$BARCODES"
+"${PY[@]}" - "$SCRATCH/out_skip_trim" << 'PYCHECK' || fail=1
+import csv, glob, json, sys
+
+out = sys.argv[1]
+info = json.load(open(out + "/pipeline_info/run_info.json"))
+trace = glob.glob(out + "/pipeline_info/execution_trace_*.txt")[0]
+names = {r["process"].split(":")[-1] for r in csv.DictReader(open(trace), delimiter="\t")}
+agg = open(out + "/summary/freyja_aggregated.tsv").read()
+ok = (
+    info["protocol"] == "amplicon" and info["primer_trimming"] is False and info["duplicates"] == "none"
+    and not names & {"IVAR_TRIM", "AMPLICON_COVERAGE", "SAMTOOLS_MARKDUP"}
+    and "JN.1" in agg
+)
+print(("PASS" if ok else "FAIL") + "  --skip_primer_trimming: no ivar trim, no amplicon QC, PURE_C still demixes to JN.1")
+sys.exit(0 if ok else 1)
+PYCHECK
 
 [ "$fail" -eq 0 ] && echo "E2E OK" || echo "E2E FAILED"
 exit $fail

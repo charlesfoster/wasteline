@@ -77,6 +77,9 @@ LABEL_SUFFIXES = (".variants.tsv", ".variants", ".demix", ".tsv")
 # Params copied into `params_summary` (in this order) when present in run_info.params.
 SUMMARY_PARAMS = (
     "mode",
+    "protocol",
+    "skip_primer_trimming",
+    "duplicates",
     "primer_scheme",
     "primer_bed",
     "barcodes",
@@ -634,6 +637,10 @@ def build_header(run_info, mode):
         "barcode_source": freyja_data.get("source"),
         "barcode_sha256": freyja_data.get("barcodes_sha256"),
         "pathogen": freyja_data.get("pathogen"),
+        # library protocol (PLAN D13): older run_info files have none (= amplicon)
+        "protocol": first_of(run_info, ("protocol", "params.protocol")),
+        "primer_trimming": run_info.get("primer_trimming"),
+        "duplicates": run_info.get("duplicates"),
         "run_started": first_of(run_info, ("start", "run_started", "timestamp.start")),
         "run_info_generated": first_of(run_info, ("provenance_generated", "generated")),
     }

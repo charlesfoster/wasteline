@@ -71,6 +71,36 @@
                 }
             }
         },
+        "library_protocol_options": {
+            "title": "Library protocol",
+            "type": "object",
+            "fa_icon": "fas fa-flask",
+            "description": "How the reads were made: PCR amplicons (primer-trimmed) or probe capture (not trimmed).",
+            "properties": {
+                "protocol": {
+                    "type": "string",
+                    "default": "amplicon",
+                    "enum": ["amplicon", "capture"],
+                    "description": "Library protocol. `amplicon` (default): tiled PCR amplicons, reads are primer-trimmed. `capture`: probe-capture libraries (e.g. Twist): no primer trimming, no amplicon-dropout analysis, PCR duplicates are marked.",
+                    "help_text": "With `capture`, `--primer_scheme` and `--primer_bed` are ignored (with a warning). The protocol is recorded in run_info.json and shown in the report header.",
+                    "fa_icon": "fas fa-flask"
+                },
+                "skip_primer_trimming": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Do not primer-trim (`ivar trim`). For reads that are already trimmed. Implied by `--protocol capture`. Amplicon-level QC is off too: `--primer_scheme`/`--primer_bed` are ignored.",
+                    "fa_icon": "fas fa-cut"
+                },
+                "duplicates": {
+                    "type": "string",
+                    "default": "auto",
+                    "enum": ["auto", "mark", "none"],
+                    "description": "PCR-duplicate handling after alignment. `mark`: flag duplicates (`samtools markdup`); Freyja's pileup then ignores them. `none`: leave them. `auto`: `mark` for `--protocol capture`, `none` for `amplicon`.",
+                    "help_text": "Duplicates are flagged, never removed. Not used by modes without reads (`demix`, `aggregate`).",
+                    "fa_icon": "fas fa-clone"
+                }
+            }
+        },
         "reference_and_primer_options": {
             "title": "Reference and primer options",
             "type": "object",
@@ -605,6 +635,9 @@
     "allOf": [
         {
             "$ref": "#/$defs/input_output_options"
+        },
+        {
+            "$ref": "#/$defs/library_protocol_options"
         },
         {
             "$ref": "#/$defs/reference_and_primer_options"

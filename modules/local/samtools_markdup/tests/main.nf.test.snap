@@ -1,0 +1,20 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    "S_1.primertrimmed.markdup.bam",
+                    "S_1.primertrimmed.markdup.bam.bai"
+                ]
+            ],
+            [
+                "S_1.markdup_stats.txt"
+            ]
+        ],
+        "timestamp": "2026-10-16T07:56:03.2667",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

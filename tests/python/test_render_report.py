@@ -524,3 +524,24 @@ def test_negative_controls_block_and_boot_interval_tooltip():
     assert "95% interval 95.0" in html
     without = rr.render({**data, "negative_controls": []})
     assert 'id="sec-controls"' not in without and 'href="#sec-controls"' not in without
+
+
+def test_capture_protocol_header_and_amplicon_note():
+    data = {
+        "schema_version": 1,
+        "mode": "full",
+        "header": {"protocol": "capture", "duplicates": "mark"},
+        "samples": [{"sample": "S1", "sample_type": "sample", "qc_status": "PASS"}],
+        "demix": {
+            "S1": {"status": "ok", "groups": [["Omicron", 1.0]], "lineages": [["BA.2", 1.0]]}
+        },
+        "available": {"demix": True, "amplicons": False},
+    }
+    html = rr.render(data)
+    assert "Library protocol" in html and "capture (no primer trimming, duplicates marked)" in html
+    assert "Not applicable for protocol <b>capture</b>" in html
+    amplicon = rr.render({**data, "header": {"protocol": "amplicon"}})
+    assert (
+        "Not applicable for protocol" not in amplicon
+        and "Amplicon coverage is not available" in amplicon
+    )

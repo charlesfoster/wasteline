@@ -293,7 +293,11 @@ def validateInputParameters(mode) {
         error("Give only one of ${sources.keySet().join(', ')} with --mode ${mode}. ${hint}")
     }
 
-    if (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed))) {
+    def settings = protocolSettings(mode)
+    if ((params.protocol == 'capture' || params.skip_primer_trimming) && (params.primer_scheme || params.primer_bed) && mode in ['full', 'demix']) {
+        log.warn("--primer_scheme/--primer_bed are ignored: " + (params.protocol == 'capture' ? "--protocol capture" : "--skip_primer_trimming") + " reads are not primer-trimmed and there is no amplicon-level analysis")
+    }
+    if (settings.amplicons) {
         // The BED must be on the same contig(s) as the reference or ivar trim silently trims nothing
         def bed_contigs = bedContigs(primerBed())
         def fasta_contigs = fastaContigs(file(params.fasta, checkIfExists: true))
@@ -429,6 +433,26 @@ def previousRuns(mode) {
         dirs = locations.collect { location -> findRunRoot(location)?.toString() }.findAll { root -> root }.unique().sort()
     }
     return dirs.collect { dir -> previousRunRecord(dir) }
+}
+
+//
+// THE effective library settings, computed here and nowhere else (conf/modules.config spells out the two
+// naming conditions it needs, because a config file cannot call a function):
+//   protocol         amplicon | capture
+//   primer_trimming  true only for amplicon reads that are not --skip_primer_trimming
+//   duplicates       mark | none (--duplicates auto = mark for capture, none for amplicon)
+//   amplicons        amplicon-level QC (primer BED needed): amplicon protocol with trimming; in demix mode
+//                    only when a scheme/BED is given explicitly (the scheme of old results is unknown)
+//
+def protocolSettings(mode) {
+    def capture = params.protocol == 'capture'
+    def trimming = !capture && !params.skip_primer_trimming
+    return [
+        protocol: params.protocol,
+        primer_trimming: trimming,
+        duplicates: params.duplicates == 'auto' ? (capture ? 'mark' : 'none') : params.duplicates,
+        amplicons: trimming && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed))),
+    ]
 }
 
 //

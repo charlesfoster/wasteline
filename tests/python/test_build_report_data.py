@@ -633,3 +633,22 @@ def test_skipped_negative_control_is_listed_as_a_control_not_a_missing_sample(tm
     assert brd.main([str(a) for a in args]) == 0
     types2 = {s["sample"]: s["sample_type"] for s in json.loads(out2.read_text())["samples"]}
     assert types2["NEG_old"] == "negative" and types2["Blank_7"] == "sample"
+
+
+def test_header_carries_the_library_protocol(tmp_path):
+    run_info = _loaded(
+        tmp_path,
+        "run_info.json",
+        '{"mode": "full", "protocol": "capture", "primer_trimming": false, "duplicates": "mark"}',
+    )
+    out = tmp_path / "report_data.json"
+    assert brd.main(["--run-info", str(run_info), "--out", str(out)]) == 0
+    header = json.loads(out.read_text())["header"]
+    assert (header["protocol"], header["primer_trimming"], header["duplicates"]) == (
+        "capture",
+        False,
+        "mark",
+    )
+    old = _loaded(tmp_path, "old.json", '{"mode": "full"}')
+    assert brd.main(["--run-info", str(old), "--out", str(out)]) == 0
+    assert json.loads(out.read_text())["header"]["protocol"] is None  # older runs: nothing recorded
