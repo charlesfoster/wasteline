@@ -2,15 +2,16 @@ process RENDER_REPORT {
     tag "report"
     label 'process_single'
 
-    // CONTAINER: no small biocontainer ships python + jinja2, so this uses the MultiQC biocontainer purely
-    // as a pinned python 3.14 + jinja2 3.1.6 image (jinja2 is a hard MultiQC dependency, so it cannot
-    // vanish on a rebuild, and it does not move with Freyja auto-bumps). Interim: the environment.yml
-    // (python + jinja2 only) is the source of truth; replace this with a Seqera Wave image built from it
-    // (see docs/wiring/report_modules.md) to avoid pulling ~440 MB for one library.
+    // CONTAINER: no biocontainer ships python + jinja2 (jinja2 is conda-forge only), so these images were built
+    // from environment.yml (python 3.12.12 + jinja2 3.1.6) with the Seqera Wave CLI (v1.8.2) in freeze mode into
+    // Seqera's free community registry; the tag is the content hash of the recipe, so it never moves:
+    //   wave --conda-channels conda-forge --conda-package python=3.12.12 --conda-package jinja2=3.1.6 \
+    //        --platform linux/amd64 --freeze --await                 (add --singularity for the oras:// image)
+    // Rebuild and replace both strings whenever environment.yml changes (see docs/development.md).
     conda "${moduleDir}/environment.yml"
     container "${workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container
-        ? 'https://depot.galaxyproject.org/singularity/multiqc:1.35--pyhdfd78af_2'
-        : 'quay.io/biocontainers/multiqc:1.35--pyhdfd78af_2'}"
+        ? 'oras://community.wave.seqera.io/library/python_jinja2:c7f3fc5ddefd422e'
+        : 'community.wave.seqera.io/library/python_jinja2:b2615084ab562e7a'}"
 
     input:
     path report_data // report_data.json from BUILD_REPORT_DATA (or an existing results dir, --mode report)

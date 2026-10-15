@@ -66,9 +66,6 @@ columns are a superset of the contract).
    consensus section.
 
 ## Container note
-RENDER_REPORT currently uses `quay.io/biocontainers/multiqc:1.35--pyhdfd78af_2` purely for its `jinja2`
-(hard MultiQC dependency); `python:3.12.12` has no jinja2; the Freyja image has it only transitively (a Freyja bump
-could break the report, so it is not used). Follow-up (needs the user, external publish): build a small Seqera Wave
-image from `modules/local/render_report/environment.yml` (`wave -f modules/local/render_report/environment.yml
---freeze --await`, add `--singularity` for the singularity URL), swap the two container strings in `main.nf`, rerun the
-render_report test.
+RENDER_REPORT runs in a Seqera Wave image built from `modules/local/render_report/environment.yml` (Python 3.12.12 +
+Jinja2 3.1.6; see `docs/development.md`, "Rebuilding the report renderer image"). An earlier design used a MultiQC image
+for its Jinja2 (about 4 times larger); that was replaced.

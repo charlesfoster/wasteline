@@ -86,8 +86,8 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 ### `Dependencies`
 
 - Freyja `2.0.5` (`quay.io/biocontainers/freyja:2.0.5--pyhdfd78af_0`), the one tool bumped automatically.
-- fastp `1.3.6`, bwa `0.7.19`, samtools `1.24`, ivar `1.4.4`, bcftools `1.23`, Python `3.12.12`, MultiQC `1.35` (image used
-  only for its Jinja2 to render the report); every container is pinned to an exact tag.
+- fastp `1.3.6`, bwa `0.7.19`, samtools `1.24`, ivar `1.4.4`, bcftools `1.23`, Python `3.12.12`; the report renderer runs in a Seqera Wave image
+  (Python 3.12.12 + Jinja2 3.1.6, `community.wave.seqera.io/library/python_jinja2:b2615084ab562e7a`); every container is pinned to an exact tag.
 - Nextflow `>=26.04.0` (CI tests `26.04.0` and `26.04.6`), nf-schema `2.5.1`, generated with nf-core tools `4.1.0`.
 - Bump Freyja container `2.0.5--pyhdfd78af_0` -> `2.0.6--pyhdfd78af_0` (automated by `bin/bump_freyja.py`)
 

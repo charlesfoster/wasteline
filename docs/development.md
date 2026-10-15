@@ -219,6 +219,25 @@ resolved per run with `--barcodes`.
 
 The script appends its line under the **`### \`Dependencies\``** heading of the first `## ... unreleased/dev ...`section of`CHANGELOG.md`; keep that heading and a section whose title contains `Unreleased`or`dev`, or it creates them.
 
+## Rebuilding the report renderer image
+
+`RENDER_REPORT` needs Python and Jinja2, and no biocontainer ships Jinja2 (it is conda-forge only), so its image is built
+from `modules/local/render_report/environment.yml` with the [Seqera Wave CLI](https://github.com/seqeralabs/wave-cli) in
+freeze mode, which stores it in Seqera's free community registry (`community.wave.seqera.io`; no account needed, images
+are public and kept for years). Only repeat this when `environment.yml` changes:
+
+```bash
+# download a release binary from https://github.com/seqeralabs/wave-cli/releases and check it against checksums_sha256.txt
+wave --conda-channels conda-forge --conda-package python=3.12.12 --conda-package jinja2=3.1.6 \
+     --platform linux/amd64 --freeze --await                       # prints community.wave.seqera.io/library/python_jinja2:<hash>
+wave --conda-channels conda-forge --conda-package python=3.12.12 --conda-package jinja2=3.1.6 \
+     --platform linux/amd64 --singularity --freeze --await         # prints oras://community.wave.seqera.io/library/python_jinja2:<hash>
+```
+
+Put the two printed names in `modules/local/render_report/main.nf`, run `python bin/lock_containers.py --update`, and
+re-run `nf-test test modules/local/render_report --profile docker`. The current images were built with Wave CLI 1.8.2 from
+Python 3.12.12 and Jinja2 3.1.6 (Docker `...:b2615084ab562e7a`, Singularity `oras://...:c7f3fc5ddefd422e`).
+
 ## Container digest lock
 
 `conf/containers.lock.config` maps every process to an immutable `registry/repo@sha256:` digest and is used with
@@ -332,8 +351,6 @@ Not implemented; see PLAN section 11 and [PLAN_STATUS.md](PLAN_STATUS.md):
 - **Historical barcode versions** resolved from the Freyja git history (today an old dataset can only be used if it
   is still in `--db_dir` or on disk).
 - **Optional kraken2 screening** of negative controls (`--kraken2_db`; opt-in, not the default test).
-- **A Wave container for the report renderer**: `RENDER_REPORT` runs in a multiqc biocontainer only for its jinja2 and
-  `BUILD_REPORT_DATA` in the python image, which is not a clean dependency declaration.
 - **Publishing `variants.tsv` and `depths` in `demix` mode** next to the new `.demix`, so that a `demix` output directory can
   itself be the `--previous_results` of another `demix` run.
 - **Verification of the `singularity`/`apptainer` and `conda`/`mamba` profiles**: only `docker` has been run end to end.

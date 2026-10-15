@@ -72,10 +72,9 @@ page before you cite them in a paper.
 
   > Pallets. Jinja2. <https://github.com/pallets/jinja> <!-- verify citation -->
 
-  Note: MultiQC is **not** a tool of this pipeline and is not used for any analysis or report content. The report renderer
-  (`RENDER_REPORT`) currently runs in a MultiQC biocontainer (`quay.io/biocontainers/multiqc:1.35--pyhdfd78af_2`) only because
-  that image happens to ship Jinja2; it appears in `run_info.json` and the CHANGELOG as a container, not as a tool to cite.
-  (A dedicated Wave container for the renderer is future work.)
+  Note: the report renderer (`RENDER_REPORT`) runs in a small image (Python + Jinja2) built from conda-forge packages with the
+  Seqera Wave CLI and hosted in Seqera's community registry (`community.wave.seqera.io/library/python_jinja2`); it appears in
+  `run_info.json` as a container. MultiQC is **not** used by this pipeline.
 
 ## Data sources
 
