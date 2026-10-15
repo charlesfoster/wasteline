@@ -1,0 +1,16 @@
+[workspace]
+name = "wasteline"
+channels = ["conda-forge", "bioconda"]
+platforms = ["osx-arm64", "linux-64"]
+
+# Developer tooling only. Pipeline tools run in per-process containers/conda envs.
+[dependencies]
+python = "3.12.*"
+nf-core = "*"
+nf-test = "*"
+pre-commit = "*"
+pytest = "*"
+ruff = "*"
+jinja2 = "*"
+pandas = "*"
+pyyaml = "*"

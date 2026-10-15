@@ -1,0 +1,27 @@
+.nextflow*
+work/
+data/
+results/
+.DS_Store
+testing/
+testing*
+*.pyc
+null/
+.lineage/
+
+# dev
+.pixi/
+.nextflow*
+work/
+results/
+.claude/worktrees/
+.claude/settings.local.json
+
+# committed test data (the generic data/ rule above would hide it)
+!tests/data/
+.nf-test/
+.nf-test-*.nf
+.nf-test.log
+.pytest_cache/
+.ruff_cache/
+__pycache__/
