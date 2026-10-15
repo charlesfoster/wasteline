@@ -1,0 +1,8 @@
+##fileformat=VCFv4.2
+##contig=<ID=NC_045512.2,length=29903>
+##INFO=<ID=DP,Number=1,Type=Integer,Description="d">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="g">
+##FORMAT=<ID=ALT_FREQ,Number=1,Type=Float,Description="f">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	T1
+NC_045512.2	23063	.	A	T	.	PASS	DP=50	GT:ALT_FREQ	1/1:1
+NC_045512.2	23064	.	A	C	.	PASS	DP=51	GT:ALT_FREQ	1/1:0.9

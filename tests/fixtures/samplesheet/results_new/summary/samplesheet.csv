@@ -1,0 +1,3 @@
+sample,fastq_1,fastq_2,sample_type,collection_date,site
+Site_1_week_2,/x/a_R1.fastq.gz,/x/a_R2.fastq.gz,sample,2024-03-01,SiteOne
+NEG_ntc,/x/n_R1.fastq.gz,/x/n_R2.fastq.gz,negative,,

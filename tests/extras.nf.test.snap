@@ -1,0 +1,101 @@
+{
+    "-stub: all extras on (full mode)": {
+        "content": [
+            {
+                "AMPLICON_COVERAGE": {
+                    "python": "3.12.12"
+                },
+                "ANNOTATE_VARIANTS": {
+                    "bcftools": 1.23
+                },
+                "BAM_MAPPED_READS": {
+                    "samtools": 1.24
+                },
+                "BARCODE_COMPARE": {
+                    "python": "3.12.12"
+                },
+                "BWA_INDEX": {
+                    "bwa": "0.7.19-r1273"
+                },
+                "BWA_MEM": {
+                    "bwa": "0.7.19-r1273",
+                    "samtools": "1.22.1"
+                },
+                "CONSENSUS_BCFTOOLS": {
+                    "bcftools": 1.23
+                },
+                "CONSENSUS_CONCAT": {
+                    "python": "3.12.12"
+                },
+                "CONSENSUS_FILTER_VCF": {
+                    "bcftools": 1.23
+                },
+                "CONSENSUS_STATS": {
+                    "python": "3.12.12"
+                },
+                "CONSENSUS_STATS_CONCAT": {
+                    "python": "3.12.12"
+                },
+                "FASTP": {
+                    "fastp": "1.3.6"
+                },
+                "FREYJA_AGGREGATE_CONTROLS": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_AGGREGATE_PLOT": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_BOOT": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_DATASET_INFO": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_DEMIX": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_DEMIX_COMPARE": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_UPDATE": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_VARIANTS": {
+                    "freyja": "2.0.5"
+                },
+                "IVAR_TRIM": {
+                    "ivar": "1.4.4"
+                },
+                "IVAR_VARIANTS_TO_VCF": {
+                    "python": "3.12.12"
+                },
+                "LOW_DEPTH_MASK": {
+                    "python": "3.12.12"
+                },
+                "QC_CONCAT": {
+                    "python": "3.12.12"
+                },
+                "QC_SAMPLE": {
+                    "python": "3.12.12"
+                },
+                "SAMTOOLS_FLAGSTAT": {
+                    "samtools": 1.24
+                },
+                "SAMTOOLS_SORT": {
+                    "samtools": 1.24
+                },
+                "SAMTOOLS_VIEW": {
+                    "samtools": 1.24
+                },
+                "Workflow": {
+                    "charlesfoster/wasteline": "v0.1.0dev"
+                }
+            }
+        ],
+        "timestamp": "2026-10-16T02:54:35.326613",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

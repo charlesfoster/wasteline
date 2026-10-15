@@ -1,0 +1,22 @@
+{
+    "-stub: update_db downloads into --db_dir/freyja/<barcode-version>/ and nothing else": {
+        "content": [
+            {
+                "FREYJA_DATASET_INFO": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_UPDATE": {
+                    "freyja": "2.0.5"
+                },
+                "Workflow": {
+                    "charlesfoster/wasteline": "v0.1.0dev"
+                }
+            }
+        ],
+        "timestamp": "2026-10-15T21:13:23.345336",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

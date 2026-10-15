@@ -1,0 +1,6 @@
+sample	status	reason	barcode_version
+WW_001	ok		09_17_2026-00-46
+WW_002	ok		09_17_2026-00-46
+WW_003.rep1	ok		09_17_2026-00-46
+WW_004	skipped_low_coverage	genome coverage 30.10% < 60% at 10x	09_17_2026-00-46
+WW_005	failed	freyja demix exited 1: Singular matrix	09_17_2026-00-46

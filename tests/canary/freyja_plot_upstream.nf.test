@@ -1,0 +1,25 @@
+nextflow_process {
+
+    name "Canary: is plain `freyja plot` still broken upstream? (PLAN D6)"
+    script "./main.nf"
+    process "FREYJA_PLOT_CANARY"
+    tag "upstream_canary"
+
+    // Passes today (plain `freyja plot` fails with the pandas 3 TypeError). It FAILS once a Freyja
+    // release fixes it: then remove the infer_string workaround in FREYJA_AGGREGATE_PLOT and this
+    // canary. Tagged so CI can run it as a separate, non-blocking job:
+    //   nf-test test --tag upstream_canary --profile docker
+
+    test("plain freyja plot still fails on Freyja's bundled example") {
+
+        then {
+            assertAll(
+                { assert process.success },
+                {
+                    assert path(process.out.result[0].toString()).text.trim() == 'false' :
+                        'UPSTREAM FIXED: plain `freyja plot` now works on the pinned Freyja; remove the stopgap (PLAN D6)'
+                }
+            )
+        }
+    }
+}

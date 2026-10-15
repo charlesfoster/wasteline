@@ -1,0 +1,6 @@
+	summarized	lineages	abundances	resid	coverage
+WW_001	[('Omicron', 0.55), ('Delta', 0.3), ('Alpha', 0.1), ('Other', 0.05)]	"['BA.2.86' 'BA.1' 'AY.4' 'B.1.1.7'
+ 'B.1.617.2']"	"[0.4  0.15 0.3  0.1
+ 0.05]"	3.21	99.9
+WW_002	[('Omicron', 0.8), ('Delta', 0.12), ('Other', 0.08)]	"['BA.2.86' 'BA.5' 'AY.4' 'B.1.1.7']"	"[0.5  0.3  0.12 0.08]"	2.5	99.0
+WW_003.rep1	[('Omicron', 0.7), ('Alpha', 0.2), ('Other', 0.1)]	"['BA.2.86' 'B.1.1.7' 'A']"	"[0.7  0.2  0.1]"	4.0	95.2

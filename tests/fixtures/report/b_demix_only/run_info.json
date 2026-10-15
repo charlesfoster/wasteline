@@ -1,0 +1,50 @@
+{
+    "pipeline_name": "wasteline",
+    "pipeline_version": "0.1.0dev",
+    "git_commit": "3f9c2ab71d0e5c44b8a1e6f0d2c7a9b35e418d60",
+    "nextflow_version": "26.04.6",
+    "mode": "demix",
+    "start": "2026-10-15T01:02:03Z",
+    "params": {
+        "mode": "demix",
+        "primer_scheme": "midnight",
+        "barcodes": "latest",
+        "freyja_eps": 0.001,
+        "freyja_covcut": 10,
+        "freyja_varthresh": 0.0,
+        "min_genome_coverage_for_demix": 60,
+        "amplicon_min_depth": 10,
+        "consensus_min_depth": 10,
+        "ntc_max_mapped_reads": 100,
+        "mutations_of_interest": "moi.csv",
+        "outdir": "results"
+    },
+    "freyja_version": "2.0.5",
+    "tool_versions": {
+        "freyja": "2.0.5",
+        "fastp": "0.24.0"
+    },
+    "previous_runs": [
+        {
+            "path": "/old/results",
+            "run_info_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "barcode_version": "unknown"
+        }
+    ],
+    "freyja_data": {
+        "source": "pinned",
+        "barcode_version": "09_17_2026-00-46",
+        "barcode_version_iso": "2026-09-17T00-46",
+        "barcodes_file": "usher_barcodes.feather",
+        "barcodes_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "barcodes_format": "feather",
+        "lineage_mutations_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "curated_lineages_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "lineages_yml_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "pathogen": "SARS-CoV-2",
+        "freyja_version": "2.0.5",
+        "freyja_reported_barcode_version": "09_17_2026-00-46",
+        "dataset_path": "/db/freyja/2026-09-17T00-46",
+        "downloaded_at": "2026-10-14T22:01:11Z"
+    }
+}

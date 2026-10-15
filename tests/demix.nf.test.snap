@@ -1,0 +1,58 @@
+{
+    "-stub: --previous_results of a legacy Snakemake layout, negative control kept out of the aggregate": {
+        "content": [
+            {
+                "CONSENSUS_BCFTOOLS": {
+                    "bcftools": 1.23
+                },
+                "CONSENSUS_CONCAT": {
+                    "python": "3.12.12"
+                },
+                "CONSENSUS_FILTER_VCF": {
+                    "bcftools": 1.23
+                },
+                "CONSENSUS_STATS": {
+                    "python": "3.12.12"
+                },
+                "CONSENSUS_STATS_CONCAT": {
+                    "python": "3.12.12"
+                },
+                "FREYJA_AGGREGATE_CONTROLS": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_AGGREGATE_PLOT": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_DATASET_INFO": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_DEMIX": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_UPDATE": {
+                    "freyja": "2.0.5"
+                },
+                "IVAR_VARIANTS_TO_VCF": {
+                    "python": "3.12.12"
+                },
+                "LOW_DEPTH_MASK": {
+                    "python": "3.12.12"
+                },
+                "QC_CONCAT": {
+                    "python": "3.12.12"
+                },
+                "QC_SAMPLE": {
+                    "python": "3.12.12"
+                },
+                "Workflow": {
+                    "charlesfoster/wasteline": "v0.1.0dev"
+                }
+            }
+        ],
+        "timestamp": "2026-10-16T02:33:57.915693",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "summary": {
+        "fastp_version": "0.23.4",
+        "sequencing": "paired end (150 cycles + 150 cycles)",
+        "before_filtering": {
+            "total_reads": 2400,
+            "total_bases": 360000,
+            "q20_rate": 0.97,
+            "q30_rate": 0.93,
+            "gc_content": 0.38
+        },
+        "after_filtering": {
+            "total_reads": 2200,
+            "total_bases": 320000,
+            "q20_rate": 0.99,
+            "q30_rate": 0.95,
+            "gc_content": 0.38
+        }
+    },
+    "filtering_result": { "passed_filter_reads": 2200, "low_quality_reads": 200 }
+}

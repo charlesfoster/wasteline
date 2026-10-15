@@ -1,0 +1,7 @@
+sample	sample_type	collection_date	site	raw_reads	trimmed_reads	mapped_reads	mapped_pct	mean_depth	depth_sd	median_depth	pct_genome_ge_1x	pct_genome_ge_10x	pct_genome_ge_min_depth	amplicons_total	amplicons_dropped	qc_status	qc_reasons	demix_status	demix_reason	consensus_length	consensus_n_pct	barcode_version
+NTC_01	negative	2026-09-01	NA	1500	1400	12	0.86	0.05	0.3	0	0.4	0	0	98	98	PASS		NA	NA	NA	NA	NA
+WW_001	sample	2026-09-01	SiteA	250000	240000	230000	95.83	812.4	300.1	790	100.00	99.90	99.80	98	0	PASS		NA	NA	NA	NA	NA
+WW_002	sample	2026-09-08	SiteA	210000	200000	190000	95.00	640.2	280.5	600	100.00	99.00	98.00	98	1	PASS		NA	NA	NA	NA	NA
+WW_003.rep1	sample	2026-09-08	SiteB	180000	170000	160000	94.12	401.7	310.2	350	99.80	95.20	90.10	98	4	WARN	amplicon_dropout	NA	NA	NA	NA	NA
+WW_004	sample	2026-09-15	SiteB	9000	8000	3000	37.50	8.1	12.2	3	55.20	30.10	28.00	98	40	FAIL	low_coverage;amplicon_dropout	NA	NA	NA	NA	NA
+WW_005	sample	2026-09-15	SiteA	150000	140000	120000	85.71	300.0	200.0	280	99.00	92.00	91.00	98	2	WARN	amplicon_dropout	NA	NA	NA	NA	NA

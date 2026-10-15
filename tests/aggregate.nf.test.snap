@@ -1,0 +1,28 @@
+{
+    "-stub: samplesheet, negative control excluded, time-aware plot for dated samples": {
+        "content": [
+            {
+                "FREYJA_AGGREGATE_CONTROLS": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_AGGREGATE_PLOT": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_DATASET_INFO": {
+                    "freyja": "2.0.5"
+                },
+                "FREYJA_UPDATE": {
+                    "freyja": "2.0.5"
+                },
+                "Workflow": {
+                    "charlesfoster/wasteline": "v0.1.0dev"
+                }
+            }
+        ],
+        "timestamp": "2026-10-16T02:31:22.095721",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

@@ -1,0 +1,3 @@
+sample	status	reason	barcode_version
+F1	skipped_low_coverage	no reads	09_17_2026-00-46
+F2	skipped_low_coverage	coverage 0%	09_17_2026-00-46

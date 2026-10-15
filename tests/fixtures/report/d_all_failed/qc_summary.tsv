@@ -1,0 +1,4 @@
+sample	sample_type	collection_date	site	raw_reads	trimmed_reads	mapped_reads	mapped_pct	mean_depth	depth_sd	median_depth	pct_genome_ge_1x	pct_genome_ge_10x	pct_genome_ge_min_depth	amplicons_total	amplicons_dropped	qc_status	qc_reasons	demix_status	demix_reason	consensus_length	consensus_n_pct	barcode_version
+NTC_01	negative	NA	NA	90000	80000	50000	55.56	120.0	50.0	100	60.0	50.0	40.0	98	60	FAIL	ntc_reads	NA	NA	NA	NA	NA
+F1	sample	NA	NA	0	0	0	0.00	0.0	0.0	0	0.0	0.0	0.0	98	98	FAIL	no_reads	NA	NA	NA	NA	NA
+F2	sample	NA	NA	500	400	100	20.00	0.5	1.0	0	3.0	0.0	0.0	98	98	FAIL	low_coverage	NA	NA	NA	NA	NA

@@ -1,0 +1,8 @@
+sample,fastq_1,fastq_2,sample_type,collection_date,site
+MIX_A,tests/data/fastq/MIX_A_R1.fastq.gz,tests/data/fastq/MIX_A_R2.fastq.gz,sample,2026-01-05,SiteA
+MIX_B,tests/data/fastq/MIX_B_R1.fastq.gz,tests/data/fastq/MIX_B_R2.fastq.gz,sample,2026-01-12,SiteA
+PURE_C,tests/data/fastq/PURE_C_R1.fastq.gz,tests/data/fastq/PURE_C_R2.fastq.gz,sample,2026-01-19,SiteB
+LOWCOV_D,tests/data/fastq/LOWCOV_D_R1.fastq.gz,tests/data/fastq/LOWCOV_D_R2.fastq.gz,sample,2026-01-26,SiteB
+NEG_E,tests/data/fastq/NEG_E_R1.fastq.gz,tests/data/fastq/NEG_E_R2.fastq.gz,negative,2026-01-05,SiteA
+NEG_CONTAM,tests/data/fastq/NEG_CONTAM_R1.fastq.gz,tests/data/fastq/NEG_CONTAM_R2.fastq.gz,negative,2026-01-19,SiteB
+Site_1_week_2,tests/data/fastq/Site_1_week_2_R1.fastq.gz,tests/data/fastq/Site_1_week_2_R2.fastq.gz,sample,2026-02-02,Site_1

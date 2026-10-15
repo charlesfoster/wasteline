@@ -1,0 +1,150 @@
+nextflow_pipeline {
+
+    name "Test pipeline (mode full)"
+    script "../main.nf"
+    tag "pipeline"
+
+    // Relative paths in a samplesheet are checked against the launch directory, so the tests write
+    // a copy with absolute paths. Only tests/data/ is read.
+    def absoluteSamplesheet = { outDir, root ->
+        def sheet = new File("${outDir}/samplesheet.csv")
+        sheet.parentFile.mkdirs()
+        sheet.text = new File("${root}/tests/data/samplesheet.csv").text.replace('tests/data/', "${root}/tests/data/")
+        return sheet.toString()
+    }
+
+    test("-stub: negative control is demixed but kept out of the aggregate (PLAN D8)") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir)
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            def status = new File("$outputDir/summary/demix_status.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            assertAll(
+                { assert workflow.success },
+                { assert 'NEG_E' in status && 'NEG_CONTAM' in status },
+                { assert aggregated == ['LOWCOV_D', 'MIX_A', 'MIX_B', 'PURE_C', 'Site_1_week_2'] } // stub demix reports ok for every sample
+            )
+        }
+    }
+
+    test("-stub: --include_negatives_in_aggregate keeps the negative control in the aggregate") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir)
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                include_negatives_in_aggregate = true
+            }
+        }
+
+        then {
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            assertAll(
+                { assert workflow.success },
+                { assert aggregated == ['LOWCOV_D', 'MIX_A', 'MIX_B', 'NEG_CONTAM', 'NEG_E', 'PURE_C', 'Site_1_week_2'] }
+            )
+        }
+    }
+
+    test("-stub: output layout and status files") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir)
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            def stable_path = getAllFilesFromDir(params.outdir, relative: true, includeDir: true, ignore: ['pipeline_info/*.{html,json,txt}', 'samplesheet.csv', 'db/**'])
+            def status = new File("$outputDir/summary/demix_status.tsv").readLines()
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert status.size() == 8 }, // header + 7 samples
+                { assert status.drop(1).every { line -> line.split('\t').size() == 6 } },
+                { assert new File("$outputDir/summary/barcode_version.json").exists() },
+                // the samplesheet in effect travels with the results (read back by demix/aggregate runs)
+                { assert new File("$outputDir/summary/samplesheet.csv").exists() },
+                // collection dates are known: time-aware plot
+                { assert new File("$outputDir/summary/freyja_plot_times.pdf").exists() },
+                // run_info.json contract keys (PLAN 5.13)
+                { assert run_info.keySet().containsAll(['pipeline_name', 'pipeline_version', 'git_commit', 'nextflow_version', 'mode', 'start', 'params', 'freyja_version', 'tool_versions', 'previous_runs', 'freyja_data', 'input_checksums', 'provenance_generated']) },
+                { assert run_info.mode == 'full' && run_info.previous_runs == [] },
+                { assert run_info.freyja_data.barcode_version },
+                { assert snapshot(
+                    // Nextflow version removed: the pipeline is tested on several Nextflow versions
+                    removeNextflowVersion("$outputDir/pipeline_info/software_versions.yml"),
+                    stable_path
+                ).match() }
+            )
+        }
+    }
+
+    // Real run on the synthetic dataset, offline (barcodes bundled in the pinned Freyja container).
+    // Needs a container engine: nf-test test --profile docker
+    test("real run with --barcodes container") {
+
+        tag "docker"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir)
+                barcodes = 'container'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            def status = new File("$outputDir/summary/demix_status.tsv").readLines().drop(1).collect { line -> line.split('\t') }.collectEntries { cols -> [ (cols[0]): cols[1] ] }
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] } as Set
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            def qc_lines = new File("$outputDir/summary/qc_summary.tsv").readLines()
+            def qc = qc_lines.drop(1).collect { line -> [ qc_lines[0].split('\t'), line.split('\t', -1) ].transpose().collectEntries { k, v -> [ (k): v ] } }.collectEntries { row -> [ (row.sample): row ] }
+            assertAll(
+                { assert workflow.success },
+                { assert status == [ MIX_A: 'ok', MIX_B: 'ok', PURE_C: 'ok', LOWCOV_D: 'skipped_low_coverage', NEG_E: 'skipped_low_coverage', NEG_CONTAM: 'ok', Site_1_week_2: 'ok' ] },
+                { assert aggregated == ['MIX_A', 'MIX_B', 'PURE_C', 'Site_1_week_2'] as Set },
+                { assert new File("$outputDir/summary/freyja_plot.pdf").length() > 0 || new File("$outputDir/summary/freyja_plot.failed.txt").exists() },
+                { assert new File("$outputDir/summary/freyja_plot_times.pdf").length() > 0 || new File("$outputDir/summary/freyja_plot_times.failed.txt").exists() },
+                // coverage QC, consensus and the report (full e2e checks: tests/e2e.sh with tests/check_outputs.py)
+                { assert qc.NEG_CONTAM.qc_status == 'FAIL' && qc.NEG_CONTAM.qc_reasons == 'ntc_reads' },
+                { assert qc.LOWCOV_D.qc_status == 'FAIL' && qc.LOWCOV_D.qc_reasons.contains('low_coverage') },
+                { assert qc.Site_1_week_2.qc_reasons.contains('amplicon_dropout') },
+                { assert qc.MIX_A.qc_status == 'PASS' },
+                { assert new File("$outputDir/summary/consensus_stats.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] } == ['LOWCOV_D', 'MIX_A', 'MIX_B', 'PURE_C', 'Site_1_week_2'] },
+                { assert new File("$outputDir/summary/consensus_genomes.fasta").text.count('>') == 5 },
+                { assert new File("$outputDir/summary/report.html").length() > 0 },
+                { assert new File("$outputDir/summary/report_data.json").text.contains('"ntc_reads"') },
+                { assert run_info.freyja_data.source == 'container' },
+                { assert run_info.freyja_data.barcodes_sha256 ==~ /[0-9a-f]{64}/ },
+                { assert run_info.freyja_version == '2.0.5' },
+                // run_info.containers is filled from the execution trace, which nf-test disables
+                { assert run_info.containsKey('containers') },
+                { assert new File("$outputDir/samples/MIX_A/freyja/MIX_A.demix_status.json").text.contains(run_info.freyja_data.barcode_version) }
+            )
+        }
+    }
+}

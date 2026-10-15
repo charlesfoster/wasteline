@@ -1,0 +1,175 @@
+nextflow_pipeline {
+
+    name "Test pipeline (mode aggregate)"
+    script "../main.nf"
+    tag "pipeline"
+    tag "aggregate"
+
+    def sheetFor = { outDir, root ->
+        def sheet = new File("${outDir}/aggregate_samplesheet.csv")
+        sheet.parentFile.mkdirs()
+        def base = "${root}/tests/fixtures/samplesheet/results_legacy"
+        sheet.text = "sample,demix,sample_type,collection_date,site\n" +
+            "Old_1,${base}/Old_1/freyja/Old_1.demix,sample,2026-01-05,A\n" +
+            "NEG_Old,${base}/Old_1/freyja/Old_1.demix,negative,2026-01-06,A\n" +
+            "Gz_only,${base}/Gz_only/freyja/Gz_only.demix,sample,,\n"
+        return sheet.toString()
+    }
+
+    test("-stub: samplesheet, negative control excluded, time-aware plot for dated samples") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode     = 'aggregate'
+                outdir   = "$outputDir"
+                input    = sheetFor(outputDir, projectDir)
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert aggregated == ['Gz_only', 'Old_1'] },
+                { assert new File("$outputDir/summary/freyja_plot_times.pdf").exists() },
+                { assert run_info.mode == 'aggregate' },
+                { assert run_info.previous_runs == [] },
+                // no demix happened: no barcode sidecar claiming a version for these results
+                { assert !new File("$outputDir/summary/barcode_version.json").exists() },
+                { assert !new File("$outputDir/summary/demix_status.tsv").exists() },
+                { assert snapshot(removeNextflowVersion("$outputDir/pipeline_info/software_versions.yml")).match() }
+            )
+        }
+    }
+
+    test("-stub: --include_negatives_in_aggregate keeps the negative control") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode     = 'aggregate'
+                outdir   = "$outputDir"
+                input    = sheetFor(outputDir, projectDir)
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                include_negatives_in_aggregate = true
+            }
+        }
+
+        then {
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            assertAll(
+                { assert workflow.success },
+                { assert aggregated == ['Gz_only', 'NEG_Old', 'Old_1'] }
+            )
+        }
+    }
+
+    test("-stub: --demix_dir (any depth, both layouts)") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode      = 'aggregate'
+                outdir    = "$outputDir"
+                demix_dir = "${projectDir}/tests/fixtures/samplesheet/results_legacy"
+                barcodes  = 'latest'
+                db_dir    = "$outputDir/db"
+            }
+        }
+
+        then {
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            assertAll(
+                { assert workflow.success },
+                // NC_blank is inferred to be a negative control from its ID
+                { assert aggregated == ['Gz_only', 'Old_1'] }
+            )
+        }
+    }
+
+    test("-stub: several --previous_results, duplicated sample IDs are refused") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode             = 'aggregate'
+                outdir           = "$outputDir"
+                previous_results = "${projectDir}/tests/fixtures/samplesheet/results_legacy,${projectDir}/tests/fixtures/samplesheet/results_mixed"
+                barcodes         = 'latest'
+                db_dir           = "$outputDir/db"
+            }
+        }
+
+        then {
+            // results_mixed has Both_1 and Legacy_only, results_legacy has Old_1, NC_blank, Gz_only: no overlap
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            assertAll(
+                { assert workflow.success },
+                { assert aggregated == ['Both_1', 'Gz_only', 'Legacy_only', 'Old_1'] },
+                { assert new File("$outputDir/pipeline_info/run_info.json").text.contains('results_mixed') }
+            )
+        }
+    }
+
+    test("-stub: the same results directory twice is refused (duplicate sample IDs)") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode             = 'aggregate'
+                outdir           = "$outputDir"
+                previous_results = "${projectDir}/tests/fixtures/samplesheet/results_legacy,${projectDir}/tests/fixtures/samplesheet/results_legacy"
+                barcodes         = 'latest'
+                db_dir           = "$outputDir/db"
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('found more than once') }
+            )
+        }
+    }
+
+    // Legacy .demix files carry the variants file name of the Snakemake pipeline as label
+    // (<s>.freyja_variants.tsv). The aggregate must still be labelled with the sample IDs and equal the
+    // one wasteline wrote for the same data.
+    test("legacy .demix files give the same aggregate as the original run - real") {
+
+        tag "docker"
+
+        when {
+            params {
+                mode             = 'aggregate'
+                outdir           = "$outputDir"
+                previous_results = "${projectDir}/tests/fixtures/demix_legacy"
+                barcodes         = 'container'
+                db_dir           = "$outputDir/db"
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/freyja_aggregated.tsv").bytes == new File("${projectDir}/tests/fixtures/demix_expected/freyja_aggregated.tsv").bytes },
+                { assert new File("$outputDir/summary/freyja_plot.pdf").length() > 0 || new File("$outputDir/summary/freyja_plot.failed.txt").exists() }
+            )
+        }
+    }
+}

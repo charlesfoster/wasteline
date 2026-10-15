@@ -1,0 +1,187 @@
+nextflow_pipeline {
+
+    name "Test pipeline (mode demix)"
+    script "../main.nf"
+    tag "pipeline"
+    tag "demix"
+
+    // Helper: a samplesheet with absolute paths for the placeholder results fixtures
+    def sheetFor = { outDir, root ->
+        def sheet = new File("${outDir}/demix_samplesheet.csv")
+        sheet.parentFile.mkdirs()
+        def base = "${root}/tests/fixtures/samplesheet/results_new/samples"
+        sheet.text = "sample,variants,depths,sample_type,collection_date,site\n" +
+            "Site_1_week_2,${base}/Site_1_week_2/freyja/Site_1_week_2.variants.tsv,${base}/Site_1_week_2/freyja/Site_1_week_2.depths,sample,2026-02-02,Site_1\n" +
+            "NEG_ntc,${base}/NEG_ntc/freyja/NEG_ntc.variants.tsv,${base}/NEG_ntc/freyja/NEG_ntc.depths,negative,,\n"
+        return sheet.toString()
+    }
+
+    test("-stub: --previous_results of a legacy Snakemake layout, negative control kept out of the aggregate") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode             = 'demix'
+                outdir           = "$outputDir"
+                previous_results = "${projectDir}/tests/fixtures/samplesheet/results_legacy"
+                barcodes         = 'latest'
+                db_dir           = "$outputDir/db"
+            }
+        }
+
+        then {
+            def status = new File("$outputDir/summary/demix_status.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                // every discovered sample has a status row, whatever happens to it
+                { assert status == ['Gz_only', 'NC_blank', 'Old_1'] },
+                // NC_blank matches the negative-control pattern: demixed, but not aggregated (PLAN D8)
+                { assert aggregated == ['Gz_only', 'Old_1'] },
+                { assert run_info.mode == 'demix' },
+                { assert run_info.pipeline_name == 'charlesfoster/wasteline' },
+                { assert run_info.start },
+                { assert run_info.previous_runs.size() == 1 },
+                { assert run_info.previous_runs[0].path.endsWith('results_legacy') },
+                { assert run_info.previous_runs[0].barcode_version == 'unknown' },
+                { assert run_info.previous_runs[0].run_info_sha256 == null },
+                { assert run_info.freyja_data.barcode_version },
+                { assert new File("$outputDir/pipeline_info/discovery_1.log").exists() },
+                { assert new File("$outputDir/summary/samplesheet.csv").text.startsWith('sample,variants,depths,fastp_json,sample_type,collection_date,site') },
+                { assert snapshot(removeNextflowVersion("$outputDir/pipeline_info/software_versions.yml")).match() }
+            )
+        }
+    }
+
+    test("-stub: --include_negatives_in_aggregate keeps the negative control") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode             = 'demix'
+                outdir           = "$outputDir"
+                previous_results = "${projectDir}/tests/fixtures/samplesheet/results_legacy"
+                barcodes         = 'latest'
+                db_dir           = "$outputDir/db"
+                include_negatives_in_aggregate = true
+            }
+        }
+
+        then {
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            assertAll(
+                { assert workflow.success },
+                { assert aggregated == ['Gz_only', 'NC_blank', 'Old_1'] }
+            )
+        }
+    }
+
+    test("-stub: samplesheet input (variants, depths, sample_type, collection_date)") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode     = 'demix'
+                outdir   = "$outputDir"
+                input    = sheetFor(outputDir, projectDir)
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
+            assertAll(
+                { assert workflow.success },
+                { assert aggregated == ['Site_1_week_2'] },
+                // a dated sample gets the time-aware plot
+                { assert new File("$outputDir/summary/freyja_plot_times.pdf").exists() },
+                { assert new File("$outputDir/pipeline_info/run_info.json").text.contains('"mode": "demix"') }
+            )
+        }
+    }
+
+    test("-stub: demix needs an input") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode   = 'demix'
+                outdir = "$outputDir"
+                input  = null // the test profile defaults it to the FASTQ samplesheet
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('No input given for --mode demix') }
+            )
+        }
+    }
+
+    test("-stub: --input and --previous_results together are refused") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode             = 'demix'
+                outdir           = "$outputDir"
+                input            = sheetFor(outputDir, projectDir)
+                previous_results = "${projectDir}/tests/fixtures/samplesheet/results_legacy"
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('Give only one of') }
+            )
+        }
+    }
+
+    // Legacy Snakemake layout (<s>/freyja/, gzipped variants and depths, variants named
+    // <s>.freyja_variants.tsv) built from real wasteline outputs of tests/data. Demixing with the same
+    // barcodes must reproduce the demix files and the aggregate of the original run byte for byte.
+    // Needs a container engine: nf-test test --profile docker
+    test("legacy layout reproduces the original demix and aggregate - real") {
+
+        tag "docker"
+
+        when {
+            params {
+                mode             = 'demix'
+                outdir           = "$outputDir"
+                previous_results = "${projectDir}/tests/fixtures/demix_legacy"
+                barcodes         = "${projectDir}/tests/data/barcodes_test.csv"
+                db_dir           = "$outputDir/db"
+            }
+        }
+
+        then {
+            def expected = "${projectDir}/tests/fixtures/demix_expected"
+            def status = new File("$outputDir/summary/demix_status.tsv").readLines().drop(1).collect { line -> line.split('\t') }.collectEntries { cols -> [ (cols[0]): cols[1] ] }
+            assertAll(
+                { assert workflow.success },
+                { assert status == [ MIX_A: 'ok', MIX_B: 'ok', PURE_C: 'ok', NEG_E: 'skipped_low_coverage' ] },
+                { assert new File("$outputDir/samples/MIX_A/freyja/MIX_A.demix").bytes == new File("$expected/MIX_A.demix").bytes },
+                { assert new File("$outputDir/samples/MIX_B/freyja/MIX_B.demix").bytes == new File("$expected/MIX_B.demix").bytes },
+                { assert new File("$outputDir/samples/PURE_C/freyja/PURE_C.demix").bytes == new File("$expected/PURE_C.demix").bytes },
+                { assert new File("$outputDir/summary/freyja_aggregated.tsv").bytes == new File("$expected/freyja_aggregated.tsv").bytes },
+                // the previous results are only read: nothing new appears in them
+                { def n = 0; new File("${projectDir}/tests/fixtures/demix_legacy").eachFileRecurse(groovy.io.FileType.FILES) { n++ }; assert n == 11 }
+            )
+        }
+    }
+}

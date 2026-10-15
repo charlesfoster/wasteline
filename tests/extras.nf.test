@@ -1,0 +1,179 @@
+nextflow_pipeline {
+
+    name "Test pipeline (opt-in extras: --compare_barcodes, --freyja_boot, --annotate_variants; pathogen; primer schemes)"
+    script "../main.nf"
+    tag "pipeline"
+    tag "extras"
+
+    def absoluteSamplesheet = { outDir, root ->
+        def sheet = new File("${outDir}/samplesheet.csv")
+        sheet.parentFile.mkdirs()
+        sheet.text = new File("${root}/tests/data/samplesheet.csv").text.replace('tests/data/', "${root}/tests/data/")
+        return sheet.toString()
+    }
+
+    test("-stub: all extras on (full mode)") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir           = "$outputDir"
+                input            = absoluteSamplesheet(outputDir, projectDir)
+                barcodes         = 'latest'
+                compare_barcodes = 'container'
+                freyja_boot      = true
+                freyja_boot_n    = 20
+                annotate_variants = true
+                db_dir           = "$outputDir/db"
+            }
+        }
+
+        then {
+            def samples = { name -> new File("$outputDir/summary/${name}").readLines().drop(1).collect { line -> line.split('\t')[0] }.unique() }
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert samples('barcode_compare.tsv') == ['LOWCOV_D', 'MIX_A', 'MIX_B', 'NEG_CONTAM', 'NEG_E', 'PURE_C', 'Site_1_week_2'] },
+                { assert new File("$outputDir/summary/barcode_compare_status.tsv").exists() },
+                { assert samples('freyja_boot_summary.tsv').size() == 7 },
+                { assert new File("$outputDir/summary/annotated_variants.tsv").text.startsWith('reference\tsample_id\tgene') },
+                { assert new File("$outputDir/samples/MIX_A/variants/MIX_A.annotated.tsv").exists() },
+                { assert new File("$outputDir/samples/MIX_A/freyja/MIX_A.compare.demix").exists() },
+                { assert new File("$outputDir/samples/MIX_A/freyja/MIX_A.boot_summary.tsv").exists() },
+                { assert new File("$outputDir/summary/freyja_aggregated_controls.tsv").text.contains('NEG_CONTAM') },
+                { assert new File("$outputDir/pipeline_info/freyja_data_compare.json").exists() },
+                { assert run_info.freyja_data_compare.source == 'container' && run_info.freyja_data.source == 'latest' },
+                { assert run_info.params.compare_barcodes == 'container' && run_info.params.freyja_boot == true },
+                { assert snapshot(removeNextflowVersion("$outputDir/pipeline_info/software_versions.yml")).match() }
+            )
+        }
+    }
+
+    test("-stub: --compare_barcodes in demix mode") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode             = 'demix'
+                outdir           = "$outputDir"
+                previous_results = "${projectDir}/tests/fixtures/samplesheet/results_legacy"
+                barcodes         = 'latest'
+                compare_barcodes = 'container'
+                db_dir           = "$outputDir/db"
+            }
+        }
+
+        then {
+            def rows = new File("$outputDir/summary/barcode_compare.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }.unique()
+            assertAll(
+                { assert workflow.success },
+                { assert rows == ['Gz_only', 'NC_blank', 'Old_1'] },
+                { assert new File("$outputDir/pipeline_info/run_info.json").text.contains('"freyja_data_compare"') }
+            )
+        }
+    }
+
+    test("-stub: --annotate_variants with --skip_consensus is refused") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir            = "$outputDir"
+                input             = absoluteSamplesheet(outputDir, projectDir)
+                barcodes          = 'latest'
+                annotate_variants = true
+                skip_consensus    = true
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('cannot be combined with --skip_consensus') }
+            )
+        }
+    }
+
+    test("-stub: a bad --compare_barcodes names --compare_barcodes, not --barcodes") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir           = "$outputDir"
+                input            = absoluteSamplesheet(outputDir, projectDir)
+                barcodes         = 'latest'
+                compare_barcodes = '/no/such/dataset.csv'
+                db_dir           = "$outputDir/db"
+            }
+        }
+
+        then {
+            def output = (workflow.stdout + workflow.stderr).join('\n')
+            assertAll(
+                { assert workflow.failed },
+                { assert output.contains("--compare_barcodes '/no/such/dataset.csv' is not") },
+                { assert !output.contains("--barcodes '/no/such/dataset.csv'") }
+            )
+        }
+    }
+
+    test("-stub: an unimplemented pathogen fails fast with a helpful message") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir)
+                barcodes = 'latest'
+                pathogen = 'MPX'
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert workflow.trace.tasks().size() == 0 },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('Only --pathogen SARS-CoV-2 is implemented') }
+            )
+        }
+    }
+
+    // Every bundled primer scheme passes the contig check against the bundled reference (demix mode with an
+    // explicit scheme: the BED is validated, per-amplicon coverage is computed)
+    ['midnight', 'midnightv2', 'articv3', 'articv4.1', 'articv5.3.2', 'eden', 'swift', 'qiagenv1', 'xgen'].each { scheme ->
+
+        test("-stub: --primer_scheme ${scheme} is accepted") {
+
+            tag "stub"
+            options "-stub"
+
+            when {
+                params {
+                    mode             = 'demix'
+                    outdir           = "$outputDir"
+                    previous_results = "${projectDir}/tests/fixtures/samplesheet/results_legacy"
+                    barcodes         = 'latest'
+                    primer_scheme    = scheme
+                    db_dir           = "$outputDir/db"
+                }
+            }
+
+            then {
+                assertAll(
+                    { assert workflow.success },
+                    { assert new File("$outputDir/summary/amplicon_coverage.tsv").exists() }
+                )
+            }
+        }
+    }
+}

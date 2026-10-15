@@ -1,0 +1,178 @@
+nextflow_pipeline {
+
+    name "Test pipeline (modes update_db and report)"
+    script "../main.nf"
+    tag "pipeline"
+    tag "update_db"
+
+    // A minimal results directory: report mode only checks that it looks like one
+    def prepareResultsDir = { outDir, withReportData = false ->
+        def info = new File("${outDir}/previous/pipeline_info/run_info.json")
+        info.parentFile.mkdirs()
+        info.text = '{"pipeline_name": "charlesfoster/wasteline", "mode": "full"}'
+        if (withReportData) {
+            def data = new File("${outDir}/previous/summary/report_data.json")
+            data.parentFile.mkdirs()
+            data.text = '{"schema_version": 1}'
+        }
+        return "${outDir}/previous".toString()
+    }
+
+    test("-stub: update_db downloads into --db_dir/freyja/<barcode-version>/ and nothing else") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode   = 'update_db'
+                outdir = "$outputDir"
+                db_dir = "$outputDir/db"
+            }
+        }
+
+        then {
+            def dataset = new File("$outputDir/db/freyja/2000-01-01T00-00")
+            assertAll(
+                { assert workflow.success },
+                { assert dataset.isDirectory() },
+                { assert new File(dataset, 'last_barcode_update.txt').exists() },
+                { assert new File("$outputDir/pipeline_info/freyja_data.json").exists() },
+                // no samplesheet, no demix, no aggregate, no run_info
+                { assert !new File("$outputDir/summary").exists() },
+                { assert !new File("$outputDir/samples").exists() },
+                { assert snapshot(removeNextflowVersion("$outputDir/pipeline_info/software_versions.yml")).match() }
+            )
+        }
+    }
+
+    test("-stub: report mode rebuilds report_data.json and report.html into another outdir") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode        = 'report'
+                outdir      = "$outputDir"
+                results_dir = prepareResultsDir(outputDir)
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert workflow.trace.tasks().collect { task -> task.name.tokenize(':').last().tokenize(' ').first() }.sort() == ['BUILD_REPORT_DATA', 'RENDER_REPORT'] },
+                { assert new File("$outputDir/summary/report.html").exists() },
+                { assert new File("$outputDir/summary/report_data.json").exists() },
+                // the results it read are not touched
+                { assert new File("$outputDir/previous").list().sort() == ['pipeline_info'] }
+            )
+        }
+    }
+
+    test("-stub: report mode renders an existing report_data.json without rebuilding it") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode        = 'report'
+                outdir      = "$outputDir"
+                results_dir = prepareResultsDir(outputDir, true)
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert workflow.trace.tasks().collect { task -> task.name.tokenize(':').last().tokenize(' ').first() } == ['RENDER_REPORT'] },
+                { assert new File("$outputDir/summary/report.html").exists() }
+            )
+        }
+    }
+
+    test("-stub: report mode refuses --outdir equal to --results_dir") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode        = 'report'
+                outdir      = "$outputDir/previous"
+                results_dir = prepareResultsDir(outputDir)
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('--outdir must differ from --results_dir') }
+            )
+        }
+    }
+
+    test("-stub: report mode without --results_dir fails with a helpful message") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode   = 'report'
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('No --results_dir given') }
+            )
+        }
+    }
+
+    test("-stub: report mode refuses a directory that is not a results directory") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode        = 'report'
+                outdir      = "$outputDir"
+                results_dir = "${projectDir}/tests/fixtures/qc"
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('has no pipeline_info/run_info.json') }
+            )
+        }
+    }
+
+    test("-stub: full mode without --input fails with a helpful message") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode   = 'full'
+                outdir = "$outputDir"
+                input  = null
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.failed },
+                { assert (workflow.stdout + workflow.stderr).join('\n').contains('No input given for --mode full') }
+            )
+        }
+    }
+}
