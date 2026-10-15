@@ -182,7 +182,7 @@ columns stay `NA` <!-- UNVERIFIED: --skip_report not run; derived from conf/modu
 | `mapped_pct`                             | `mapped_reads / trimmed_reads * 100` (falls back to raw reads, then to the flagstat total).                                                                                                        |
 | `mean_depth`, `depth_sd`, `median_depth` | Mean, population SD and median of the per-position depth over **every** position of the depths file, zeros included.                                                                               |
 | `pct_genome_ge_1x`, `pct_genome_ge_10x`  | % of the genome with depth >= 1 and >= 10 (fixed thresholds).                                                                                                                                      |
-| `pct_genome_ge_min_depth`                | % of the genome with depth >= `--consensus_min_depth` (default 15), i.e. the part that will not be masked `N` in the consensus.                                                                    |
+| `pct_genome_ge_min_depth`                | % of the genome with depth >= `--consensus_min_depth` (default 10), i.e. the part that will not be masked `N` in the consensus.                                                                    |
 | `amplicons_total`, `amplicons_dropped`   | Amplicons of the primer scheme, and how many have mean depth `< --amplicon_min_depth` (see `amplicon_coverage.tsv`). `NA` when no primer scheme is known (`demix` mode without `--primer_scheme`). |
 | `qc_status`                              | `PASS`, `WARN`, `FAIL`, or `NA` (a negative control with no usable data).                                                                                                                          |
 | `qc_reasons`                             | `;`-joined machine tokens, empty when PASS with no reason (see below).                                                                                                                             |
@@ -544,7 +544,7 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
 - **Reference-length output.** SNVs keep the length; the sequence is 29903 bases for NC_045512.2. Every non-negative
   sample has a record; a negative control has none.
 - **`N` masking.** A position is masked `N` when its depth (from the depths file, Q>=20 bases) is below
-  `--consensus_min_depth` (default 15). Confidently called variant sites are exempt, as in the old pipeline.
+  `--consensus_min_depth` (default 10). Confidently called variant sites are exempt, as in the old pipeline.
 - **IUPAC ambiguity codes.** An SNV whose alternate frequency is above `--consensus_iupac_min_af` (0.25) and below
   `--consensus_freq` (0.75), supported by at least `--consensus_iupac_min_alt_reads` (5) reads, is written as the IUPAC
   code of reference and alternate base (`R Y K M S W`...): `K` at position 210 of `MIX_A`, where G (REF) and T (ALT, 31 of

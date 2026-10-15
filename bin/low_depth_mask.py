@@ -135,7 +135,7 @@ def main(argv=None):
     )
     p.add_argument("--depths", required=True)
     p.add_argument(
-        "--min-depth", type=int, default=15, help="mask positions with depth < this (default 15)"
+        "--min-depth", type=int, default=10, help="mask positions with depth < this (default 10)"
     )
     p.add_argument("--keep-bed", help="BED of positions never masked (confident variant positions)")
     p.add_argument("--length", type=int, help="reference length; unlisted positions are depth 0")

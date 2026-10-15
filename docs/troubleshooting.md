@@ -322,7 +322,7 @@ drops samples below `--freyja_plot_mincov` (the table `freyja_aggregated.tsv` ke
 
 ### The consensus is mostly `N`, or `consensus_stats.tsv` says `empty` or `failed`
 
-Positions with depth below `--consensus_min_depth` (default 15) are written as `N`, so a sample with patchy coverage has a high
+Positions with depth below `--consensus_min_depth` (default 10) are written as `N`, so a sample with patchy coverage has a high
 `n_pct`; a sample with no usable depth is `empty` (all `N`, reference length); `failed` means a consensus step failed for that
 sample (the run continues, and the row is still present). Check `amplicons_dropped` and the coverage track, and lower
 `--consensus_min_depth` only if you accept less supported bases. Negative controls get no consensus.

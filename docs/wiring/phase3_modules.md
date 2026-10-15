@@ -264,7 +264,7 @@ Add to `nextflow.config` `params { }` and to `nextflow_schema.json` (group them 
 | `qc_max_dropped_amplicons` | `1` (was 10 in this design note; see PLAN §6a) | integer, min 0 | QC_SAMPLE | WARN (`amplicon_dropout`) when more amplicons dropped |
 | `ntc_max_mapped_reads` | `1000` | integer, min 0 | QC_SAMPLE | negative control FAIL (`ntc_reads`) above this many mapped reads |
 | `ntc_max_genome_coverage_pct` | `10` | number, 0-100 | QC_SAMPLE | negative control FAIL above this % genome at >= 1x |
-| `consensus_min_depth` | `15` | integer, min 1 | LOW_DEPTH_MASK, QC_SAMPLE | positions below this depth are masked (N); also `pct_genome_ge_min_depth` |
+| `consensus_min_depth` | `10` (design note said 15; see PLAN) | integer, min 1 | LOW_DEPTH_MASK, QC_SAMPLE | positions below this depth are masked (N); also `pct_genome_ge_min_depth` |
 | `consensus_freq` | `0.75` | number, 0-1 | CONSENSUS_FILTER_VCF | SNV ALT_FREQ needed to apply the alt allele |
 | `indel_freq` | `0.75` | number, 0-1 | CONSENSUS_FILTER_VCF | indel ALT_FREQ needed to apply it |
 | `consensus_min_alt_qual` | `20` | integer, min 0 | CONSENSUS_FILTER_VCF | minimum ALT_QUAL |

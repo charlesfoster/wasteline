@@ -141,7 +141,7 @@ Per-sample consensus built from the Freyja variants TSV and depths file (PLAN 5.
 | Parameter                         | Type                | Default | Description                                                                                                                              |
 | --------------------------------- | ------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `--skip_consensus`                | boolean             | `false` | Skip the consensus chain, `consensus_genomes.fasta` and `consensus_stats.tsv` (and so `--annotate_variants`).                            |
-| `--consensus_min_depth`           | integer (>= 1)      | `15`    | Positions below this depth are masked `N` (called variant sites are exempt). Also defines `pct_genome_ge_min_depth` in `qc_summary.tsv`. |
+| `--consensus_min_depth`           | integer (>= 1)      | `10`    | Positions below this depth are masked `N` (called variant sites are exempt). Also defines `pct_genome_ge_min_depth` in `qc_summary.tsv`. |
 | `--consensus_freq`                | number (>= 0, <= 1) | `0.75`  | SNVs at or above this ALT_FREQ (and passing the depth/quality filters) are written as the alternate base.                                |
 | `--indel_freq`                    | number (>= 0, <= 1) | `0.75`  | Indels at or above this ALT_FREQ are applied; below it they are ignored (never IUPAC).                                                   |
 | `--consensus_min_alt_qual`        | integer (>= 0)      | `20`    | Minimum ALT_QUAL of any applied call.                                                                                                    |

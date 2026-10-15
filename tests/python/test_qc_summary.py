@@ -59,7 +59,16 @@ def test_column_order_matches_contract():
 
 
 def test_depth_statistics(tmp_path):
-    row = run(tmp_path, [0, 5, 10, 20, 100], "--collection-date", "2026-01-02", "--site", "plant_A")
+    row = run(
+        tmp_path,
+        [0, 5, 10, 20, 100],
+        "--consensus-min-depth",
+        "15",
+        "--collection-date",
+        "2026-01-02",
+        "--site",
+        "plant_A",
+    )
     assert row["mean_depth"] == "27.00"
     assert row["median_depth"] == "10.00"
     assert row["depth_sd"] == "37.09"  # population SD
@@ -68,6 +77,11 @@ def test_depth_statistics(tmp_path):
     assert row["pct_genome_ge_min_depth"] == "40.00"  # consensus-min-depth 15 -> 20 and 100
     assert row["collection_date"] == "2026-01-02"
     assert row["site"] == "plant_A"
+
+
+def test_consensus_min_depth_defaults_to_10(tmp_path):
+    row = run(tmp_path, [0, 5, 10, 20, 100])
+    assert row["pct_genome_ge_min_depth"] == "60.00"  # depth >= 10: 10, 20 and 100
 
 
 def test_optional_inputs_are_na(tmp_path):

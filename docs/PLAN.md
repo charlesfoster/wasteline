@@ -121,7 +121,7 @@ nf-schema validated (`assets/schema_input.json` etc.). IDs match `^[A-Za-z0-9._-
     `consensus_freq` and ALT_DP >= `consensus_iupac_min_alt_reads` (5) -> heterozygous genotype, emitted as an IUPAC
     ambiguity code (`-H I`)** (`--consensus_iupac false` disables, leaving the reference base); SNV AF <=
     `consensus_iupac_min_af` -> ignored; indel with AF >= `indel_freq` (0.75) -> applied, indel AF < `indel_freq` -> ignored
-    (never IUPAC). Positions with depth < `consensus_min_depth` (15, from the depths file; variant sites exempt as in the
+    (never IUPAC). Positions with depth < `consensus_min_depth` (10, as in the old pipeline, from the depths file; variant sites exempt as in the
     old pipeline) are masked N. Because `freyja_varthresh` defaults to 0.0 the TSV holds every ALT; thresholds are applied
     here, not in Freyja. Status: `ok` (including a clean reference-identical sample with a header-only variants file),
     `empty` (no usable depth: no position outside called variants reaches `consensus_min_depth`, or empty depths file; output

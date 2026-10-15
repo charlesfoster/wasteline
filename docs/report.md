@@ -144,7 +144,7 @@ One small card per sample (QC badge in the corner): mean depth per bin of about 
 genome on a **log scale** (the note gives the top value). Overlays:
 
 - dashed line: the amplicon dropout threshold (`--amplicon_min_depth`, 10x);
-- dotted line: the consensus minimum depth (`--consensus_min_depth`, 15x);
+- dotted line: the consensus minimum depth (`--consensus_min_depth`, 10x by default);
 - shaded bands: amplicons that were dropped (mean depth below the threshold).
 
 Under each track: mean depth, % of the genome at 10x and the number of dropped amplicons. Use it to see at a glance where

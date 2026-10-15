@@ -82,7 +82,7 @@ params {
     qc_max_dropped_amplicons        : Integer = 1
     ntc_max_mapped_reads            : Integer = 1000
     ntc_max_genome_coverage_pct     : Float = 10
-    consensus_min_depth             : Integer = 15
+    consensus_min_depth             : Integer = 10
     consensus_freq                  : Float = 0.75
     indel_freq                      : Float = 0.75
     consensus_min_alt_qual          : Integer = 20

@@ -338,8 +338,8 @@ def main(argv=None):
     p.add_argument(
         "--consensus-min-depth",
         type=int,
-        default=15,
-        help="depth for pct_genome_ge_min_depth (default 15)",
+        default=10,
+        help="depth for pct_genome_ge_min_depth (default 10)",
     )
     p.add_argument(
         "--pass-min-pct",

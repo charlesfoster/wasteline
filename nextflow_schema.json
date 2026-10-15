@@ -456,7 +456,7 @@
                 },
                 "consensus_min_depth": {
                     "type": "integer",
-                    "default": 15,
+                    "default": 10,
                     "description": "Positions below this depth are masked (N); also used for `pct_genome_ge_min_depth`.",
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1

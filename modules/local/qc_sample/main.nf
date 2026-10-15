@@ -21,7 +21,7 @@ process QC_SAMPLE {
     task.ext.when == null || task.ext.when
 
     script:
-    // ext.args: thresholds, e.g. --min-depth 10 --consensus-min-depth 15 --pass-min-pct 80
+    // ext.args: thresholds, e.g. --min-depth 10 --consensus-min-depth 10 --pass-min-pct 80
     //   --fail-below-pct 50 --max-dropped 10 --ntc-max-mapped-reads 1000 --ntc-max-genome-coverage-pct 10
     def args = task.ext.args ?: ''
     prefix = task.ext.prefix ?: "${meta.id}"

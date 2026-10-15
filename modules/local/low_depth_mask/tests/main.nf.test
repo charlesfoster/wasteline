@@ -31,7 +31,7 @@ nextflow_process {
         }
     }
 
-    test("PURE_C: mask = depth < 15, edges masked, no keep BED - real") {
+    test("PURE_C: mask = depth < 10, edges masked, no keep BED - real") {
 
         tag "docker"
         when {
@@ -47,7 +47,7 @@ nextflow_process {
 
         then {
             def depth = new java.util.zip.GZIPInputStream(new FileInputStream("${projectDir}/tests/fixtures/modules_phase3/PURE_C.depths.gz")).text.readLines().collect { (it.split('\t') as List)[3] as int }
-            def expected_masked = depth.count { it < 15 }
+            def expected_masked = depth.count { it < 10 }
             def mask = new File(process.out.bed[0][1].toString()).readLines().collect { it.split('\t') as List }
             def masked = mask.sum { (it[2] as int) - (it[1] as int) }
             assertAll(

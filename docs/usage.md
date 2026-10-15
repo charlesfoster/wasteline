@@ -635,7 +635,7 @@ variant caller. Because `freyja_varthresh` is 0.0, the table holds every alterna
 | SNV with frequency above this and below `consensus_freq`, and enough alt reads, is written as an **IUPAC ambiguity code** | `--consensus_iupac_min_af` (0.25), `--consensus_iupac_min_alt_reads` (5) |
 | SNV at or below `consensus_iupac_min_af` is ignored (reference base)                                                      |                                                                          |
 | indel with frequency >= this is applied; below it ignored, **never** IUPAC                                                | `--indel_freq` (0.75)                                                    |
-| positions with depth below this (from the depths file, variant sites exempt) become `N`                                   | `--consensus_min_depth` (15)                                             |
+| positions with depth below this (from the depths file, variant sites exempt) become `N`                                   | `--consensus_min_depth` (10)                                             |
 
 The defaults are listed in [parameters.md](parameters.md). `--consensus_iupac false` switches ambiguity codes off (the reference base is left instead). `--skip_consensus`
 disables the whole consensus chain and its summaries. Deletions are written as `-`. `consensus_stats.tsv` gives

@@ -39,7 +39,7 @@ Columns: `sample, amplicon, start, end, mean_depth, min_depth, pct_ge_min_depth,
 ```
 qc_summary.py --sample S --sample-type sample|negative [--collection-date D] [--site X] --depths S.depths
               [--flagstat S.flagstat] [--fastp-json S.fastp.json] [--amplicons amplicon_coverage.tsv]
-              [--min-depth 10] [--consensus-min-depth 15] [thresholds] -o S.qc.tsv
+              [--min-depth 10] [--consensus-min-depth 10] [thresholds] -o S.qc.tsv
 qc_summary.py --concat a.tsv b.tsv ... -o qc_summary.tsv      # sorted by sample; headers validated; duplicates rejected
 ```
 
@@ -76,7 +76,7 @@ Reasons are `;`-joined (`low_coverage;amplicon_dropout`).
 ## low_depth_mask.py
 
 ```
-low_depth_mask.py --depths S.depths [--min-depth 15] [--keep-bed variants.bed] [--length 29903] -o mask.bed
+low_depth_mask.py --depths S.depths [--min-depth 10] [--keep-bed variants.bed] [--length 29903] -o mask.bed
 ```
 
 BED (0-based, half-open, merged) of positions with `depth < --min-depth`; contig from the depths file. `--keep-bed`
