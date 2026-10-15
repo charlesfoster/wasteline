@@ -12,6 +12,7 @@ Start here. New to the pipeline? Read the [quick start](QUICKSTART.md) (five min
 | [parameters.md](parameters.md) | Every pipeline parameter with its default, grouped as in `nextflow_schema.json`. |
 | [output.md](output.md) | Every output file and column, `run_info.json` and how to reproduce a run. |
 | [report.md](report.md) | Reading the self-contained HTML report (`summary/report.html`). |
+| [example_report.html](example_report.html) | A real report from the synthetic test data (open it in a browser; paths anonymised). |
 | [troubleshooting.md](troubleshooting.md) | Failure modes seen in practice: symptom, cause, fix. |
 | [migration_from_snakemake.md](migration_from_snakemake.md) | For users of `covid-illumina-snakemake` (`CIS --workflow wastewater`): option mapping, behavioural differences, re-demixing old results. |
 | [helper_scripts.md](helper_scripts.md) | `bin/make_samplesheet.py` and `bin/check_samplesheet.py` in detail. |

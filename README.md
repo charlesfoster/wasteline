@@ -141,7 +141,8 @@ run-level error flag, while its demix status stays `ok`:
 
 ![Negative controls and barcode comparison (with --compare_barcodes)](docs/images/report_controls_comparison.png)
 
-How to read each panel: [docs/report.md](docs/report.md).
+A complete example you can open in a browser: [docs/example_report.html](docs/example_report.html) (synthetic data; download the
+file and open it locally, GitHub shows the HTML as source). How to read each panel: [docs/report.md](docs/report.md).
 
 ## Documentation
 
