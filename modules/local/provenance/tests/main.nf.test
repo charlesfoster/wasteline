@@ -21,7 +21,7 @@ nextflow_process {
                 def fd = new File("\${launchDir}/freyja_data.json")
                 fd.text = groovy.json.JsonOutput.toJson(keys.collectEntries { key -> [ (key): "v-" + key ] })
                 def versions = new File("\${launchDir}/versions.yml")
-                versions.text = 'FREYJA_DEMIX:\\n  freyja: 2.0.5\\n'
+                versions.text = 'FREYJA_DEMIX:\\n  freyja: 2.0.6\\n'
                 input[0] = file(base.toString())
                 input[1] = file("\$projectDir/assets/samplesheet.csv")
                 input[2] = file("\$projectDir/assets/primer_schemes/midnight.bed")
@@ -38,7 +38,7 @@ nextflow_process {
             assertAll(
                 { assert process.success },
                 { assert info.pipeline_version == '0.0.0' },
-                { assert info.freyja_version == '2.0.5' },
+                { assert info.freyja_version == '2.0.6' },
                 { assert info.freyja_data.barcode_version == 'v-barcode_version' },
                 { assert info.freyja_data_compare.barcode_version == 'v-barcode_version' },
                 { assert info.input_checksums.primer_bed.sha256 ==~ /[0-9a-f]{64}/ },

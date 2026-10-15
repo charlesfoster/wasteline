@@ -3,8 +3,8 @@ process FREYJA_AGGREGATE_CONTROLS {
 
     conda "${moduleDir}/environment.yml"
     container "${workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container
-        ? 'https://depot.galaxyproject.org/singularity/freyja:2.0.5--pyhdfd78af_0'
-        : 'quay.io/biocontainers/freyja:2.0.5--pyhdfd78af_0'}"
+        ? 'https://depot.galaxyproject.org/singularity/freyja:2.0.6--pyhdfd78af_0'
+        : 'quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0'}"
 
     input:
     tuple val(ids), path(demix_files, stageAs: 'demix/?.demix') // negative controls with status ok, and their .demix files, same order

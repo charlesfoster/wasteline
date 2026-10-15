@@ -140,7 +140,7 @@ nextflow_pipeline {
                 { assert new File("$outputDir/summary/report_data.json").text.contains('"ntc_reads"') },
                 { assert run_info.freyja_data.source == 'container' },
                 { assert run_info.freyja_data.barcodes_sha256 ==~ /[0-9a-f]{64}/ },
-                { assert run_info.freyja_version == '2.0.5' },
+                { assert run_info.freyja_version == '2.0.6' },
                 // run_info.containers is filled from the execution trace, which nf-test disables
                 { assert run_info.containsKey('containers') },
                 { assert new File("$outputDir/samples/MIX_A/freyja/MIX_A.demix_status.json").text.contains(run_info.freyja_data.barcode_version) }

@@ -639,7 +639,7 @@ ends (so a run that crashed before completion has no `success` key). Real exampl
   "provenance_generated": "2026-10-15T16:01:15Z",
   "containers": {
     "FASTP": "community.wave.seqera.io/library/fastp:1.3.6--4df8d6c11b471bde",
-    "FREYJA_DEMIX": "quay.io/biocontainers/freyja:2.0.5--pyhdfd78af_0",
+    "FREYJA_DEMIX": "quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0",
     "...": "one entry per process"
   },
   "run_completed": "2026-10-16T03:01:17.380280+11:00",

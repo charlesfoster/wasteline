@@ -18,19 +18,19 @@
                     "python": "3.12.12"
                 },
                 "FREYJA_AGGREGATE_CONTROLS": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_AGGREGATE_PLOT": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_DATASET_INFO": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_DEMIX": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_UPDATE": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "IVAR_VARIANTS_TO_VCF": {
                     "python": "3.12.12"

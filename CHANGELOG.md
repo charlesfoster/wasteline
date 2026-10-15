@@ -89,6 +89,7 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 - fastp `1.3.6`, bwa `0.7.19`, samtools `1.24`, ivar `1.4.4`, bcftools `1.23`, Python `3.12.12`, MultiQC `1.35` (image used
   only for its Jinja2 to render the report); every container is pinned to an exact tag.
 - Nextflow `>=26.04.0` (CI tests `26.04.0` and `26.04.6`), nf-schema `2.5.1`, generated with nf-core tools `4.1.0`.
+- Bump Freyja container `2.0.5--pyhdfd78af_0` -> `2.0.6--pyhdfd78af_0` (automated by `bin/bump_freyja.py`)
 
 ### `Deprecated`
 

@@ -40,28 +40,28 @@
                     "fastp": "1.3.6"
                 },
                 "FREYJA_AGGREGATE_CONTROLS": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_AGGREGATE_PLOT": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_BOOT": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_DATASET_INFO": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_DEMIX": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_DEMIX_COMPARE": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_UPDATE": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "FREYJA_VARIANTS": {
-                    "freyja": "2.0.5"
+                    "freyja": "2.0.6"
                 },
                 "IVAR_TRIM": {
                     "ivar": "1.4.4"

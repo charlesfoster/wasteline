@@ -847,7 +847,7 @@ Generic advice (not cluster-specific, and untested here):
 
 ## 16. Updating the Freyja version of the pipeline
 
-The Freyja container is pinned to one exact tag per wasteline release (currently `quay.io/biocontainers/freyja:2.0.5--pyhdfd78af_0`, in every
+The Freyja container is pinned to one exact tag per wasteline release (currently `quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0`, in every
 `freyja_*` module and its `environment.yml`); every other container is pinned too, none uses `latest`. Freyja is the one tool
 that is bumped automatically:
 
