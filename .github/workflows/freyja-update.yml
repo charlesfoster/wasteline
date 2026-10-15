@@ -1,0 +1,151 @@
+name: Freyja update
+# Daily: if a newer Freyja release is available on quay.io, bioconda AND the Galaxy singularity depot,
+# open a PR (branch bot/freyja-<version>) that bumps every pin (bin/bump_freyja.py) and refreshes the
+# container digest lock (bin/lock_containers.py). Same-major bumps get auto-merge enabled and merge
+# only after the required checks pass; a new MAJOR version stays open with the `needs-review` label.
+# Setup (secret BOT_TOKEN, branch protection, auto-merge): docs/ci.md.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: freyja-update
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: update
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # A PAT / GitHub App token: PRs opened with the default GITHUB_TOKEN do not trigger CI.
+      HAS_BOT_TOKEN: ${{ secrets.BOT_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Pins are consistent before we touch anything
+        run: python bin/bump_freyja.py --require-consistent
+
+      - name: Check for a newer Freyja
+        id: check
+        run: |
+          set +e
+          python bin/bump_freyja.py --check --json > check.json
+          rc=$?
+          set -e
+          cat check.json
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 10 ]; then
+            echo "::error::bin/bump_freyja.py --check failed (exit $rc)"
+            exit "$rc"
+          fi
+          {
+            echo "update=$(jq -r '.update_available' check.json)"
+            echo "status=$(jq -r '.status' check.json)"
+            echo "pinned=$(jq -r '.pinned' check.json)"
+            echo "latest=$(jq -r '.latest' check.json)"
+            echo "version=$(jq -r '.latest_version' check.json)"
+            echo "pinned_version=$(jq -r '.pinned_version' check.json)"
+            echo "major=$(jq -r '.major_bump' check.json)"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Freyja update check"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| pinned | \`$(jq -r '.pinned' check.json)\` |"
+            echo "| latest | \`$(jq -r '.latest' check.json)\` |"
+            echo "| status | $(jq -r '.status' check.json) |"
+            echo "| major bump | $(jq -r '.major_bump' check.json) |"
+            jq -r '.blocked_reasons[]? | "| blocked | " + . + " |"' check.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Refuse to continue without BOT_TOKEN
+        if: steps.check.outputs.update == 'true' && env.HAS_BOT_TOKEN != 'true'
+        run: |
+          echo "::error::A newer Freyja is available but the BOT_TOKEN secret is not set (see docs/ci.md)"
+          exit 1
+
+      - name: Rewrite all Freyja pins
+        if: steps.check.outputs.update == 'true'
+        env:
+          LATEST: ${{ steps.check.outputs.latest }}
+        run: python bin/bump_freyja.py --apply --tag "$LATEST"
+
+      - name: Refresh the container digest lock
+        if: steps.check.outputs.update == 'true'
+        run: python bin/lock_containers.py --update
+
+      - name: Pins and lock agree after the bump
+        if: steps.check.outputs.update == 'true'
+        run: |
+          python bin/bump_freyja.py --require-consistent
+          python bin/lock_containers.py --check
+
+      - name: Make sure the labels exist
+        if: steps.check.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create dependencies --color 0366d6 --description "Dependency updates" --force
+          gh label create needs-review --color d93f0b --description "Needs a human review before merging" --force
+
+      - name: Open or update the PR
+        id: cpr
+        if: steps.check.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.BOT_TOKEN }}
+          base: ${{ github.event.repository.default_branch }}
+          branch: bot/freyja-${{ steps.check.outputs.version }}
+          delete-branch: true
+          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          commit-message: "Bump Freyja ${{ steps.check.outputs.pinned_version }} -> ${{ steps.check.outputs.version }}"
+          title: "Bump Freyja ${{ steps.check.outputs.pinned_version }} -> ${{ steps.check.outputs.version }}${{ steps.check.outputs.major == 'true' && ' (MAJOR)' || '' }}"
+          labels: ${{ steps.check.outputs.major == 'true' && 'dependencies,needs-review' || 'dependencies' }}
+          body: |
+            Automated by `.github/workflows/freyja-update.yml`.
+
+            | | |
+            |---|---|
+            | from | `${{ steps.check.outputs.pinned }}` |
+            | to | `${{ steps.check.outputs.latest }}` |
+            | major bump | ${{ steps.check.outputs.major }} |
+
+            Rewrote every Freyja pin with `bin/bump_freyja.py --apply`, refreshed
+            `conf/containers.lock.config` with `bin/lock_containers.py --update`, and added a
+            CHANGELOG line. Verified before opening: the version exists on quay.io, bioconda and the
+            Galaxy singularity depot.
+
+            ${{ steps.check.outputs.major == 'true' && '**Major version bump: auto-merge is NOT enabled. Review the Freyja release notes (CLI/output changes, barcode format) and the required checks, then merge by hand.**' || 'Same-major bump: auto-merge (squash) is enabled and fires only once every required check passes.' }}
+
+      # Auto-merge only for same-major bumps. It merges when the branch-protection required checks
+      # pass; if branch protection / "Allow auto-merge" is not configured this step fails loudly.
+      - name: Enable auto-merge (same-major only)
+        if: steps.cpr.outputs.pull-request-number != '' && steps.check.outputs.major != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.cpr.outputs.pull-request-number }}
+        run: gh pr merge --auto --squash "$PR"
+
+      - name: Summary
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          PR_URL: ${{ steps.cpr.outputs.pull-request-url }}
+          OPERATION: ${{ steps.cpr.outputs.pull-request-operation }}
+          MAJOR: ${{ steps.check.outputs.major }}
+        run: |
+          echo "PR ${OPERATION}: ${PR_URL} (major=${MAJOR})" | tee -a "$GITHUB_STEP_SUMMARY"

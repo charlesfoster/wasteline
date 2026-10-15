@@ -1,0 +1,115 @@
+{
+    "tags": [
+        {
+            "name": "latest",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "dev",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.5",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.9--pyhdfd78af_0",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.10--pyhdfd78af_0",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.10--pyhdfd78af_1",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.10--py311h9ee0642_1",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.10--pyhdfd78af_1-arm64",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.11rc1--pyhdfd78af_0",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.11.dev1--pyhdfd78af_0",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "3.0.0b2--pyhdfd78af_0",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        },
+        {
+            "name": "2.0.5--pyhdfd78af_0",
+            "reversion": false,
+            "start_ts": 1789722529,
+            "manifest_digest": "sha256:7b96b2658278f2d9311182a093d26b5171cfa5c7b0006e191577eeb95e1b8707",
+            "is_manifest_list": false,
+            "size": 413452198,
+            "last_modified": "Fri, 18 Sep 2026 09:08:49 -0000"
+        }
+    ],
+    "page": 1,
+    "has_additional": false,
+    "_note": "Hand-written odd tags in the shape of the quay.io tag API; expected latest is 2.0.10--pyhdfd78af_1"
+}

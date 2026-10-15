@@ -1,0 +1,242 @@
+name: CI
+# Pipeline CI (see docs/ci.md). Required status checks: `ci-required` (this workflow), plus
+# `pre-commit` and `nf-core` from linting.yml. Everything else here is informational.
+#
+# Test tag conventions (nf-test):
+#   stub            tests run with -stub, no container engine needed (fast, required)
+#   docker          real tests that run containers (required on Freyja-pin PRs and on main)
+#   upstream_canary non-blocking upstream canaries (tests/canary/)
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "23 4 * * 1" # weekly: full run incl. canary and digest verification
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NXF_ANSI_LOG: false
+  NFT_VER: "0.9.5" # as locked in pixi.lock
+  PIXI_VER: "v0.67.0" # as used to write pixi.lock
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      freyja: ${{ steps.diff.outputs.freyja }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # "Does this PR touch a Freyja pin?" Non-PR events (main, schedule, manual) always run everything.
+      - name: Detect Freyja pin changes
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          freyja=false
+          if [ "$EVENT" != "pull_request" ]; then
+            freyja=true
+          elif [[ "$HEAD_REF" == bot/freyja-* ]]; then
+            freyja=true
+          elif git diff -U0 "$BASE_SHA" HEAD | grep -Eq '^[+-].*(biocontainers/freyja:|singularity/freyja:|bioconda::freyja=)'; then
+            freyja=true
+          fi
+          echo "freyja=$freyja" >> "$GITHUB_OUTPUT"
+          echo "Freyja pin touched / full run: $freyja"
+
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: ${{ env.PIXI_VER }}
+          locked: true
+          cache: true
+      - run: pixi run ruff check bin tests
+      - run: pixi run ruff format --check bin tests
+
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: ${{ env.PIXI_VER }}
+          locked: true
+          cache: true
+      # includes the invariant that every Freyja pin agrees (tests/python/test_bump_freyja.py)
+      - run: pixi run pytest tests/python
+
+  # Same linter as linting.yml's `nf-core` job, but never in --release mode: the repo has no
+  # dev -> main flow, so --release (which rejects a `dev` version) would fail every PR to main.
+  nf-core-lint:
+    name: nf-core-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: nf-core/setup-nextflow@893c28b667aedeba26e37f296d260ccc5bc4d914 # v3.0.1
+        with:
+          version: "26.04.6"
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: ${{ env.PIXI_VER }}
+          locked: true
+          cache: true
+      - run: pixi run nf-core pipelines lint --dir .
+
+  nf-test-stub:
+    name: nf-test-stub (Nextflow ${{ matrix.nxf }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        nxf: ["26.04.0", "26.04.6"] # manifest.nextflowVersion minimum, latest stable we use
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nf-core/setup-nextflow@893c28b667aedeba26e37f296d260ccc5bc4d914 # v3.0.1
+        with:
+          version: ${{ matrix.nxf }}
+      - uses: nf-core/setup-nf-test@4069fbbaabe94c08faba4ad261bfa88225ba133f # v2.1.0
+        with:
+          version: ${{ env.NFT_VER }}
+          install-pdiff: true
+
+      # An empty selection would turn this required job into a silent no-op: fail instead.
+      - name: Check that tests tagged `stub` exist
+        run: |
+          out=$(nf-test test --tag stub --profile test_stub --dry-run --ci)
+          echo "$out"
+          if grep -q 'No tests to execute' <<< "$out"; then
+            echo "::error::no nf-test tests carry the tag 'stub' (see tag conventions in docs/ci.md)"
+            exit 1
+          fi
+
+      - name: Run stub tests
+        run: nf-test test --tag stub --profile test_stub --ci --verbose
+
+  nf-test-docker:
+    name: nf-test-docker (Nextflow ${{ matrix.nxf }})
+    needs: [changes]
+    # Skipped (which counts as passing for required checks) unless the PR touches a Freyja pin;
+    # always runs on pushes to main, on the schedule and on manual runs.
+    if: needs.changes.outputs.freyja == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        nxf: ["26.04.0", "26.04.6"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nf-core/setup-nextflow@893c28b667aedeba26e37f296d260ccc5bc4d914 # v3.0.1
+        with:
+          version: ${{ matrix.nxf }}
+      - uses: nf-core/setup-nf-test@4069fbbaabe94c08faba4ad261bfa88225ba133f # v2.1.0
+        with:
+          version: ${{ env.NFT_VER }}
+          install-pdiff: true
+
+      - name: Check that tests tagged `docker` exist
+        run: |
+          out=$(nf-test test --tag docker --profile=+docker --dry-run --ci)
+          echo "$out"
+          if grep -q 'No tests to execute' <<< "$out"; then
+            echo "::error::no nf-test tests carry the tag 'docker' (see tag conventions in docs/ci.md)"
+            exit 1
+          fi
+
+      - name: Run real (container) tests
+        run: nf-test test --tag docker --profile=+docker --ci --verbose
+
+      - name: Upload nf-test logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nf-test-docker-logs
+          path: .nf-test/tests/**/meta/
+          include-hidden-files: true
+          if-no-files-found: ignore
+
+  # Non-blocking: is plain `freyja plot` still broken upstream (PLAN D6)? Fails when upstream is fixed.
+  upstream-canary:
+    name: upstream-canary
+    needs: [changes]
+    if: needs.changes.outputs.freyja == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nf-core/setup-nextflow@893c28b667aedeba26e37f296d260ccc5bc4d914 # v3.0.1
+        with:
+          version: "26.04.6"
+      - uses: nf-core/setup-nf-test@4069fbbaabe94c08faba4ad261bfa88225ba133f # v2.1.0
+        with:
+          version: ${{ env.NFT_VER }}
+          install-pdiff: true
+      - run: nf-test test --tag upstream_canary --profile=+docker --ci --verbose
+
+  # Non-blocking: conf/containers.lock.config must match the container pins. A Freyja bump PR runs
+  # `--update` itself; elsewhere a failure here means someone changed a pin without re-locking.
+  container-lock:
+    name: container-lock
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Lock is not stale
+        run: python bin/lock_containers.py --check
+      - name: Digests still match the registries (weekly)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python bin/lock_containers.py --check --verify-digests
+
+  # One stable name for branch protection. A skipped nf-test-docker counts as passing.
+  ci-required:
+    name: ci-required
+    if: always()
+    needs: [ruff, pytest, nf-core-lint, nf-test-stub, nf-test-docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All required jobs passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS"
+          if grep -Eq '"result": "(failure|cancelled)"' <<< "$RESULTS"; then
+            echo "::error::a required job failed or was cancelled"
+            exit 1
+          fi
