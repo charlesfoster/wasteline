@@ -1,0 +1,682 @@
+{#- wasteline HTML report. Self-contained: no external URLs, fonts or images.
+    Rendered by bin/render_report.py with autoescape ON; every data string goes through {{ }}.
+    Python only precomputes numbers / class names (see build_context). -#}
+{% macro qcbadge(s) -%}
+<span class="badge b-{{ (s or 'NA')|lower }}">{{ s or 'NA' }}</span>
+{%- endmacro %}
+{% macro dxbadge(s) -%}
+{%- set cls = {'ok': 'pass', 'failed': 'fail', 'skipped_low_coverage': 'warn', 'missing': 'warn'}.get(s, 'na') -%}
+<span class="badge b-{{ cls }}">{{ s or 'n/a' }}</span>
+{%- endmacro %}
+{% macro filterbar(scope, with_qc=false) -%}
+<div class="filterbar" data-scope="#{{ scope }}">
+  <label>Filter <input type="search" placeholder="sample name" data-f="text" aria-label="Filter samples by name"></label>
+  {% if with_qc %}
+  <label>QC <select data-f="qc" aria-label="Filter by QC status">
+    <option value="">all</option><option>PASS</option><option>WARN</option><option>FAIL</option><option>NA</option>
+  </select></label>
+  <label><input type="checkbox" data-f="issues"> only WARN/FAIL</label>
+  {% endif %}
+  <label><input type="checkbox" data-f="hidentc"> hide controls</label>
+  <span class="count" data-f="count" aria-live="polite"></span>
+</div>
+{%- endmacro %}
+{% macro lineage_block(v, what, id) -%}
+<div id="{{ id }}" class="lin" {{ 'hidden' if what == 'full' }}>
+  {% if v.n_ok == 0 %}
+  <p class="note">No sample has a successful lineage result.</p>
+  {% else %}
+  <ul class="legend" aria-label="Colour legend">
+    {% for item in v.legend %}<li><i class="sw {{ item.cls }}"></i>{{ item.name }}</li>{% endfor %}
+  </ul>
+  <h3>Relative abundance per sample</h3>
+  <div class="bars" id="{{ id }}-bars">
+    {% for row in v.rows %}
+    <div class="brow" data-sample="{{ row.sample }}" data-qc="{{ row.qc }}" data-ntc="{{ 1 if row.ntc else 0 }}">
+      <span class="lbl" title="{{ row.sample }}">{{ row.sample }}{% if row.ntc %} <em class="chip">NTC</em>{% endif %}</span>
+      {% if row.segs %}
+      <svg viewBox="0 0 1000 14" preserveAspectRatio="none" role="img" aria-label="Lineage abundance of {{ row.sample }}">
+        <rect class="track" x="0" y="0" width="1000" height="14"/>
+        {% for s in row.segs %}<rect class="{{ s.cls }}" x="{{ s.x }}" y="0" width="{{ s.w }}" height="14"><title>{{ s.title }}</title></rect>{% endfor %}
+      </svg>
+      {% else %}
+      <span class="nobar">{{ dxbadge(row.status) }} {{ row.reason|short(90) if row.reason }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <h3>Sample &times; lineage heatmap <small>(% abundance; colour scale is square-root)</small></h3>
+  {% if v.n_hidden %}<p class="note">{{ v.n_hidden }} sample(s) without a lineage result are not shown (see Demix status).</p>{% endif %}
+  <div class="scroll" id="{{ id }}-heat">
+    <table class="heat">
+      <thead><tr><th class="s">Sample</th>{% for c in v.columns %}<th class="vh" title="{{ c }}"><span>{{ c|short(22) }}</span></th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in v.heat_rows %}
+        <tr data-sample="{{ row.sample }}" data-qc="{{ row.qc }}" data-ntc="{{ 1 if row.ntc else 0 }}"><th class="s" title="{{ row.sample }}">{{ row.sample|short(28) }}</th>{% for c in row.cells %}<td class="{{ c.cls }}" title="{{ c.title }}">{{ c.text }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{%- endmacro %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="generator" content="wasteline render_report.py">
+<title>{{ h.pipeline_name or 'wasteline' }} report</title>
+<style>
+:root{
+  --bg:#ffffff;--fg:#1c2128;--muted:#5b6570;--line:#d5dbe1;--panel:#f5f7f9;--link:#0b5cad;
+  --pass:#00775a;--pass-bg:#d9f0e8;--warn:#8a5a00;--warn-bg:#fdebc8;--fail:#a83900;--fail-bg:#fbdccc;--na:#5b6570;--na-bg:#e8ebee;--info:#0b5cad;--info-bg:#dcebf8;
+  --c0:#0072B2;--c1:#E69F00;--c2:#009E73;--c3:#CC79A7;--c4:#56B4E9;--c5:#D55E00;--c6:#F0E442;--c7:#882255;--c8:#44AA99;--c9:#332288;--co:#9aa0a6;
+  --track:#e8ebee;--thr:#1c2128;--drop:rgba(213,94,0,.28);
+  --h0:#f1f3f5;--h1:#e1edf7;--h2:#cfe2f3;--h3:#b3d3ec;--h4:#8fbfe3;--h5:#6aa8d6;--h6:#4a8fc6;--h7:#2f75b0;--h8:#1b5a96;--h9:#0b3d78;
+  --hfg-lo:#1c2128;--hfg-hi:#ffffff;
+  --d0:#a32b00;--d1:#e8794a;--d2:#cfe2f3;--d3:#8fbfe3;--d4:#3f84bd;--d5:#0b3d78;--dn:#c9ced3;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14181d;--fg:#e4e8ec;--muted:#9aa5b1;--line:#2f3741;--panel:#1b2128;--link:#6db3f2;
+    --pass:#4cc9a4;--pass-bg:#10382e;--warn:#f0b84a;--warn-bg:#40300c;--fail:#ff9a66;--fail-bg:#4a1f0c;--na:#9aa5b1;--na-bg:#262d35;--info:#6db3f2;--info-bg:#17324b;
+    --c0:#4da3e0;--c1:#E69F00;--c2:#1fbf94;--c3:#d98bb8;--c4:#56B4E9;--c5:#ee7a33;--c6:#F0E442;--c7:#cc6688;--c8:#44AA99;--c9:#8c80e0;--co:#6b737c;
+    --track:#262d35;--thr:#e4e8ec;--drop:rgba(238,122,51,.32);
+    --h0:#1d232a;--h1:#1f3347;--h2:#234563;--h3:#285882;--h4:#2f6da3;--h5:#3d84c0;--h6:#5b9fd6;--h7:#7fb7e3;--h8:#a5cdee;--h9:#cde4f6;
+    --hfg-lo:#e4e8ec;--hfg-hi:#14181d;
+    --d0:#ff6b3d;--d1:#f09a6a;--d2:#234563;--d3:#2f6da3;--d4:#5b9fd6;--d5:#cde4f6;--dn:#3a424b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14181d;--fg:#e4e8ec;--muted:#9aa5b1;--line:#2f3741;--panel:#1b2128;--link:#6db3f2;
+  --pass:#4cc9a4;--pass-bg:#10382e;--warn:#f0b84a;--warn-bg:#40300c;--fail:#ff9a66;--fail-bg:#4a1f0c;--na:#9aa5b1;--na-bg:#262d35;--info:#6db3f2;--info-bg:#17324b;
+  --c0:#4da3e0;--c1:#E69F00;--c2:#1fbf94;--c3:#d98bb8;--c4:#56B4E9;--c5:#ee7a33;--c6:#F0E442;--c7:#cc6688;--c8:#44AA99;--c9:#8c80e0;--co:#6b737c;
+  --track:#262d35;--thr:#e4e8ec;--drop:rgba(238,122,51,.32);
+  --h0:#1d232a;--h1:#1f3347;--h2:#234563;--h3:#285882;--h4:#2f6da3;--h5:#3d84c0;--h6:#5b9fd6;--h7:#7fb7e3;--h8:#a5cdee;--h9:#cde4f6;
+  --hfg-lo:#e4e8ec;--hfg-hi:#14181d;
+  --d0:#ff6b3d;--d1:#f09a6a;--d2:#234563;--d3:#2f6da3;--d4:#5b9fd6;--d5:#cde4f6;--dn:#3a424b;
+}
+*{box-sizing:border-box}
+html{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--fg)}
+body{margin:0;background:var(--bg);color:var(--fg)}
+[hidden]{display:none!important}
+a{color:var(--link)}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px 48px}
+header.top{border-bottom:1px solid var(--line);padding:18px 0 14px;margin-bottom:12px}
+header.top h1{margin:0 0 4px;font-size:1.6rem}
+.sub{color:var(--muted);margin:0 0 10px}
+.facts{display:flex;flex-wrap:wrap;gap:8px 28px;margin:10px 0 0}
+.facts div{min-width:120px}
+.facts dt{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.facts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.barcode{display:inline-block;border:2px solid var(--pass);background:var(--pass-bg);color:var(--fg);border-radius:8px;padding:6px 12px;margin:6px 0}
+.barcode.unknown,.barcode.missing{border-color:var(--warn);background:var(--warn-bg)}
+.barcode.custom{border-color:var(--info);background:var(--info-bg)}
+.barcode b{font-size:1.25rem;font-variant-numeric:tabular-nums}
+.barcode small{display:block;color:var(--muted)}
+nav.toc{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 4px;font-size:.9rem}
+section{margin:26px 0;scroll-margin-top:8px}
+h2{font-size:1.25rem;margin:0 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+h3{font-size:1rem;margin:18px 0 6px}
+h3 small{font-weight:400;color:var(--muted)}
+p.note,.note{color:var(--muted);margin:6px 0}
+.na-note{border:1px dashed var(--line);border-radius:6px;padding:8px 12px;color:var(--muted);background:var(--panel)}
+.cards{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;min-width:110px}
+.stat b{font-size:1.3rem;display:block;font-variant-numeric:tabular-nums}
+.stat span{font-size:.78rem;color:var(--muted)}
+ul.flags{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+ul.flags li{border-left:5px solid var(--line);background:var(--panel);padding:6px 10px;border-radius:0 6px 6px 0}
+ul.flags li.error{border-color:var(--fail);background:var(--fail-bg)}
+ul.flags li.warn{border-color:var(--warn);background:var(--warn-bg)}
+ul.flags li.info{border-color:var(--info);background:var(--info-bg)}
+ul.flags .lv{font-weight:700;font-size:.72rem;letter-spacing:.06em;margin-right:8px}
+ul.flags .code{color:var(--muted);font-size:.78rem;margin-left:8px}
+.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.78rem;font-weight:700;border:1px solid currentColor;white-space:nowrap}
+.badge::before{margin-right:4px}
+.b-pass{color:var(--pass);background:var(--pass-bg)}.b-pass::before{content:"\2713"}
+.b-warn{color:var(--warn);background:var(--warn-bg)}.b-warn::before{content:"!"}
+.b-fail{color:var(--fail);background:var(--fail-bg)}.b-fail::before{content:"\2715"}
+.b-na{color:var(--na);background:var(--na-bg)}.b-na::before{content:"\2013"}
+.chip{font-style:normal;font-size:.68rem;font-weight:700;border:1px solid var(--muted);color:var(--muted);border-radius:4px;padding:0 4px;margin-left:4px}
+.filterbar{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin:8px 0;font-size:.9rem}
+.filterbar input[type=search],.filterbar select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+.filterbar .count{color:var(--muted)}
+.seg button{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);padding:3px 12px;cursor:pointer}
+.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0;border-left:0}
+.seg button[aria-pressed=true]{background:var(--link);color:var(--bg);border-color:var(--link)}
+.scroll{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{padding:3px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+table.sortable td:nth-child(-n+4){white-space:nowrap}
+thead th{position:sticky;top:0;background:var(--panel);z-index:2;white-space:nowrap}
+table.sortable thead th[data-sort]{cursor:pointer;user-select:none}
+table.sortable thead th[aria-sort=ascending]::after{content:" \25B2";font-size:.7em}
+table.sortable thead th[aria-sort=descending]::after{content:" \25BC";font-size:.7em}
+tbody tr:hover{background:var(--panel)}
+tr.ntc td:first-child,tr.ntc th:first-child{font-style:italic}
+.qc-wrap{max-height:70vh}
+.reasons{color:var(--muted);font-size:.8rem}
+/* categorical colours */
+.c0{fill:var(--c0);background:var(--c0)}.c1{fill:var(--c1);background:var(--c1)}.c2{fill:var(--c2);background:var(--c2)}
+.c3{fill:var(--c3);background:var(--c3)}.c4{fill:var(--c4);background:var(--c4)}.c5{fill:var(--c5);background:var(--c5)}
+.c6{fill:var(--c6);background:var(--c6)}.c7{fill:var(--c7);background:var(--c7)}.c8{fill:var(--c8);background:var(--c8)}
+.c9{fill:var(--c9);background:var(--c9)}.co{fill:var(--co);background:var(--co)}
+ul.legend{list-style:none;display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0;padding:0;font-size:.85rem}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.bars{display:grid;gap:3px}
+.brow{display:grid;grid-template-columns:minmax(80px,200px) 1fr;gap:8px;align-items:center}
+.brow .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.83rem}
+.brow svg{width:100%;height:14px;display:block}
+.brow svg .track{fill:var(--track)}
+.nobar{font-size:.8rem;color:var(--muted)}
+/* heatmaps (html tables) */
+table.heat{width:auto;font-size:.72rem}
+table.heat th,table.heat td{padding:1px 3px;border:0;text-align:center;min-width:26px}
+table.heat th.s{position:sticky;left:0;background:var(--bg);text-align:left;white-space:nowrap;z-index:1;font-weight:400;font-size:.78rem}
+table.heat thead th.s{z-index:3;background:var(--panel)}
+table.heat th.vh{vertical-align:bottom;height:130px;padding:2px 0}
+table.heat th.vh span{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-weight:400;font-size:.75rem}
+.h0{background:var(--h0)}.h1{background:var(--h1)}.h2{background:var(--h2)}.h3{background:var(--h3)}.h4{background:var(--h4)}
+.h5{background:var(--h5)}.h6{background:var(--h6)}.h7{background:var(--h7)}.h8{background:var(--h8)}.h9{background:var(--h9)}
+.h0,.h1,.h2,.h3,.h4,.h5{color:var(--hfg-lo)}.h6,.h7,.h8,.h9{color:var(--hfg-hi)}
+td.na{color:var(--muted);background:transparent}
+td.lowd{outline:1px dashed var(--muted);outline-offset:-2px;font-style:italic}
+/* coverage */
+.covgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
+.cov{border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--panel)}
+.cov h4{margin:0 0 3px;font-size:.84rem;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.cov h4 span.nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cov svg{width:100%;height:64px;display:block;background:var(--bg);border:1px solid var(--line)}
+.cov svg .area{fill:var(--c0);fill-opacity:.8;stroke:none}
+.cov svg .thr{stroke:var(--thr);stroke-width:1;stroke-dasharray:4 3;vector-effect:non-scaling-stroke}
+.cov svg .thr2{stroke:var(--muted);stroke-width:1;stroke-dasharray:1 3;vector-effect:non-scaling-stroke}
+.cov svg .drop{fill:var(--drop);stroke:var(--d0);stroke-width:1;vector-effect:non-scaling-stroke}
+.cov .meta{font-size:.74rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:2px 10px}
+.key{display:inline-block;width:18px;height:0;border-top:2px dashed var(--thr);vertical-align:middle;margin-right:4px}
+.key.drop{width:14px;height:10px;border:1px solid var(--d0);background:var(--drop)}
+/* amplicon dropout */
+.arows{position:relative}
+.arow{display:grid;grid-template-columns:minmax(80px,200px) 1fr;gap:8px;align-items:center;margin:1px 0}
+.arow .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.78rem}
+.arow svg{width:100%;height:11px;display:block;shape-rendering:crispEdges;background:var(--dn)}
+.arow svg.freq{height:34px;background:transparent}
+.arow svg.freq rect{fill:var(--d1)}
+.arow .ruler{position:relative;height:14px;font-size:.68rem;color:var(--muted)}
+.arow .ruler span{position:absolute;transform:translateX(-50%)}
+.d0{fill:var(--d0);background:var(--d0)}.d1{fill:var(--d1);background:var(--d1)}.d2{fill:var(--d2);background:var(--d2)}
+.d3{fill:var(--d3);background:var(--d3)}.d4{fill:var(--d4);background:var(--d4)}.d5{fill:var(--d5);background:var(--d5)}
+.dn{fill:var(--dn);background:var(--dn)}
+#tip{position:fixed;z-index:50;pointer-events:none;background:var(--fg);color:var(--bg);font-size:.78rem;padding:3px 8px;border-radius:4px;max-width:320px}
+/* time series / comparison */
+.tsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.ts svg{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.ts svg text{fill:var(--muted);font-size:10px}
+.ts svg .grid{stroke:var(--line);stroke-width:1}
+.ts svg polyline{fill:none;stroke-width:2;stroke:currentColor}
+.ts svg circle{stroke:var(--bg);stroke-width:1}
+.ts polyline.c0{color:var(--c0)}.ts polyline.c1{color:var(--c1)}.ts polyline.c2{color:var(--c2)}.ts polyline.c3{color:var(--c3)}.ts polyline.c4{color:var(--c4)}
+.ts polyline.c5{color:var(--c5)}.ts polyline.c6{color:var(--c6)}.ts polyline.c7{color:var(--c7)}.ts polyline.c8{color:var(--c8)}.ts polyline.c9{color:var(--c9)}.ts polyline.co{color:var(--co)}
+.mb{display:inline-block;width:80px;height:8px;background:var(--track);vertical-align:middle;margin-right:6px}
+.mb i{display:block;height:100%;background:var(--c0)}.mb.b i{background:var(--c1)}
+.pos{color:var(--c1)}.neg{color:var(--c0)}
+details.prov{margin:10px 0}
+details.prov summary{cursor:pointer;font-weight:600}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;overflow:auto;max-height:420px;font-size:.78rem}
+code,td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.82em}
+td.wrap-any{overflow-wrap:anywhere}
+footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid var(--line);padding-top:8px}
+@media print{
+  html{font-size:11px}.wrap{max-width:none}.filterbar,.seg,nav.toc{display:none!important}
+  .scroll,.qc-wrap,pre{overflow:visible;max-height:none}thead th{position:static}
+  section{break-inside:auto}h2{break-after:avoid}.cov,.stat,ul.flags li{break-inside:avoid}
+  table.heat th.s{position:static}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <h1>{{ h.pipeline_name or 'wasteline' }} report</h1>
+  <p class="sub">Wastewater SARS-CoV-2 lineage deconvolution &middot; mode <b>{{ mode }}</b>{% if h.pipeline_version %} &middot; pipeline {{ h.pipeline_version }}{% endif %}</p>
+  <div class="barcode {{ barcode_kind }}" id="barcode-version">
+    <small>Freyja barcode version{% if h.pathogen %} ({{ h.pathogen }}){% endif %}</small>
+    <b>{{ barcode or 'not recorded' }}</b>
+    {% if barcode_kind == 'unknown' %}<small>Version unknown (legacy results): lineage calls cannot be tied to a barcode dataset.</small>
+    {% elif barcode_kind == 'missing' %}<small>No barcode version in the run provenance.</small>
+    {% elif barcode_kind == 'custom' %}<small>Custom barcode file{% if h.barcode_sha256 %}, sha256 {{ h.barcode_sha256[:16] }}&hellip;{% endif %}</small>
+    {% elif h.barcode_source %}<small>source: {{ h.barcode_source }}{% if h.barcode_version_iso %} &middot; {{ h.barcode_version_iso }}{% endif %}</small>{% endif %}
+  </div>
+  <dl class="facts">
+    <div><dt>Samples</dt><dd>{{ n_samples }}{% if n_ntc %} ({{ n_ntc }} control{{ 's' if n_ntc != 1 }}){% endif %}</dd></div>
+    <div><dt>Pipeline version</dt><dd>{{ h.pipeline_version|dash }}</dd></div>
+    <div><dt>Git commit</dt><dd>{% if h.git_commit %}<code>{{ h.git_commit|string|truncate(12, True, '') }}</code>{% else %}&ndash;{% endif %}</dd></div>
+    <div><dt>Freyja</dt><dd>{{ h.freyja_version|dash }}</dd></div>
+    <div><dt>Nextflow</dt><dd>{{ h.nextflow_version|dash }}</dd></div>
+    <div><dt>Run started</dt><dd>{{ h.run_started|dash }}</dd></div>
+    <div><dt>Report data</dt><dd>{{ d.generated|dash }}</dd></div>
+  </dl>
+  {% if d.params_summary %}
+  <details class="prov"><summary>Key parameters ({{ d.params_summary|length }})</summary>
+    <div class="scroll"><table><tbody>
+      {% for k, v in d.params_summary.items() %}<tr><th scope="row">{{ k }}</th><td class="mono wrap-any">{{ 'null' if v is none else v }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </details>
+  {% endif %}
+  <nav class="toc" aria-label="Sections">
+    <a href="#sec-flags">Run flags</a><a href="#sec-qc">QC</a><a href="#sec-lineage">Lineages</a>
+    {% if controls %}<a href="#sec-controls">Negative controls</a>{% endif %}
+    <a href="#sec-coverage">Coverage</a><a href="#sec-amplicons">Amplicon dropout</a><a href="#sec-demix">Demix status</a>
+    {% if moi %}<a href="#sec-moi">Mutations of interest</a>{% endif %}
+    {% if ts %}<a href="#sec-timeseries">Time series</a>{% endif %}
+    {% if bc %}<a href="#sec-barcode">Barcode comparison</a>{% endif %}
+    <a href="#sec-consensus">Consensus</a><a href="#sec-provenance">Provenance</a>
+  </nav>
+</header>
+
+<section id="sec-flags">
+  <h2>Run-level flags</h2>
+  {% if flags %}
+  <ul class="flags">
+    {% for f in flags %}
+    <li class="{{ f.level }}"><span class="lv">{{ (f.level or 'info')|upper }}</span>{{ f.message }}<span class="code">{{ f.code }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="note"><span class="badge b-pass">no flags</span> No run-level issues were detected.</p>
+  {% endif %}
+</section>
+
+<section id="sec-qc">
+  <h2>Quality control</h2>
+  {% if has_qc %}
+  <div class="cards">
+    <div class="stat"><b>{{ qc_counts.get('PASS', 0) }}</b><span>PASS</span></div>
+    <div class="stat"><b>{{ qc_counts.get('WARN', 0) }}</b><span>WARN</span></div>
+    <div class="stat"><b>{{ qc_counts.get('FAIL', 0) }}</b><span>FAIL</span></div>
+    <div class="stat"><b>{{ qc_counts.get('NA', 0) }}</b><span>not assessed</span></div>
+    <div class="stat"><b>{{ n_ntc }}</b><span>negative controls</span></div>
+  </div>
+  <p class="note">Counts exclude negative controls. Click a column header to sort.</p>
+  {{ filterbar('qc-table', true) }}
+  <div class="scroll qc-wrap" id="qc-table">
+  <table class="sortable">
+    <thead><tr>
+      <th data-sort>Sample</th><th data-sort>Type</th><th data-sort>Date</th><th data-sort>Site</th><th data-sort>QC</th><th>Reasons</th>
+      <th class="n" data-sort>Raw reads</th><th class="n" data-sort>Mapped %</th><th class="n" data-sort>Mean depth</th>
+      <th class="n" data-sort>&ge;10x %</th><th class="n" data-sort>&ge;min depth %</th><th class="n" data-sort>Amplicons dropped</th>
+      <th data-sort>Demix</th><th data-sort>Top group</th><th class="n" data-sort>Consensus N %</th>
+    </tr></thead>
+    <tbody>
+    {% for s in samples %}
+    <tr data-sample="{{ s.sample }}" data-qc="{{ s._qc }}" data-ntc="{{ 1 if s._ntc else 0 }}"{% if s._ntc %} class="ntc"{% endif %}>
+      <td>{{ s.sample }}{% if s._ntc %}<em class="chip">NTC</em>{% endif %}</td>
+      <td>{{ s.sample_type }}</td>
+      <td>{{ s.collection_date|dash }}</td>
+      <td>{{ s.site|dash }}</td>
+      <td data-v="{{ {'FAIL': 0, 'WARN': 1, 'PASS': 2}.get(s._qc, 3) }}">{{ qcbadge(s.qc_status) }}</td>
+      <td class="reasons">{{ s.qc_reasons|join('; ') }}</td>
+      <td class="n" data-v="{{ s.raw_reads|sortval }}">{{ s.raw_reads|num }}</td>
+      <td class="n" data-v="{{ s.mapped_pct|sortval }}">{{ s.mapped_pct|pct }}</td>
+      <td class="n" data-v="{{ s.mean_depth|sortval }}">{{ s.mean_depth|dec }}</td>
+      <td class="n" data-v="{{ s.pct_genome_ge_10x|sortval }}">{{ s.pct_genome_ge_10x|pct }}</td>
+      <td class="n" data-v="{{ s.pct_genome_ge_min_depth|sortval }}">{{ s.pct_genome_ge_min_depth|pct }}</td>
+      <td class="n" data-v="{{ s.amplicons_dropped|sortval }}">{% if s.amplicons_total is not none %}{{ s.amplicons_dropped|num }} / {{ s.amplicons_total|num }}{% else %}&ndash;{% endif %}</td>
+      <td data-v="{{ s._demix.status or '' }}">{{ dxbadge(s._demix.status) }}</td>
+      <td data-v="{{ s._top[0] if s._top else '' }}">{% if s._top %}{{ s._top[0] }} <span class="reasons">{{ s._top[1]|frac(0) }}%</span>{% else %}&ndash;{% endif %}</td>
+      <td class="n" data-v="{{ s.consensus_n_pct|sortval }}">{{ s.consensus_n_pct|pct }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% elif n_samples %}
+  <p class="na-note">QC statistics are not available ({{ mode_note }}). Samples were taken from the lineage results only.</p>
+  {% else %}
+  <p class="na-note">No samples.</p>
+  {% endif %}
+</section>
+
+<section id="sec-lineage">
+  <h2>Lineage abundance</h2>
+  {% if has_demix and (summ.n_ok or full.n_ok or n_samples) %}
+  <div class="seg" role="group" aria-label="Lineage resolution">
+    <button type="button" data-show="#lin-summ" data-hide="#lin-full" aria-pressed="true">Summarized groups</button><button type="button" data-show="#lin-full" data-hide="#lin-summ" aria-pressed="false">All lineages</button>
+  </div>
+  <p class="note">Summarized groups are Freyja's lineage groupings (e.g. Alpha, Delta); the full view shows individual (sub)lineages. Colours are shared only within a view; the same categorical palette is colour-blind safe, and every segment has a tooltip.</p>
+  {{ filterbar('lin-wrap', false) }}
+  <div id="lin-wrap">
+    {{ lineage_block(summ, 'summ', 'lin-summ') }}
+    {{ lineage_block(full, 'full', 'lin-full') }}
+  </div>
+  {% else %}
+  <p class="na-note">Lineage results are not available ({{ mode_note }}).</p>
+  {% endif %}
+</section>
+
+<section id="sec-coverage">
+  <h2>Coverage tracks</h2>
+  {% if coverage %}
+  <p class="note">Mean depth per ~{{ coverage.bin_size }} bp bin across {{ coverage.genome_length|num }} bp, log scale (top = {{ coverage.ymax|num }}x).
+    <span class="key"></span>{{ coverage.amp_min }}x amplicon dropout threshold{% if coverage.y_cons is not none %}; dotted line = {{ coverage.cons_min }}x consensus minimum{% endif %}.
+    <span class="key drop"></span>amplicon dropped.</p>
+  {{ filterbar('cov-grid', true) }}
+  <div class="covgrid" id="cov-grid">
+    {% for c in coverage.cards %}
+    <div class="cov" data-sample="{{ c.sample }}" data-qc="{{ c.qc }}" data-ntc="{{ 1 if c.ntc else 0 }}">
+      <h4><span class="nm" title="{{ c.sample }}">{{ c.sample }}{% if c.ntc %}<em class="chip">NTC</em>{% endif %}</span>{{ qcbadge(c.qc if c.qc != 'NA' else none) }}</h4>
+      <svg viewBox="0 0 {{ coverage.n_bins }} 100" preserveAspectRatio="none" role="img" aria-label="Coverage of {{ c.sample }}">
+        {% for r in c.drops %}<rect class="drop" x="{{ r.x }}" y="0" width="{{ r.w }}" height="100"><title>{{ r.title }}</title></rect>{% endfor %}
+        <path class="area" d="{{ c.path }}"/>
+        <line class="thr" x1="0" x2="{{ coverage.n_bins }}" y1="{{ coverage.y_amp }}" y2="{{ coverage.y_amp }}"/>
+        {% if coverage.y_cons is not none %}<line class="thr2" x1="0" x2="{{ coverage.n_bins }}" y1="{{ coverage.y_cons }}" y2="{{ coverage.y_cons }}"/>{% endif %}
+      </svg>
+      <div class="meta"><span>mean {{ c.mean_depth|dec(0) }}x</span><span>&ge;10x: {{ c.pct10|pct(0) }}%</span><span>dropped: {{ c.dropped }}</span></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="na-note">Per-position depth was not available ({{ mode_note }}).</p>
+  {% endif %}
+</section>
+
+<section id="sec-amplicons">
+  <h2>Amplicon dropout</h2>
+  {% if amp %}
+  <ul class="legend" aria-label="Amplicon colour legend">
+    <li><i class="sw d0"></i>dropped, no coverage</li><li><i class="sw d1"></i>dropped (&lt;{{ amp.amp_min }}x)</li>
+    <li><i class="sw d2"></i>&lt;{{ amp.amp_min * 10 }}x</li><li><i class="sw d3"></i>&lt;{{ amp.amp_min * 100 }}x</li>
+    <li><i class="sw d4"></i>&lt;{{ amp.amp_min * 1000 }}x</li><li><i class="sw d5"></i>&ge;{{ amp.amp_min * 1000 }}x</li><li><i class="sw dn"></i>no data</li>
+  </ul>
+  <p class="note">{{ amp.rows|length }} sample(s) &times; {{ amp.n }} amplicons, in genome order; hover a cell for the amplicon and its mean depth. The top bar shows how often each amplicon dropped out across the {{ amp.considered }} non-control sample(s).</p>
+  {{ filterbar('amp-rows', true) }}
+  <div class="arows" id="amp-rows" data-amps='{{ amp.names|tojson }}'>
+    <div class="arow"><span class="lbl">dropout frequency</span>
+      <svg class="freq" viewBox="0 0 {{ amp.n }} 20" preserveAspectRatio="none" role="img" aria-label="Fraction of samples in which each amplicon dropped out">
+        {% for f in amp.freq %}<rect x="{{ f.x }}" y="{{ 20 - f.h }}" width="1" height="{{ f.h }}"><title>{{ f.title }}</title></rect>{% endfor %}
+      </svg></div>
+    <div class="arow"><span class="lbl">amplicon #</span><div class="ruler">{% for t in amp.ticks %}<span style="left:{{ t.left }}%">{{ t.label }}</span>{% endfor %}</div></div>
+    {% for r in amp.rows %}
+    <div class="arow" data-sample="{{ r.sample }}" data-qc="{{ r.qc }}" data-ntc="{{ 1 if r.ntc else 0 }}">
+      <span class="lbl" title="{{ r.sample }} ({{ r.dropped }} dropped)">{{ r.sample }}{% if r.ntc %}<em class="chip">NTC</em>{% endif %}</span>
+      <svg viewBox="0 0 {{ amp.n }} 1" preserveAspectRatio="none" class="am" data-v="{{ r['values'] }}" role="img" aria-label="Amplicon depth of {{ r.sample }}">{% for p in r.paths %}<path class="{{ p.cls }}" d="{{ p.d }}"/>{% endfor %}</svg>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="na-note">Amplicon coverage is not available ({{ mode_note }}).</p>
+  {% endif %}
+</section>
+
+{% if controls %}
+<section id="sec-controls">
+  <h2>Negative controls</h2>
+  <p class="note">Negative controls are demixed when they pass the coverage gate so that contamination is visible, but they are <b>excluded from the aggregate, the lineage view and the time series</b>{% if controls|selectattr('excluded_from_aggregate', 'equalto', false)|list %} (except where the run was told to include them){% endif %}. What each control contains:</p>
+  <div class="scroll"><table class="sortable">
+    <thead><tr><th data-sort>Control</th><th data-sort>QC</th><th>Reasons</th><th class="n" data-sort>Mapped reads</th><th class="n" data-sort>Genome &ge;1x %</th><th class="n" data-sort>Demix coverage %</th><th>Lineages detected</th><th>Aggregate</th></tr></thead>
+    <tbody>
+    {% for c in controls %}
+    <tr class="ntc">
+      <td>{{ c.sample }}<em class="chip">NTC</em></td>
+      <td data-v="{{ {'FAIL': 0, 'WARN': 1, 'PASS': 2}.get(c.qc_status, 3) }}">{{ qcbadge(c.qc_status) }}</td>
+      <td>{{ c.qc_reasons|join(', ')|dash }}</td>
+      <td class="n" data-v="{{ c.mapped_reads|sortval }}">{{ c.mapped_reads|num }}</td>
+      <td class="n" data-v="{{ c.pct_genome_ge_1x|sortval }}">{{ c.pct_genome_ge_1x|pct }}</td>
+      <td class="n" data-v="{{ c.coverage|sortval }}">{{ c.coverage|pct }}</td>
+      <td>{% if c.lineages %}{% for p in c.lineages[:5] %}{{ p[0] }} {{ p[1]|frac(1) }}%{% if not loop.last %}, {% endif %}{% endfor %}{% if c.lineages|length > 5 %}, &hellip;{% endif %}{% else %}&ndash;{% endif %}</td>
+      <td>{{ 'excluded' if c.excluded_from_aggregate else 'included' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+<section id="sec-demix">
+  <h2>Demix status</h2>
+  {% if has_demix %}
+  <div class="cards">
+    <div class="stat"><b>{{ demix_counts.get('ok', 0) }}</b><span>ok</span></div>
+    <div class="stat"><b>{{ demix_counts.get('skipped_low_coverage', 0) }}</b><span>skipped (low coverage)</span></div>
+    <div class="stat"><b>{{ demix_counts.get('failed', 0) }}</b><span>failed</span></div>
+    {% if demix_counts.get('missing', 0) %}<div class="stat"><b>{{ demix_counts.get('missing', 0) }}</b><span>no result</span></div>{% endif %}
+  </div>
+  <div class="scroll">
+  <table class="sortable">
+    <thead><tr><th data-sort>Sample</th><th data-sort>Status</th><th>Reason</th><th data-sort>Barcode version</th><th class="n" data-sort>Genome coverage %</th><th class="n" data-sort>Residual</th></tr></thead>
+    <tbody>
+    {% for s in samples %}
+    {% set x = s._demix %}
+    <tr{% if s._ntc %} class="ntc"{% endif %}>
+      <td>{{ s.sample }}{% if s._ntc %}<em class="chip">NTC</em>{% endif %}</td>
+      <td data-v="{{ x.status or '' }}">{{ dxbadge(x.status) }}</td>
+      <td>{{ x.reason|dash }}</td>
+      <td class="mono" >{{ x.barcode_version|dash }}</td>
+      <td class="n" data-v="{{ x.coverage|sortval }}">{{ x.coverage|pct }}</td>
+      <td class="n" data-v="{{ x.resid|sortval }}">{{ x.resid|dec(3) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="na-note">No demix results are available ({{ mode_note }}).</p>
+  {% endif %}
+</section>
+
+{% if moi %}
+<section id="sec-moi">
+  <h2>Mutations of interest</h2>
+  {% if moi.columns %}
+  <p class="note">Alternate-allele frequency (%) per sample; dashed outline = depth below {{ moi.min_depth }}x; &ndash; = no coverage or no data.</p>
+  {{ filterbar('moi-table', false) }}
+  <div class="scroll" id="moi-table">
+    <table class="heat">
+      <thead><tr><th class="s">Sample</th>{% for c in moi.columns %}<th class="vh" title="{{ c.name }} {{ c.mutation }}"><span>{{ (c.name or c.mutation)|short(24) }}</span></th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in moi.rows %}
+        <tr data-sample="{{ row.sample }}" data-qc="{{ row.qc }}" data-ntc="{{ 1 if row.ntc else 0 }}"><th class="s">{{ row.sample|short(28) }}</th>{% for c in row.cells %}<td class="{{ c.cls }}" title="{{ c.title }}">{{ c.text }}</td>{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="note">A mutations-of-interest file was supplied but it contains no rows.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if ts %}
+<section id="sec-timeseries" class="ts">
+  <h2>Time series</h2>
+  <p class="note">Mean abundance of the top summarized groups per collection date ({{ ts.n_dates }} dates, {{ ts.first }} to {{ ts.last }}); negative controls and samples without a lineage result are excluded. One panel per site, shared axes.</p>
+  <ul class="legend">{% for item in ts.legend %}<li><i class="sw {{ item.cls }}"></i>{{ item.name }}</li>{% endfor %}</ul>
+  <div class="tsgrid">
+    {% for p in ts.panels %}
+    <figure style="margin:0">
+      <figcaption><b>{{ p.site or '(no site)' }}</b></figcaption>
+      <svg viewBox="0 0 {{ ts.width }} {{ ts.height }}" role="img" aria-label="Lineage abundance over time at {{ p.site or 'no site' }}">
+        {% for t in ts.yticks %}<line class="grid" x1="{{ ts.x0 }}" x2="{{ ts.x1 }}" y1="{{ t.y }}" y2="{{ t.y }}"/><text x="{{ ts.x0 - 4 }}" y="{{ t.y + 3 }}" text-anchor="end">{{ t.label }}</text>{% endfor %}
+        <text x="{{ ts.x0 }}" y="{{ ts.height - 6 }}" text-anchor="start">{{ ts.first }}</text>
+        <text x="{{ ts.x1 }}" y="{{ ts.height - 6 }}" text-anchor="end">{{ ts.last }}</text>
+        {% for l in p.lines %}
+        <polyline class="{{ l.cls }}" points="{{ l.points }}"/>
+        {% for pt in l.dots %}<circle class="{{ l.cls }}" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"><title>{{ pt.title }}</title></circle>{% endfor %}
+        {% endfor %}
+      </svg>
+    </figure>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if bc %}
+<section id="sec-barcode">
+  <h2>Barcode comparison</h2>
+  <p class="note">Lineage abundances re-estimated with a second barcode dataset: <b>A</b> = {{ bc.label_a }}, <b>B</b> = {{ bc.label_b }}.
+    Turnover = half the summed absolute change in abundance (0 = identical, 1 = completely different).</p>
+  <h3>Samples with the largest changes{% if bc.n_summary > bc.summary|length %} <small>(top {{ bc.summary|length }} of {{ bc.n_summary }})</small>{% endif %}</h3>
+  <div class="scroll"><table class="sortable">
+    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Turnover %</th><th class="n" data-sort>Largest single change (points)</th></tr></thead>
+    <tbody>{% for e in bc.summary %}<tr><td>{{ e.sample }}</td><td class="n" data-v="{{ e.tv|sortval }}">{{ e.tv|frac(1) }}</td><td class="n" data-v="{{ e.max|sortval }}">{{ e.max|frac(1) }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <h3>Largest lineage changes{% if bc.n_rows > bc.rows|length %} <small>(top {{ bc.rows|length }} of {{ bc.n_rows }})</small>{% endif %}</h3>
+  <div class="scroll"><table class="sortable">
+    <thead><tr><th data-sort>Sample</th><th data-sort>Lineage</th><th class="n" data-sort>A %</th><th class="n" data-sort>B %</th><th class="n" data-sort>Change (points)</th></tr></thead>
+    <tbody>
+    {% for r in bc.rows %}
+    <tr><td>{{ r.sample }}</td><td>{{ r.lineage }}</td>
+      <td class="n" data-v="{{ r.a|sortval }}"><span class="mb"><i style="width:{{ (r.a * 100)|round(1) }}%"></i></span>{{ r.a|frac(1) }}</td>
+      <td class="n" data-v="{{ r.b|sortval }}"><span class="mb b"><i style="width:{{ (r.b * 100)|round(1) }}%"></i></span>{{ r.b|frac(1) }}</td>
+      <td class="n {{ 'pos' if r.delta > 0 else 'neg' }}" data-v="{{ r.delta|sortval }}">{{ '+' if r.delta > 0 }}{{ r.delta|frac(1) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+<section id="sec-consensus">
+  <h2>Consensus genomes</h2>
+  {% if consensus %}
+  <div class="scroll"><table class="sortable">
+    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Length</th><th class="n" data-sort>N count</th><th class="n" data-sort>N %</th><th class="n" data-sort>Other ambiguous</th><th data-sort>Status</th></tr></thead>
+    <tbody>
+    {% for r in consensus %}
+    <tr><td>{{ r.sample }}</td><td class="n" data-v="{{ r.length|sortval }}">{{ r.length|num }}</td><td class="n" data-v="{{ r.n_count|sortval }}">{{ r.n_count|num }}</td>
+      <td class="n" data-v="{{ r.n_pct|sortval }}">{{ r.n_pct|pct(2) }}</td><td class="n" data-v="{{ r.ambiguous_count|sortval }}">{{ r.ambiguous_count|num }}</td>
+      <td data-v="{{ r.status or '' }}"><span class="badge b-{{ {'ok': 'pass', 'empty': 'warn', 'failed': 'fail'}.get(r.status, 'na') }}">{{ r.status or 'n/a' }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="na-note">Consensus statistics are not available ({{ mode_note }}).</p>
+  {% endif %}
+</section>
+
+<section id="sec-provenance">
+  <h2>Provenance</h2>
+  {% if freyja_data %}
+  <h3>Freyja dataset</h3>
+  <div class="scroll"><table><tbody>
+    {% for k, v in freyja_data.items() %}<tr><th scope="row">{{ k }}</th><td class="mono wrap-any">{{ 'null' if v is none else v }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}
+  <p class="na-note">The run provenance contains no <code>freyja_data</code> block.</p>
+  {% endif %}
+  {% if previous_runs %}
+  <h3>Previous runs this report builds on</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Path</th><th>Barcode version</th><th>run_info sha256</th></tr></thead>
+    <tbody>{% for p in previous_runs %}<tr><td class="mono wrap-any">{{ p.path|dash }}</td><td>{% if (p.barcode_version or 'unknown')|lower == 'unknown' %}<span class="badge b-warn">unknown</span>{% else %}{{ p.barcode_version }}{% endif %}</td><td class="mono wrap-any">{{ (p.run_info_sha256 or '')[:16]|dash }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  <details class="prov"><summary>Full run provenance (run_info.json without parameters)</summary><pre>{{ provenance_json }}</pre></details>
+  <details class="prov"><summary>All pipeline parameters</summary><pre>{{ params_json }}</pre></details>
+</section>
+
+<footer>Generated by wasteline {{ h.pipeline_version or '' }} &middot; report data schema v{{ d.schema_version }} &middot; self-contained file, no external resources.</footer>
+</div>
+<div id="tip" hidden></div>
+<script>
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* column sorting */
+  $$("table.sortable").forEach(function (table) {
+    $$("thead th[data-sort]", table).forEach(function (th) {
+      th.tabIndex = 0;
+      var go = function () {
+        var idx = Array.prototype.indexOf.call(th.parentNode.children, th);
+        var dir = th.getAttribute("aria-sort") === "ascending" ? "descending" : "ascending";
+        $$("thead th", table).forEach(function (o) { o.removeAttribute("aria-sort"); });
+        th.setAttribute("aria-sort", dir);
+        var body = table.tBodies[0];
+        var rows = $$("tr", body);
+        var key = function (tr) {
+          var c = tr.children[idx];
+          if (!c) { return ""; }
+          return c.hasAttribute("data-v") ? c.getAttribute("data-v") : c.textContent.trim();
+        };
+        var num = function (v) { return v !== "" && !isNaN(Number(v)); };
+        rows.sort(function (a, b) {
+          var x = key(a), y = key(b);
+          if (x === "" && y === "") { return 0; }
+          if (x === "") { return 1; }
+          if (y === "") { return -1; }
+          var r = (num(x) && num(y)) ? Number(x) - Number(y) : x.localeCompare(y, undefined, { numeric: true });
+          return dir === "ascending" ? r : -r;
+        });
+        rows.forEach(function (tr) { body.appendChild(tr); });
+      };
+      th.addEventListener("click", go);
+      th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+    });
+  });
+
+  /* filter bars: act on every [data-sample] element inside data-scope */
+  $$(".filterbar").forEach(function (bar) {
+    var scope = $(bar.getAttribute("data-scope"));
+    if (!scope) { return; }
+    var f = function (n) { return $('[data-f="' + n + '"]', bar); };
+    var apply = function () {
+      var text = f("text").value.trim().toLowerCase();
+      var qc = f("qc") ? f("qc").value : "";
+      var issues = f("issues") && f("issues").checked;
+      var hideNtc = f("hidentc").checked;
+      var shown = 0, total = 0;
+      $$("[data-sample]", scope).forEach(function (el) {
+        if (el.closest("[hidden]") !== null && el.closest("[hidden]") !== el) { /* in a hidden view: still filter */ }
+        var q = el.getAttribute("data-qc");
+        var ok = (!text || el.getAttribute("data-sample").toLowerCase().indexOf(text) !== -1) &&
+          (!qc || q === qc) && (!issues || q === "WARN" || q === "FAIL") &&
+          (!hideNtc || el.getAttribute("data-ntc") !== "1");
+        el.hidden = !ok;
+        total += 1; if (ok) { shown += 1; }
+      });
+      f("count").textContent = (text || qc || issues || hideNtc) ? shown + " of " + total + " shown" : "";
+    };
+    $$("input,select", bar).forEach(function (c) { c.addEventListener("input", apply); c.addEventListener("change", apply); });
+  });
+
+  /* summarized / full toggle */
+  $$(".seg button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var on = $(btn.getAttribute("data-show")), off = $(btn.getAttribute("data-hide"));
+      if (on) { on.hidden = false; }
+      if (off) { off.hidden = true; }
+      $$("button", btn.parentNode).forEach(function (b) { b.setAttribute("aria-pressed", b === btn ? "true" : "false"); });
+    });
+  });
+
+  /* amplicon tooltip */
+  var tip = $("#tip"), host = $("#amp-rows");
+  if (host && tip) {
+    var names = [];
+    try { names = JSON.parse(host.getAttribute("data-amps")); } catch (e) { names = []; }
+    host.addEventListener("mousemove", function (e) {
+      var svg = e.target.closest ? e.target.closest("svg.am") : null;
+      if (!svg) { tip.hidden = true; return; }
+      var box = svg.getBoundingClientRect();
+      var i = Math.floor((e.clientX - box.left) / box.width * names.length);
+      var vals = svg.getAttribute("data-v").split(",");
+      if (i < 0 || i >= names.length) { tip.hidden = true; return; }
+      var row = svg.parentNode.getAttribute("data-sample");
+      tip.textContent = row + " / " + names[i] + ": " + (vals[i] === "" ? "no data" : vals[i] + "x");
+      tip.style.left = Math.min(e.clientX + 12, window.innerWidth - 330) + "px";
+      tip.style.top = (e.clientY + 14) + "px";
+      tip.hidden = false;
+    });
+    host.addEventListener("mouseleave", function () { tip.hidden = true; });
+  }
+
+  /* print: expand collapsed details */
+  window.addEventListener("beforeprint", function () { $$("details").forEach(function (d) { d.open = true; }); });
+})();
+</script>
+</body>
+</html>

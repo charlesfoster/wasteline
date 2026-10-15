@@ -1,0 +1,27 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.consensus.fa:md5,bbd1a5214a2a02194e5e31309436b8d9"
+                ]
+            ],
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.consensus_status.json:md5,44f07b924938b02c36524613a585bf59"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-15T21:00:45.739348",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

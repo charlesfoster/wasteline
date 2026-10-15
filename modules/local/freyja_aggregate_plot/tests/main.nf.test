@@ -1,0 +1,109 @@
+nextflow_process {
+
+    name "Test Process FREYJA_AGGREGATE_PLOT"
+    script "../main.nf"
+    process "FREYJA_AGGREGATE_PLOT"
+    tag "modules"
+    tag "modules_local"
+    tag "freyja_aggregate_plot"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ ['B_2', 'A_1'], [ file("\$projectDir/assets/samplesheet.csv"), file("\$projectDir/assets/schema_input.json") ] ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                input[2] = []
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.plot_times.size() == 0 },
+                { assert snapshot(process.out.aggregated, process.out.plot).match() }
+            )
+        }
+    }
+
+    test("stub with collection dates also draws the time-aware plot") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                def times = new File("\${launchDir}/times.csv")
+                times.text = 'Sample,sample_collection_datetime\\nA_1,2026-01-05\\n'
+                input[0] = [ ['A_1'], [ file("\$projectDir/assets/samplesheet.csv") ] ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                input[2] = file(times.toString())
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.plot_times.size() == 1 }
+            )
+        }
+    }
+
+    // Real Freyja: demix files carry different sample labels (wasteline name, legacy Snakemake name,
+    // a path). The aggregate must label every row with the real sample ID, sorted, underscores kept,
+    // and a time-aware plot (or the documented failure note) is produced for the dated samples.
+    test("labels come from the sample IDs, rows are sorted, time-aware plot - real") {
+
+        tag "docker"
+
+        setup {
+            run("FREYJA_UPDATE") {
+                script "../../freyja_update/main.nf"
+                process {
+                    """
+                    input[0] = 'container'
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                def body = "summarized\\t[('Omicron', 0.9), ('Delta', 0.1)]\\nlineages\\tBA.2 AY.4\\nabundances\\t0.9 0.1\\nresid\\t1.0\\ncoverage\\t99.0\\npathogen\\tSARS-CoV-2\\n"
+                def files = [
+                    [ 'Site_1_week_2', 'Site_1_week_2.variants.tsv' ],
+                    [ 'MIX_A', 'MIX_A.freyja_variants.tsv' ],
+                    [ 'PURE.C-3', '/old/run/PURE.C-3.freyja_variants.tsv' ],
+                ].collect { entry ->
+                    def f = new File("\${launchDir}/\${entry[0]}.demix")
+                    f.text = "\\t\${entry[1]}\\n" + body
+                    f
+                }
+                def times = new File("\${launchDir}/times.csv")
+                times.text = 'Sample,sample_collection_datetime\\nMIX_A,2026-01-05\\nPURE.C-3,2026-02-09\\nSite_1_week_2,2026-02-02\\n'
+                input[0] = [ ['Site_1_week_2', 'MIX_A', 'PURE.C-3'], files.collect { f -> file(f.toString()) } ]
+                input[1] = FREYJA_UPDATE.out.dataset
+                input[2] = file(times.toString())
+                """
+            }
+        }
+
+        then {
+            def rows = new File(process.out.aggregated[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert rows.drop(1).collect { line -> line.split('\t')[0] } == ['MIX_A', 'PURE.C-3', 'Site_1_week_2'] },
+                { assert (process.out.plot.size() + process.out.plot_failed.size()) == 1 },
+                { assert (process.out.plot_times.size() + process.out.plot_times_failed.size()) == 1 }
+            )
+        }
+    }
+}

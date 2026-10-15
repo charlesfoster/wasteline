@@ -1,0 +1,37 @@
+nextflow_process {
+
+    name "Test Process FREYJA_VARIANTS"
+    script "../main.nf"
+    process "FREYJA_VARIANTS"
+    tag "modules"
+    tag "modules_local"
+    tag "freyja_variants"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [
+                    [ id:'S_1' ],
+                    file("\$projectDir/assets/schema_input.json"),
+                    file("\$projectDir/assets/references/NC_045512.gff3")
+                ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.variants[0][1].toString().endsWith('S_1.variants.tsv') },
+                { assert process.out.depths[0][1].toString().endsWith('S_1.depths') },
+                { assert snapshot(process.out.variants, process.out.depths).match() }
+            )
+        }
+    }
+}

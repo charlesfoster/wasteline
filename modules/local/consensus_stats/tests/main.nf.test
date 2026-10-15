@@ -1,0 +1,106 @@
+nextflow_process {
+
+    name "Test Process CONSENSUS_STATS"
+    script "../main.nf"
+    process "CONSENSUS_STATS"
+    tag "modules"
+    tag "modules_local"
+    tag "consensus_stats"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.consensus.fa") ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.tsv[0][1].toString().endsWith('S_1.consensus_stats.tsv') },
+                { assert snapshot(process.out.tsv).match() }
+            )
+        }
+    }
+
+    test("full-length consensus with 100 N, 3 '-' and 2 ambiguity codes - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def ref = new File("\$projectDir/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+                def chars = ref.toCharArray()
+                (100..199).each { chars[it] = 'N' as char }
+                (300..302).each { chars[it] = '-' as char }
+                chars[400] = 'R' as char
+                chars[401] = 'Y' as char
+                def fasta = new File("\${launchDir}/S_1.consensus.fa")
+                fasta.text = '>S_1\\n' + new String(chars).toList().collate(60).collect { it.join('') }.join('\\n') + '\\n'
+                input[0] = [ [ id:'S_1' ], file(fasta.toString()) ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines[0] == 'sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus' },
+                { assert lines[1] == 'S_1\t29903\t103\t0.34\t2\tok' }
+            )
+        }
+    }
+
+    test("all-N consensus is status empty - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def fasta = new File("\${launchDir}/E_1.consensus.fa")
+                fasta.text = '>E_1\\n' + ('N' * 29903).toList().collate(60).collect { it.join('') }.join('\\n') + '\\n'
+                input[0] = [ [ id:'E_1' ], file(fasta.toString()) ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert new File(process.out.tsv[0][1].toString()).readLines()[1] == 'E_1\t29903\t29903\t100.00\t0\tempty' }
+            )
+        }
+    }
+
+    test("unreadable consensus is reported as failed, not a crash - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def fasta = new File("\${launchDir}/F_1.consensus.fa")
+                fasta.text = ''
+                input[0] = [ [ id:'F_1' ], file(fasta.toString()) ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert new File(process.out.tsv[0][1].toString()).readLines()[1] == 'F_1\tNA\tNA\tNA\tNA\tfailed' }
+            )
+        }
+    }
+}

@@ -1,0 +1,17 @@
+{
+    "stub": {
+        "content": [
+            [
+                "qc_summary.tsv:md5,d41d8cd98f00b204e9800998ecf8427e"
+            ],
+            [
+                "amplicon_coverage.tsv:md5,d41d8cd98f00b204e9800998ecf8427e"
+            ]
+        ],
+        "timestamp": "2026-10-15T20:54:40.048456",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

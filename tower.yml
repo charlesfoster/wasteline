@@ -1,0 +1,5 @@
+reports:
+  summary/report.html:
+    display: "wasteline HTML report"
+  summary/samplesheet.csv:
+    display: "Samplesheet used for the run (with sample type, collection date and site)"

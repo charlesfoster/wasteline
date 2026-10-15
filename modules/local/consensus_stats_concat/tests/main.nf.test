@@ -1,0 +1,52 @@
+nextflow_process {
+
+    name "Test Process CONSENSUS_STATS_CONCAT"
+    script "../main.nf"
+    process "CONSENSUS_STATS_CONCAT"
+    tag "modules"
+    tag "modules_local"
+    tag "consensus_stats_concat"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.consensus_stats.tsv") ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.tsv).match() }
+            )
+        }
+    }
+
+    test("joined and sorted by sample, one header - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/modules_phase3/concat"
+                input[0] = [ file("\$d/S_B.consensus_stats.tsv"), file("\$d/S_A.consensus_stats.tsv") ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines[0] == 'sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus' },
+                { assert lines.drop(1).collect { it.split('\t')[0] } == ['S_A', 'S_B'] }
+            )
+        }
+    }
+}

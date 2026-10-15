@@ -1,0 +1,87 @@
+nextflow_process {
+
+    name "Test Process AMPLICON_COVERAGE"
+    script "../main.nf"
+    process "AMPLICON_COVERAGE"
+    tag "modules"
+    tag "modules_local"
+    tag "amplicon_coverage"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz") ]
+                input[1] = file("\$projectDir/assets/primer_schemes/midnight.bed")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.tsv[0][1].toString().endsWith('S_1.amplicon_coverage.tsv') },
+                { assert snapshot(process.out.tsv).match() }
+            )
+        }
+    }
+
+    test("PURE_C depths with the midnight scheme - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def depths = new File("\${launchDir}/PURE_C.depths")
+                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                input[0] = [ [ id:'PURE_C' ], file(depths.toString()) ]
+                input[1] = file("\$projectDir/assets/primer_schemes/midnight.bed")
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def rows = lines.drop(1).collect { it.split('\t') as List }
+            assertAll(
+                { assert process.success },
+                { assert lines[0] == 'sample\tamplicon\tstart\tend\tmean_depth\tmin_depth\tpct_ge_min_depth\tdropped' },
+                { assert rows.size() == 29 },                       // midnight: 29 amplicons
+                { assert rows.every { it[0] == 'PURE_C' } },
+                { assert rows.every { it[7] == 'false' } },          // PURE_C has no dropout
+                { assert rows.every { (it[4] as double) >= 10 } }
+            )
+        }
+    }
+
+    test("min depth passed through ext.args - real") {
+
+        tag "docker"
+        config "./ext_min_depth.config"
+
+        when {
+            process {
+                """
+                def depths = new File("\${launchDir}/PURE_C.depths")
+                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                input[0] = [ [ id:'PURE_C' ], file(depths.toString()) ]
+                input[1] = file("\$projectDir/assets/primer_schemes/midnight.bed")
+                """
+            }
+        }
+
+        then {
+            // an impossible threshold marks every amplicon as dropped, proving --min-depth reached the script
+            def rows = new File(process.out.tsv[0][1].toString()).readLines().drop(1).collect { it.split('\t') as List }
+            assertAll(
+                { assert process.success },
+                { assert rows.size() == 29 },
+                { assert rows.every { it[7] == 'true' } }
+            )
+        }
+    }
+}

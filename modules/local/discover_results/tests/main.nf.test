@@ -1,0 +1,101 @@
+nextflow_process {
+
+    name "Test Process DISCOVER_RESULTS"
+    script "../main.nf"
+    process "DISCOVER_RESULTS"
+    tag "modules"
+    tag "modules_local"
+    tag "discover_results"
+
+    test("legacy Snakemake layout, demix sheet - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = [ 1, file("\$projectDir/tests/fixtures/samplesheet/results_legacy") ]
+                input[1] = 'demix'
+                """
+            }
+        }
+
+        then {
+            def rows = file(process.out.samplesheet[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert rows[0] == 'sample,variants,depths,fastp_json,sample_type,collection_date,site' },
+                { assert rows.drop(1).collect { row -> row.split(',')[0] } == ['Gz_only', 'NC_blank', 'Old_1'] },
+                // the paths are real paths, not the task's staging symlink
+                { assert rows.drop(1).every { row -> !row.contains('results_dir/') } },
+                { assert rows.find { row -> row.startsWith('NC_blank,') }.contains(',negative,') }
+            )
+        }
+    }
+
+    test("new wasteline layout, aggregate sheet - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = [ 2, file("\$projectDir/tests/fixtures/samplesheet/results_new") ]
+                input[1] = 'aggregate'
+                """
+            }
+        }
+
+        then {
+            def rows = file(process.out.samplesheet[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert rows[0] == 'sample,demix,sample_type,collection_date,site' },
+                { assert rows.size() > 1 },
+                { assert file(process.out.samplesheet[0].toString()).name == 'discovered_samplesheet_2.csv' }
+            )
+        }
+    }
+
+    test("a directory without usable samples fails loudly - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = [ 3, file("\$projectDir/tests/fixtures/qc") ]
+                input[1] = 'demix'
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.failed }
+            )
+        }
+    }
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ 1, file("\$projectDir/tests/fixtures/samplesheet/results_legacy") ]
+                input[1] = 'aggregate'
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.samplesheet.collect { f -> file(f.toString()).name }).match() }
+            )
+        }
+    }
+}

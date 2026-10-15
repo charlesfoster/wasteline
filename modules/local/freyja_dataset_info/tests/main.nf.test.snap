@@ -1,0 +1,17 @@
+{
+    "stub": {
+        "content": [
+            [
+                "freyja_data.json:md5,ea5fa7a2ccd6d897f215766d48477b09"
+            ],
+            [
+                "barcode_version.json:md5,d8f56348af2a4c146ff98064c69175b8"
+            ]
+        ],
+        "timestamp": "2026-10-15T20:28:28.035107",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

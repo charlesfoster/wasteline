@@ -1,0 +1,22 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1",
+                        "sample_type": "sample",
+                        "collection_date": "2026-01-05",
+                        "site": "SiteA"
+                    },
+                    "S_1.qc_row.tsv:md5,c0a32c8e8d9eefd822d053e3185c0fa4"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-15T20:55:28.45918",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

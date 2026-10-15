@@ -1,0 +1,19 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.amplicon_coverage.tsv:md5,691a12ee52c10b491b564ff8709c8f69"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-15T20:54:09.136762",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

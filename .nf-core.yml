@@ -1,0 +1,51 @@
+repository_type: pipeline
+
+nf_core_version: 4.1.0
+
+lint:
+  files_unchanged:
+    - CODE_OF_CONDUCT.md
+    - assets/nf-core-wasteline_logo_light.png
+    - docs/images/nf-core-wasteline_logo_light.png
+    - docs/images/nf-core-wasteline_logo_dark.png
+    - .github/ISSUE_TEMPLATE/bug_report.yml
+    - .github/PULL_REQUEST_TEMPLATE.md
+    - assets/email_template.txt
+    - assets/email_template.html
+    - docs/README.md
+  nextflow_config:
+    - manifest.name
+    - manifest.homePage
+    - process.cpus
+    - process.memory
+    - process.time
+    - custom_config
+    - params.custom_config_version
+    - params.custom_config_base
+  multiqc_config: false  # MultiQC is not used (own HTML report, PLAN section 7)
+  files_exist:
+    - CODE_OF_CONDUCT.md
+    - assets/nf-core-wasteline_logo_light.png
+    - docs/images/nf-core-wasteline_logo_light.png
+    - docs/images/nf-core-wasteline_logo_dark.png
+    - .github/ISSUE_TEMPLATE/config.yml
+    - .github/workflows/awstest.yml
+    - .github/workflows/awsfulltest.yml
+    - conf/igenomes.config
+    - conf/igenomes_ignored.config
+    - assets/multiqc_config.yml
+  included_configs: false
+  template_strings:
+    - assets/templates/report.html.j2  # Jinja2 report template, not nf-core template residue
+
+template:
+  org: charlesfoster
+  name: wasteline
+  description: Wastewater SARS-CoV-2 lineage abundance pipeline (Illumina amplicon,
+    Freyja)
+  author: Charles Foster
+  version: 0.1.0dev
+  force: true
+  skip_features:
+    - nf_core_configs
+  is_nfcore: false

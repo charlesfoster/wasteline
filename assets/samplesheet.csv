@@ -1,0 +1,5 @@
+sample,fastq_1,fastq_2,sample_type,collection_date,site
+SITE1_mix,/path/to/fastq/SITE1_mix_R1.fastq.gz,/path/to/fastq/SITE1_mix_R2.fastq.gz,sample,2026-09-01,site_1
+SITE2_ref,/path/to/fastq/SITE2_ref_R1.fastq.gz,/path/to/fastq/SITE2_ref_R2.fastq.gz,sample,2026-09-02,site_2
+LOWCOV_1,/path/to/fastq/LOWCOV_1_R1.fastq.gz,/path/to/fastq/LOWCOV_1_R2.fastq.gz,sample,,
+NEG_1,/path/to/fastq/NEG_1_R1.fastq.gz,/path/to/fastq/NEG_1_R2.fastq.gz,negative,2026-09-01,site_1

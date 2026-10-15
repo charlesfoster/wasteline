@@ -1,0 +1,546 @@
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    IMPORT MODULES / SUBWORKFLOWS / FUNCTIONS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+include { FASTP                  } from '../modules/nf-core/fastp/main'
+include { BWA_INDEX              } from '../modules/nf-core/bwa/index/main'
+include { BWA_MEM                } from '../modules/nf-core/bwa/mem/main'
+include { SAMTOOLS_VIEW          } from '../modules/nf-core/samtools/view/main'
+include { SAMTOOLS_FLAGSTAT      } from '../modules/nf-core/samtools/flagstat/main'
+include { BAM_MAPPED_READS       } from '../modules/local/bam_mapped_reads/main'
+include { IVAR_TRIM              } from '../modules/nf-core/ivar/trim/main'
+include { SAMTOOLS_SORT          } from '../modules/nf-core/samtools/sort/main'
+include { FREYJA_VARIANTS        } from '../modules/local/freyja_variants/main'
+include { GUNZIP_FREYJA_INPUTS   } from '../modules/local/gunzip_freyja_inputs/main'
+include { FREYJA_DEMIX           } from '../modules/local/freyja_demix/main'
+include { FREYJA_DEMIX as FREYJA_DEMIX_COMPARE } from '../modules/local/freyja_demix/main'
+include { BARCODE_COMPARE        } from '../modules/local/barcode_compare/main'
+include { FREYJA_BOOT            } from '../modules/local/freyja_boot/main'
+include { FREYJA_AGGREGATE_CONTROLS } from '../modules/local/freyja_aggregate_controls/main'
+include { ANNOTATE_VARIANTS      } from '../modules/local/annotate_variants/main'
+include { FREYJA_AGGREGATE_PLOT  } from '../modules/local/freyja_aggregate_plot/main'
+include { AMPLICON_COVERAGE      } from '../modules/local/amplicon_coverage/main'
+include { QC_SAMPLE              } from '../modules/local/qc_sample/main'
+include { QC_CONCAT              } from '../modules/local/qc_concat/main'
+include { IVAR_VARIANTS_TO_VCF   } from '../modules/local/ivar_variants_to_vcf/main'
+include { CONSENSUS_FILTER_VCF   } from '../modules/local/consensus_filter_vcf/main'
+include { LOW_DEPTH_MASK         } from '../modules/local/low_depth_mask/main'
+include { CONSENSUS_BCFTOOLS     } from '../modules/local/consensus_bcftools/main'
+include { CONSENSUS_STATS        } from '../modules/local/consensus_stats/main'
+include { CONSENSUS_STATS_CONCAT } from '../modules/local/consensus_stats_concat/main'
+include { CONSENSUS_CONCAT       } from '../modules/local/consensus_concat/main'
+include { MUTATIONS_OF_INTEREST  } from '../modules/local/mutations_of_interest/main'
+include { MUTATIONS_OF_INTEREST_CONCAT } from '../modules/local/mutations_of_interest_concat/main'
+include { BUILD_REPORT_DATA      } from '../modules/local/build_report_data/main'
+include { RENDER_REPORT          } from '../modules/local/render_report/main'
+include { PROVENANCE             } from '../modules/local/provenance/main'
+include { FREYJA_DATA            } from '../subworkflows/local/freyja_data/main'
+include { FREYJA_DATA as FREYJA_DATA_COMPARE } from '../subworkflows/local/freyja_data/main'
+include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
+include { primerBed              } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { ivarOffset             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { previousRuns           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    RUN MAIN WORKFLOW
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+
+workflow WASTELINE {
+
+    take:
+    mode           // string: full | demix | aggregate | report | update_db
+    ch_rows        // channel: full [ meta, [ fastq_1, fastq_2 ] ] | demix [ meta, variants, depths, fastp_json ] | aggregate [ meta, demix ]
+    ch_samplesheet // channel: the samplesheet in effect (path; checksummed in run_info.json, copied to summary/)
+    ch_skipped     // channel: [ sample, reason, sample_type, collection_date, site ] of samples that were found in results directories but not usable
+    outdir         // string: --outdir
+
+    main:
+
+    def ch_versions = channel.empty()
+    def ch_run_info = channel.empty()
+
+    //
+    // Collate and save software versions
+    //
+    def topic_versions = channel.topic("versions")
+        .distinct()
+        .branch { entry ->
+            versions_file: entry instanceof Path
+            versions_tuple: true
+        }
+
+    def topic_versions_string = topic_versions.versions_tuple
+        .map { process, tool, version ->
+            [ process[process.lastIndexOf(':')+1..-1], "  ${tool}: ${version}" ]
+        }
+        .groupTuple(by:0)
+        .map { process, tool_versions ->
+            tool_versions.unique().sort()
+            "${process}:\n${tool_versions.join('\n')}"
+        }
+
+    def ch_collated_versions = softwareVersionsToYAML(ch_versions.mix(topic_versions.versions_file))
+        .mix(topic_versions_string)
+        .collectFile(
+            storeDir: "${outdir}/pipeline_info",
+            name:  'software_versions.yml',
+            sort: true,
+            newLine: true
+        )
+
+    if (mode == 'report') {
+        //
+        // Rebuild report.html from a finished run (--results_dir); nothing else runs
+        //
+        def results = file(params.results_dir)
+        def existing_data = file("${results}/summary/report_data.json")
+        if (existing_data.exists()) {
+            // the run already wrote report_data.json: only the HTML is rendered again
+            RENDER_REPORT(channel.value(existing_data), file("${projectDir}/assets/templates/report.html.j2"))
+        }
+        else {
+            // rebuild report_data.json from the files the run left behind
+            def depths = (file("${results}/samples/*/freyja/*.depths") + file("${results}/*/freyja/*.depths")).sort { a, b -> a.name <=> b.name }
+            BUILD_REPORT_DATA(channel.value([
+                file("${results}/pipeline_info/run_info.json"),
+                optionalFile(results, 'qc_summary.tsv'),
+                optionalFile(results, 'amplicon_coverage.tsv'),
+                optionalFile(results, 'freyja_aggregated.tsv'),
+                optionalFile(results, 'demix_status.tsv'),
+                optionalFile(results, 'consensus_stats.tsv'),
+                optionalFile(results, 'mutations_of_interest.tsv'),
+                optionalFile(results, 'barcode_compare.tsv'),
+                depths,
+            ]), channel.value([
+                optionalFile(results, 'freyja_aggregated_controls.tsv'),
+                optionalFile(results, 'samplesheet.csv'),
+                optionalFile(results, 'freyja_boot_summary.tsv'),
+                optionalFile(results, 'barcode_compare_status.tsv'),
+            ]))
+            RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
+        }
+    }
+    else {
+    //
+    // Freyja dataset: resolved once, shared by every sample. update_db always fetches the latest.
+    //
+    FREYJA_DATA(mode == 'update_db' ? 'latest' : params.barcodes, params.pathogen, '--barcodes')
+
+    if (mode == 'update_db') {
+        // Nothing else to do: the dataset is now in --db_dir/freyja/<barcode-version>/
+        FREYJA_DATA.out.freyja_data.subscribe { freyja_data ->
+            def info = new groovy.json.JsonSlurper().parse(freyja_data)
+            log.info "\nFreyja data updated: barcode version ${info.barcode_version} (${info.barcode_version_iso}), stored in ${info.dataset_path}\nUse it with: --barcodes ${info.barcode_version_iso.take(10)}   (or --barcodes ${info.barcode_version_iso} for this exact update)"
+        }
+    }
+    else {
+        def ch_fasta = channel.value(file(params.fasta, checkIfExists: true))
+        def ch_gff = channel.value(file(params.gff, checkIfExists: true))
+        def ch_bed = channel.value(primerBed())
+        // demix mode: the primer scheme of the old results is unknown, so per-amplicon coverage is only
+        // computed when the user names one
+        def use_amplicons = mode == 'full' || params.primer_scheme || params.primer_bed
+
+        //
+        // Per-sample Freyja inputs [ meta, variants, depths ]: made from reads (full) or given (demix)
+        //
+        def ch_freyja_in = channel.empty()
+        def ch_fastp = channel.empty()      // [ meta, fastp.json ]
+        def ch_flagstat = channel.empty()   // [ meta, flagstat ]
+
+        if (mode == 'full') {
+            def ch_fasta_meta = ch_fasta.map { fasta -> [ [ id: fasta.baseName ], fasta ] }
+
+            //
+            // Reads -> fastp
+            //
+            FASTP(ch_rows.map { meta, reads -> [ meta, reads, [] ] }, false, false, false)
+            ch_fastp = FASTP.out.json
+
+            //
+            // Alignment: bwa mem (sorted) -> mapped reads only (+ index) -> primer trimming -> sorted + indexed BAM
+            //
+            BWA_INDEX(ch_fasta_meta)
+            BWA_MEM(FASTP.out.reads, BWA_INDEX.out.index, ch_fasta_meta, true)
+
+            SAMTOOLS_VIEW(
+                BWA_MEM.out.bam.map { meta, bam -> [ meta, bam, [] ] },
+                [ [:], [], [] ],
+                [ [:], [] ],
+                [ [:], [] ],
+                'bai',
+            )
+
+            // `ivar trim` crashes on a BAM without mapped reads (e.g. a clean negative control): those
+            // samples skip trimming and carry their (empty) BAM on; the coverage gate then records them
+            // as skipped_low_coverage downstream.
+            BAM_MAPPED_READS(SAMTOOLS_VIEW.out.bam.join(SAMTOOLS_VIEW.out.bai))
+            def ch_mapped = BAM_MAPPED_READS.out.counted
+                .map { meta, bam, bai, count_file -> [ meta, bam, bai, count_file.text.trim() as long ] }
+                .branch { _meta, _bam, _bai, count ->
+                    mapped: count > 0
+                    empty: true
+                }
+
+            IVAR_TRIM(ch_mapped.mapped.map { meta, bam, bai, _count -> [ meta, bam, bai ] }, ch_bed)
+
+            SAMTOOLS_SORT(IVAR_TRIM.out.bam, [ [:], [], [] ], 'bai')
+
+            def ch_final_bam = SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.index)
+                .mix(ch_mapped.empty.map { meta, bam, bai, _count -> [ meta, bam, bai ] })
+
+            FREYJA_VARIANTS(ch_final_bam, ch_fasta)
+
+            ch_freyja_in = FREYJA_VARIANTS.out.variants.join(FREYJA_VARIANTS.out.depths)
+
+            // mapped-read counts for the QC table, from the final primer-trimmed BAM
+            SAMTOOLS_FLAGSTAT(ch_final_bam)
+            ch_flagstat = SAMTOOLS_FLAGSTAT.out.flagstat
+        }
+        else if (mode == 'demix') {
+            // Existing variants/depths from a samplesheet or --previous_results (read only). Gzipped
+            // legacy files are unpacked once so that every consumer (QC, consensus, report) reads plain text.
+            def ch_given = ch_rows
+                .map { meta, variants, depths, _fastp_json -> [ meta, variants, depths ] }
+                .branch { _meta, variants, depths ->
+                    zipped: variants.name.endsWith('.gz') || depths.name.endsWith('.gz')
+                    plain: true
+                }
+            GUNZIP_FREYJA_INPUTS(ch_given.zipped)
+            ch_freyja_in = ch_given.plain.mix(GUNZIP_FREYJA_INPUTS.out.plain)
+            ch_fastp = ch_rows
+                .filter { _meta, _variants, _depths, fastp_json -> fastp_json }
+                .map { meta, _variants, _depths, fastp_json -> [ meta, fastp_json ] }
+        }
+
+        def ch_depths = ch_freyja_in.map { meta, _variants, depths -> [ meta, depths ] }
+        def ch_variants = ch_freyja_in.map { meta, variants, _depths -> [ meta, variants ] }
+
+        //
+        // Demix per sample (never fails the run) -> [ meta, demix ]; aggregate mode takes given .demix files
+        //
+        def ch_demixed = channel.empty()
+        def ch_compare_tsv = channel.empty()
+        def ch_compare_status = channel.empty()
+        def ch_boot_summary = channel.empty()
+        // demix_status.tsv lines: [ sample, status, reason, genome_coverage_pct, barcode_version, barcode_version_iso ]
+        def ch_status_lines = ch_skipped.map { sample, reason, _type, _date, _site -> [ sample, 'missing', reason, '', '', '' ].collect { value -> value.toString().replaceAll('[\t\r\n]+', ' ') }.join('\t') }
+
+        if (mode == 'full' || mode == 'demix') {
+            FREYJA_DEMIX(
+                ch_freyja_in,
+                FREYJA_DATA.out.dataset,
+                FREYJA_DATA.out.barcode_version,
+            )
+
+            ch_status_lines = ch_status_lines.mix(FREYJA_DEMIX.out.status
+                .map { _meta, status_json ->
+                    def rec = new groovy.json.JsonSlurper().parse(status_json)
+                    [ rec.sample, rec.status, rec.reason, rec.genome_coverage_pct, rec.barcode_version, rec.barcode_version_iso ]
+                        .collect { value -> value == null ? '' : value.toString().replaceAll('[\t\r\n]+', ' ') }
+                        .join('\t')
+                })
+
+            // summary/barcode_version.json: sidecar of freyja_aggregated.tsv (PLAN 5.13)
+            FREYJA_DATA.out.barcode_version.collectFile(name: 'barcode_version.json', storeDir: "${outdir}/summary")
+
+            ch_demixed = FREYJA_DEMIX.out.demix
+
+            //
+            // --compare_barcodes: the same variants/depths demixed with a SECOND dataset (resolved
+            // independently, recorded as freyja_data_compare); abundances of both side by side
+            //
+            if (params.compare_barcodes) {
+                FREYJA_DATA_COMPARE(params.compare_barcodes, params.pathogen, '--compare_barcodes')
+                FREYJA_DEMIX_COMPARE(
+                    ch_freyja_in,
+                    FREYJA_DATA_COMPARE.out.dataset,
+                    FREYJA_DATA_COMPARE.out.barcode_version,
+                )
+                BARCODE_COMPARE(
+                    FREYJA_DEMIX.out.demix.join(FREYJA_DEMIX_COMPARE.out.demix),
+                    FREYJA_DATA.out.barcode_version,
+                    FREYJA_DATA_COMPARE.out.barcode_version,
+                )
+                ch_compare_tsv = BARCODE_COMPARE.out.rows
+                    .map { _meta, rows -> rows }
+                    .toSortedList { a, b -> a.name <=> b.name }
+                    .flatMap { files -> files }
+                    .collectFile(name: 'barcode_compare.tsv', storeDir: "${outdir}/summary", sort: { file -> file.name }, seed: 'sample\tlineage\tabundance_a\tabundance_b\tbarcode_version_a\tbarcode_version_b\n', newLine: false)
+                // outcome of the second demix per sample (a failed one is flagged in the report, never fatal)
+                ch_compare_status = FREYJA_DEMIX_COMPARE.out.status
+                    .map { _meta, status_json ->
+                        def rec = new groovy.json.JsonSlurper().parse(status_json)
+                        [ rec.sample, rec.status, rec.reason, rec.barcode_version ]
+                            .collect { value -> value == null ? '' : value.toString().replaceAll('[\t\r\n]+', ' ') }
+                            .join('\t')
+                    }
+                    .collectFile(name: 'barcode_compare_status.tsv', storeDir: "${outdir}/summary", seed: 'sample\tstatus\treason\tbarcode_version', sort: true, newLine: true)
+            }
+
+            //
+            // --freyja_boot: bootstrap intervals for every sample that demixed
+            //
+            if (params.freyja_boot) {
+                FREYJA_BOOT(ch_freyja_in.join(FREYJA_DEMIX.out.demix), FREYJA_DATA.out.dataset)
+                ch_boot_summary = FREYJA_BOOT.out.summary
+                    .map { _meta, summary -> summary }
+                    .toSortedList { a, b -> a.name <=> b.name }
+                    .flatMap { files -> files }
+                    .collectFile(name: 'freyja_boot_summary.tsv', storeDir: "${outdir}/summary", sort: { file -> file.name }, seed: 'sample\tlineage\tabundance\tlo\thi\n', newLine: false)
+            }
+        }
+        else {
+            ch_demixed = ch_rows
+        }
+
+        // summary/demix_status.tsv: one row per sample, whatever its status; samples that were found in
+        // old results but could not be used (missing files, empty legacy .demix) are listed as `missing`
+        def status_header = ['sample', 'status', 'reason', 'genome_coverage_pct', 'barcode_version', 'barcode_version_iso'].join('\t')
+        def ch_demix_status = ch_status_lines
+            .collectFile(name: 'demix_status.tsv', storeDir: "${outdir}/summary", seed: status_header, sort: true, newLine: true)
+
+        //
+        // Aggregate + plot. Only samples with status ok have a .demix file (the rest are listed in
+        // demix_status.tsv). Negative controls are demixed but kept out of the aggregate and the
+        // plot unless --include_negatives_in_aggregate (PLAN D8).
+        //
+        def ch_aggregate_in = ch_demixed.filter { meta, _demix ->
+            params.include_negatives_in_aggregate || meta.sample_type != 'negative'
+        }
+
+        if (!params.include_negatives_in_aggregate) {
+            ch_demixed
+                .filter { meta, _demix -> meta.sample_type == 'negative' }
+                .subscribe { meta, _demix ->
+                    log.info "Negative control ${meta.id} is not included in the aggregate and plot (use --include_negatives_in_aggregate to include it)"
+                }
+        }
+
+        def ch_aggregate_files = ch_aggregate_in
+            .toSortedList { a, b -> a[0].id <=> b[0].id }
+            .filter { entries -> entries }
+            .map { entries -> [ entries.collect { entry -> entry[0].id }, entries.collect { entry -> entry[1] } ] }
+
+        // Collection dates for `freyja plot --times` (format of Freyja's data/times_metadata.csv)
+        def ch_times = ch_aggregate_in
+            .filter { meta, _demix -> meta.collection_date }
+            .map { meta, _demix -> "${meta.id},${meta.collection_date}" }
+            .collectFile(name: 'times.csv', seed: 'Sample,sample_collection_datetime', sort: true, newLine: true)
+            .ifEmpty([])
+
+        FREYJA_AGGREGATE_PLOT(ch_aggregate_files, FREYJA_DATA.out.dataset, ch_times)
+
+        // What the negative controls contain (they are not in the aggregate): same format, own table
+        def ch_controls_aggregated = channel.empty()
+        if (!params.include_negatives_in_aggregate) {
+            def ch_control_files = ch_demixed
+                .filter { meta, _demix -> meta.sample_type == 'negative' }
+                .toSortedList { a, b -> a[0].id <=> b[0].id }
+                .filter { entries -> entries }
+                .map { entries -> [ entries.collect { entry -> entry[0].id }, entries.collect { entry -> entry[1] } ] }
+            FREYJA_AGGREGATE_CONTROLS(ch_control_files)
+            ch_controls_aggregated = FREYJA_AGGREGATE_CONTROLS.out.aggregated
+        }
+
+        //
+        // Coverage QC (every sample, negatives included) from the Freyja depths file, plus flagstat
+        // (mode full), the fastp JSON (when known) and per-amplicon coverage
+        //
+        def ch_qc_summary = channel.value([])
+        def ch_amplicon_coverage = channel.value([])
+        def ch_consensus_stats = channel.value([])
+        def ch_moi = channel.value([])
+        def ch_depth_files = channel.value([])
+
+        if (mode == 'full' || mode == 'demix') {
+            def ch_amplicons = channel.empty()
+            if (use_amplicons) {
+                AMPLICON_COVERAGE(ch_depths, ch_bed)
+                ch_amplicons = AMPLICON_COVERAGE.out.tsv
+            }
+
+            def ch_qc_in = ch_depths
+                .join(ch_flagstat, remainder: true)
+                .join(ch_fastp, remainder: true)
+                .join(ch_amplicons, remainder: true)
+                .map { meta, depths, flagstat, fastp_json, amplicons -> [ meta, depths, flagstat ?: [], fastp_json ?: [], amplicons ?: [] ] }
+            QC_SAMPLE(ch_qc_in)
+
+            QC_CONCAT(
+                QC_SAMPLE.out.tsv.map { _meta, tsv -> tsv }.collect(),
+                ch_amplicons.map { _meta, tsv -> tsv }.collect().ifEmpty([]),
+            )
+            ch_qc_summary = QC_CONCAT.out.qc_summary.ifEmpty([])
+            ch_amplicon_coverage = QC_CONCAT.out.amplicon_coverage.ifEmpty([])
+            ch_depth_files = ch_depths.map { _meta, depths -> depths }.collect()
+
+            //
+            // Consensus genomes from the Freyja variants + depths (negative controls get none).
+            // A sample whose consensus steps fail still gets a row, with status failed.
+            //
+            if (!params.skip_consensus) {
+                def ch_consensus_samples = ch_variants.filter { meta, _variants -> meta.sample_type != 'negative' }
+                IVAR_VARIANTS_TO_VCF(ch_consensus_samples)
+                CONSENSUS_FILTER_VCF(IVAR_VARIANTS_TO_VCF.out.vcf)
+                LOW_DEPTH_MASK(ch_depths.join(CONSENSUS_FILTER_VCF.out.bed), ch_fasta)
+                CONSENSUS_BCFTOOLS(CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed), ch_fasta)
+                CONSENSUS_STATS(CONSENSUS_BCFTOOLS.out.fasta, ch_fasta)
+
+                def ch_stats = ch_consensus_samples
+                    .join(CONSENSUS_STATS.out.tsv, remainder: true)
+                    .branch { _meta, _variants, stats ->
+                        built: stats
+                        failed: true
+                    }
+                def ch_failed_stats = ch_stats.failed
+                    .collectFile { meta, _variants, _stats ->
+                        [ "${meta.id}.consensus_stats.tsv", "sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus\n${meta.id}\tNA\tNA\tNA\tNA\tfailed\n" ]
+                    }
+                CONSENSUS_STATS_CONCAT(ch_stats.built.map { _meta, _variants, stats -> stats }.mix(ch_failed_stats).collect())
+                CONSENSUS_CONCAT(CONSENSUS_BCFTOOLS.out.fasta.map { _meta, fasta -> fasta }.collect())
+                ch_consensus_stats = CONSENSUS_STATS_CONCAT.out.tsv.ifEmpty([])
+
+                // --annotate_variants: amino-acid consequences of the variants applied to the consensus
+                if (params.annotate_variants) {
+                    ANNOTATE_VARIANTS(CONSENSUS_FILTER_VCF.out.vcf, ch_fasta, ch_gff)
+                    ANNOTATE_VARIANTS.out.tsv
+                        .map { _meta, tsv -> tsv }
+                        .toSortedList { a, b -> a.name <=> b.name }
+                        .flatMap { files -> files }
+                        .collectFile(name: 'annotated_variants.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
+                }
+            }
+
+            //
+            // Mutations of interest (opt-in)
+            //
+            if (params.mutations_of_interest) {
+                MUTATIONS_OF_INTEREST(ch_variants.join(ch_depths), file(params.mutations_of_interest, checkIfExists: true), ch_gff, ch_fasta)
+                MUTATIONS_OF_INTEREST_CONCAT(MUTATIONS_OF_INTEREST.out.tsv.map { _meta, tsv -> tsv }.collect())
+                ch_moi = MUTATIONS_OF_INTEREST_CONCAT.out.tsv.ifEmpty([])
+            }
+        }
+
+        // The samplesheet in effect (also for results-directory inputs) travels with the results, so a
+        // later demix/aggregate run on this directory finds sample_type, collection_date and site
+        ch_samplesheet.collectFile(name: 'samplesheet.csv', storeDir: "${outdir}/summary")
+
+        //
+        // Provenance: run_info.json
+        //
+        def ch_base_info = channel.value(runInfoBase(mode)).collectFile(name: 'run_info_base.json')
+        PROVENANCE(
+            ch_base_info,
+            ch_samplesheet,
+            use_amplicons ? ch_bed : channel.value([]),
+            mode == 'aggregate' ? channel.value([]) : ch_fasta,
+            FREYJA_DATA.out.freyja_data,
+            ch_collated_versions,
+            params.compare_barcodes && (mode == 'full' || mode == 'demix') ? FREYJA_DATA_COMPARE.out.freyja_data : channel.value([]),
+        )
+        ch_run_info = PROVENANCE.out.run_info
+
+        //
+        // Report: report_data.json (everything the run produced) -> report.html
+        // Every run-level input is exactly one item (a file, or [] when absent).
+        //
+        def ch_report_in = PROVENANCE.out.run_info
+            .combine(wrapItem(ch_qc_summary))
+            .combine(wrapItem(ch_amplicon_coverage))
+            .combine(wrapItem(FREYJA_AGGREGATE_PLOT.out.aggregated.ifEmpty([])))
+            .combine(wrapItem(ch_demix_status.ifEmpty([])))
+            .combine(wrapItem(ch_consensus_stats))
+            .combine(wrapItem(ch_moi))
+            .combine(wrapItem(ch_compare_tsv.ifEmpty([])))
+            .combine(wrapItem(ch_depth_files))
+        // optional extras: negative-control aggregate, the samplesheet in effect (metadata for modes
+        // without a QC table), bootstrap intervals, status of the second-barcode demix
+        // The sheet of the usable samples, plus the metadata of samples that discovery had to skip (a skipped
+        // negative control is only known from there)
+        def ch_skipped_sheet = ch_skipped
+            .map { sample, _reason, sample_type, date, site -> "${sample},${sample_type},${date},${site}" }
+            .collectFile(name: 'skipped_samplesheet.csv', seed: 'sample,sample_type,collection_date,site', sort: true, newLine: true)
+        def ch_report_sheets = ch_samplesheet.mix(ch_skipped_sheet).collect()
+        def ch_report_extra = wrapItem(ch_controls_aggregated.ifEmpty([]))
+            .combine(wrapItem(ch_report_sheets))
+            .combine(wrapItem(ch_boot_summary.ifEmpty([])))
+            .combine(wrapItem(ch_compare_status.ifEmpty([])))
+        BUILD_REPORT_DATA(ch_report_in, ch_report_extra)
+        RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
+    }
+    }
+
+    emit:
+    run_info = ch_run_info // channel: path(run_info.json); empty for modes without provenance (report, update_db)
+}
+
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    FUNCTIONS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+
+//
+// A file of <results>/summary/, or [] when the run did not write it
+//
+def optionalFile(results, name) {
+    def candidate = file("${results}/summary/${name}")
+    return candidate.exists() ? candidate : []
+}
+
+//
+// Single-item channel whose item may be [] or a list of files, wrapped so that .combine() keeps
+// it as ONE tuple element instead of flattening it
+//
+def wrapItem(ch) {
+    return ch.map { item -> [ item ] }
+}
+
+//
+// Facts known to Nextflow, as JSON for bin/make_run_info.py to extend with checksums,
+// tool versions and the Freyja dataset block
+//
+def runInfoBase(mode) {
+    def git_commit = workflow.commitId
+    if (!git_commit) {
+        try {
+            def proc = ['git', '-C', projectDir.toString(), 'rev-parse', 'HEAD'].execute()
+            def out = proc.text.trim()
+            git_commit = proc.waitFor() == 0 && out ? out : null
+        }
+        catch (Exception _e) {
+            git_commit = null
+        }
+    }
+    // pipelines_testdata_base_path is nf-core template plumbing (a URL), not a setting of this pipeline
+    def plain_params = params.findAll { key, _value -> key.toString() != 'pipelines_testdata_base_path' }.collectEntries { key, value ->
+        [ (key.toString()): (value == null || value instanceof Boolean || value instanceof Number) ? value : value.toString() ]
+    }
+    // the effective primer scheme is recorded even when the default (null = midnight) applies
+    if (mode == 'full' && !params.primer_bed && !params.primer_scheme) {
+        plain_params.primer_scheme = 'midnight'
+    }
+    def info = [
+        pipeline_name: workflow.manifest.name,
+        pipeline_version: workflow.manifest.version,
+        git_commit: git_commit,
+        nextflow_version: workflow.nextflow.version.toString(),
+        mode: mode,
+        profile: workflow.profile,
+        command_line: workflow.commandLine,
+        run_name: workflow.runName,
+        start: workflow.start.toString(),
+        params: plain_params,
+        // earlier runs whose results this run builds on (demix/aggregate); barcode_version 'unknown'
+        // for legacy Snakemake results, which recorded none
+        previous_runs: previousRuns(mode),
+    ]
+    if (mode == 'aggregate') {
+        info.freyja_data_note = 'aggregate mode demixes nothing: freyja_data describes the dataset whose lineage hierarchy groups the plot, not the barcodes the .demix files were made with (see previous_runs)'
+    }
+    return groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(info))
+}

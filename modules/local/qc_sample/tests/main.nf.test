@@ -1,0 +1,163 @@
+nextflow_process {
+
+    name "Test Process QC_SAMPLE"
+    script "../main.nf"
+    process "QC_SAMPLE"
+    tag "modules"
+    tag "modules_local"
+    tag "qc_sample"
+    tag "samtools/flagstat"
+    tag "amplicon_coverage"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [
+                    [ id:'S_1', sample_type:'sample', collection_date:'2026-01-05', site:'SiteA' ],
+                    file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz"),
+                    [],
+                    [],
+                    []
+                ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.tsv[0][1].toString().endsWith('S_1.qc_row.tsv') },
+                { assert snapshot(process.out.tsv).match() }
+            )
+        }
+    }
+
+    test("PURE_C: flagstat of a real BAM slice, fastp json and amplicon table - real") {
+
+        tag "docker"
+        setup {
+            run("SAMTOOLS_FLAGSTAT") {
+                script "../../../nf-core/samtools/flagstat/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id:'PURE_C' ],
+                        file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.slice.bam"),
+                        file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.slice.bam.bai")
+                    ]
+                    """
+                }
+            }
+            run("AMPLICON_COVERAGE") {
+                script "../../amplicon_coverage/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/PURE_C.depths")
+                    depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                    input[0] = [ [ id:'PURE_C' ], file(depths.toString()) ]
+                    input[1] = file("\$projectDir/assets/primer_schemes/midnight.bed")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                // PURE_C.depths was written (decompressed) by the AMPLICON_COVERAGE setup above
+                def pc_depths = file("\${launchDir}/PURE_C.depths")
+                input[0] = SAMTOOLS_FLAGSTAT.out.flagstat
+                    .join(AMPLICON_COVERAGE.out.tsv)
+                    .map { meta, flagstat, amplicons ->
+                        [ [ id:'PURE_C', sample_type:'sample', collection_date:'2026-01-19', site:'SiteB' ],
+                          pc_depths, flagstat, file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.fastp.json"), amplicons ]
+                    }
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def header = lines[0].split('\t') as List
+            def row = [header, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert lines.size() == 2 },
+                { assert row.sample == 'PURE_C' },
+                { assert row.sample_type == 'sample' },
+                { assert row.collection_date == '2026-01-19' },
+                { assert row.site == 'SiteB' },
+                { assert row.raw_reads == '16000' },                 // fastp json
+                { assert row.trimmed_reads == '16000' },
+                { assert row.mapped_reads == '697' },                // flagstat of the BAM slice: "697 + 0 primary mapped"
+                { assert (row.pct_genome_ge_10x as double) >= 95 },  // truth.json: PURE_C 95-100 %
+                { assert row.amplicons_total == '29' },
+                { assert row.amplicons_dropped == '0' },
+                { assert row.qc_status == 'PASS' },
+                { assert row.qc_reasons == '' },
+                { assert row.demix_status == 'NA' }
+            )
+        }
+    }
+
+    test("no optional inputs: a negative with zero depth passes - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def zero = new File("\${launchDir}/NEG.depths")
+                zero.text = (1..500).collect { "ref\\t\${it}\\tA\\t0" }.join('\\n') + '\\n'
+                input[0] = [ [ id:'NEG_1', sample_type:'negative' ], file(zero.toString()), [], [], [] ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def header = lines[0].split('\t') as List
+            def row = [header, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert row.sample == 'NEG_1' },
+                { assert row.sample_type == 'negative' },
+                { assert row.collection_date == 'NA' },
+                { assert row.site == 'NA' },
+                { assert row.raw_reads == 'NA' },
+                { assert row.qc_status == 'PASS' }
+            )
+        }
+    }
+
+    test("empty depths file is reported as FAIL no_depths, not a crash - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def empty = new File("\${launchDir}/EMPTY.depths")
+                empty.text = ''
+                input[0] = [ [ id:'EMPTY_1' ], file(empty.toString()), [], [], [] ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def header = lines[0].split('\t') as List
+            def row = [header, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert row.sample == 'EMPTY_1' },
+                { assert row.sample_type == 'sample' },
+                { assert row.qc_status == 'FAIL' },
+                { assert row.qc_reasons == 'no_depths' }
+            )
+        }
+    }
+}

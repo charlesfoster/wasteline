@@ -1,0 +1,75 @@
+nextflow_process {
+
+    name "Test Process CONSENSUS_CONCAT"
+    script "../main.nf"
+    process "CONSENSUS_CONCAT"
+    tag "modules"
+    tag "modules_local"
+    tag "consensus_concat"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.consensus.fa") ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.fasta).match() }
+            )
+        }
+    }
+
+    test("multi-FASTA sorted by sample ID, every record intact - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/modules_phase3/concat"
+                def extra = new File("\${launchDir}/Site_1_week_2.consensus.fa")
+                extra.text = '>Site_1_week_2\\nACGTACGT\\nAC\\n'
+                // out of order, and 'Site_1_week_2' sorts after 'S_B' in byte order
+                input[0] = [ file(extra.toString()), file("\$d/S_B.consensus.fa"), file("\$d/S_A.consensus.fa") ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.fasta[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines.findAll { it.startsWith('>') } == ['>S_A', '>S_B', '>Site_1_week_2'] },
+                { assert lines == ['>S_A', 'ACGTNNACGT', 'AC', '>S_B', 'ACGTNNACGT', 'AC', '>Site_1_week_2', 'ACGTACGT', 'AC'] }
+            )
+        }
+    }
+
+    test("a file with two records is rejected, not silently merged - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def bad = new File("\${launchDir}/BAD.consensus.fa")
+                bad.text = '>A\\nACGT\\n>B\\nACGT\\n'
+                input[0] = [ file(bad.toString()) ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.failed }
+            )
+        }
+    }
+}

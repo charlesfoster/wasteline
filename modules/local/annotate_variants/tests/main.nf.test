@@ -1,0 +1,114 @@
+nextflow_process {
+
+    name "Test Process ANNOTATE_VARIANTS"
+    script "../main.nf"
+    process "ANNOTATE_VARIANTS"
+    tag "modules"
+    tag "modules_local"
+    tag "annotate_variants"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/assets/samplesheet.csv"), file("\$projectDir/assets/schema_input.json") ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                input[2] = file("\$projectDir/assets/references/NC_045512.gff3")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert file(process.out.tsv[0][1].toString()).name == 'S_1.annotated.tsv' },
+                { assert snapshot(process.out.tsv.collect { m, f -> file(f.toString()).readLines()[0] }).match() }
+            )
+        }
+    }
+
+    // The JN.1 sample: its spike changes (S:N501Y is one of them) must be reported with the old
+    // pipeline's columns and the standard amino-acid notation.
+    test("PURE_C (JN.1): spike amino-acid changes are annotated - real") {
+
+        tag "docker"
+
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    def tsv = new File("\${launchDir}/PURE_C.variants.tsv")
+                    tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.variants.tsv.gz")).bytes
+                    input[0] = [ [ id:'PURE_C' ], file(tsv.toString()) ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                input[2] = file("\$projectDir/assets/references/NC_045512.gff3")
+                """
+            }
+        }
+
+        then {
+            def lines = file(process.out.tsv[0][1].toString()).readLines()
+            def rows = lines.drop(1).collect { line -> line.split('\t') }
+            assertAll(
+                { assert process.success },
+                { assert lines[0] == 'reference\tsample_id\tgene\tnt_pos\tref\talt\teffect\taa_bcsq\taa_standard\tvaf\tdepth\tcompound' },
+                { assert rows.size() >= 100 },
+                { assert rows.every { r -> r.size() == 12 && r[1] == 'PURE_C' } },
+                // S:N501Y: A23063T, missense in S
+                { assert rows.any { r -> r[2] == 'S' && r[3] == '23063' && r[4] == 'A' && r[5] == 'T' && r[6] == 'missense' && r[7] == '501N>501Y' && r[8] == 'N501Y' } },
+                { assert rows.any { r -> r[2] == 'S' && r[6] == 'synonymous' } }
+            )
+        }
+    }
+
+    // bcftools csq reports a compound consequence on the first of two adjacent SNVs in one codon and
+    // `@<pos>` on the second: the second must not turn into an intergenic row with NA gene.
+    test("adjacent SNVs in one codon share the joint consequence - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'T1' ], file("\$projectDir/tests/fixtures/annotate/adjacent_snvs_one_codon.vcf"), file("\$projectDir/assets/samplesheet.csv") ] // plain VCF: the index is not used
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                input[2] = file("\$projectDir/assets/references/NC_045512.gff3")
+                """
+            }
+        }
+
+        then {
+            def rows = file(process.out.tsv[0][1].toString()).readLines().drop(1).collect { line -> line.split('\t') as List }
+            assertAll(
+                { assert process.success },
+                { assert rows.size() == 2 },
+                // both variants: gene S, the joint change N501S (AAT -> TCT), flagged as one compound
+                { assert rows.every { r -> r[2] == 'S' && r[6] == 'missense' && r[7] == '501N>501S' && r[8] == 'N501S' && r[11] == '23063+23064' } },
+                { assert rows.collect { r -> r[3] } == ['23063', '23064'] },
+                { assert rows.every { r -> r[6] != 'intergenic' } }
+            )
+        }
+    }
+}

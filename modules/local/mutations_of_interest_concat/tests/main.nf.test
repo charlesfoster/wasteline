@@ -1,0 +1,75 @@
+nextflow_process {
+
+    name "Test Process MUTATIONS_OF_INTEREST_CONCAT"
+    script "../main.nf"
+    process "MUTATIONS_OF_INTEREST_CONCAT"
+    tag "modules"
+    tag "modules_local"
+    tag "mutations_of_interest_concat"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.mutations_of_interest.tsv") ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.tsv).match() }
+            )
+        }
+    }
+
+    test("one header, sorted by sample, MOI order kept inside a sample - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/modules_phase3/concat"
+                input[0] = [ file("\$d/S_B.mutations_of_interest.tsv"), file("\$d/S_A.mutations_of_interest.tsv") ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines[0] == 'sample\tname\tmutation\tref_depth\talt_depth\tdepth\talt_freq' },
+                { assert lines.count { it.startsWith('sample\t') } == 1 },
+                { assert lines.drop(1).collect { it.split('\t')[0] } == ['S_A', 'S_A', 'S_B', 'S_B'] },
+                { assert lines.drop(1).collect { it.split('\t')[1] } == ['zeta', 'alpha', 'zeta', 'alpha'] }   // not re-sorted by name
+            )
+        }
+    }
+
+    test("tables with different headers are rejected - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def bad = new File("\${launchDir}/BAD.mutations_of_interest.tsv")
+                bad.text = 'sample\\tother\\nBAD\\t1\\n'
+                def d = "\$projectDir/tests/fixtures/modules_phase3/concat"
+                input[0] = [ file("\$d/S_A.mutations_of_interest.tsv"), file(bad.toString()) ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.failed }
+            )
+        }
+    }
+}

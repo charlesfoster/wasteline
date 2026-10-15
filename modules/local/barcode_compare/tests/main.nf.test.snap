@@ -1,0 +1,14 @@
+{
+    "stub": {
+        "content": [
+            [
+                "S_1.barcode_compare.tsv"
+            ]
+        ],
+        "timestamp": "2026-10-16T02:19:28.862949",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

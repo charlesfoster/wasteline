@@ -1,0 +1,77 @@
+nextflow_process {
+
+    name "Test Process FREYJA_DATASET_INFO"
+    script "../main.nf"
+    process "FREYJA_DATASET_INFO"
+    tag "modules"
+    tag "modules_local"
+    tag "freyja_dataset_info"
+
+    test("container dataset - real (offline)") {
+
+        tag "docker"
+        setup {
+            run("FREYJA_UPDATE") {
+                script "../../freyja_update/main.nf"
+                process {
+                    """
+                    input[0] = 'container'
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = FREYJA_UPDATE.out.dataset
+                input[1] = 'container'
+                input[2] = 'bundled in the Freyja container'
+                input[3] = params.pathogen
+                """
+            }
+        }
+
+        then {
+            def data = new groovy.json.JsonSlurper().parse(new File(process.out.freyja_data[0].toString()))
+            def small = new groovy.json.JsonSlurper().parse(new File(process.out.barcode_version[0].toString()))
+            def keys = ['source', 'barcode_version', 'barcode_version_iso', 'barcodes_file', 'barcodes_sha256',
+                        'barcodes_format', 'lineage_mutations_sha256', 'curated_lineages_sha256', 'lineages_yml_sha256',
+                        'pathogen', 'freyja_version', 'freyja_reported_barcode_version', 'dataset_path', 'downloaded_at']
+            assertAll(
+                { assert process.success },
+                { assert keys.every { key -> data.containsKey(key) } },
+                { assert data.barcode_version ==~ /\d{2}_\d{2}_\d{4}-\d{2}-\d{2}/ },
+                { assert data.barcode_version_iso ==~ /\d{4}-\d{2}-\d{2}T\d{2}-\d{2}/ },
+                { assert data.barcodes_sha256 ==~ /[0-9a-f]{64}/ },
+                { assert data.freyja_reported_barcode_version == data.barcode_version },
+                { assert small.barcode_version == data.barcode_version },
+                { assert small.barcodes_sha256 == data.barcodes_sha256 }
+            )
+        }
+    }
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/assets/references/NC_045512.fasta")
+                input[1] = 'custom'
+                input[2] = 'somewhere'
+                input[3] = params.pathogen
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.freyja_data, process.out.barcode_version).match() }
+            )
+        }
+    }
+}

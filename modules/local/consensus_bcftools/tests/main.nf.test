@@ -1,0 +1,567 @@
+nextflow_process {
+
+    name "Test Process CONSENSUS_BCFTOOLS"
+    script "../main.nf"
+    process "CONSENSUS_BCFTOOLS"
+    config "./nextflow.config"
+    tag "modules"
+    tag "modules_local"
+    tag "consensus_bcftools"
+    tag "ivar_variants_to_vcf"
+    tag "consensus_filter_vcf"
+    tag "low_depth_mask"
+
+    // Chain under test (PLAN 5.11): IVAR_VARIANTS_TO_VCF -> CONSENSUS_FILTER_VCF -> LOW_DEPTH_MASK -> CONSENSUS_BCFTOOLS
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [
+                    [ id:'S_1' ],
+                    file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz"),
+                    file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.variants.tsv.gz"),
+                    file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv")
+                ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert process.out.fasta[0][1].toString().endsWith('S_1.consensus.fa') },
+                { assert status.sample == 'S_1' },
+                { assert snapshot(process.out.fasta, process.out.status).match() }
+            )
+        }
+    }
+
+    test("PURE_C (JN.1): majority alleles are carried, rest is reference or N - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    def tsv = new File("\${launchDir}/PURE_C.variants.tsv")
+                    tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.variants.tsv.gz")).bytes
+                    input[0] = [ [ id:'PURE_C' ], file(tsv.toString()) ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/PURE_C.depths")
+                    depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            // Independent truth: the JN.1 row of the barcode table (SNVs only) vs the consensus
+            def barcodes = new File("${projectDir}/tests/data/barcodes_test.csv").readLines()
+            def names = barcodes[0].split(',', -1) as List
+            def row = barcodes.find { it.startsWith('JN.1,') }.split(',', -1) as List
+            def jn1 = (1..<names.size()).findAll { (row[it] as double) == 1.0 && names[it] ==~ /[ACGT]\d+[ACGT]/ }
+                .collect { def m = (names[it] =~ /([ACGT])(\d+)([ACGT])/)[0]; [ref: m[1], pos: m[2] as int, alt: m[3]] }
+            def depth = new java.util.zip.GZIPInputStream(new FileInputStream("${projectDir}/tests/fixtures/modules_phase3/PURE_C.depths.gz")).text.readLines().collect { (it.split('\t') as List)[3] as int }
+            def covered = jn1.findAll { depth[it.pos - 1] >= 15 }
+            def carried = covered.findAll { cons[it.pos - 1] == it.alt }
+            def diffs = (0..<ref.size()).findAll { cons[it] != ref[it] && cons[it] != 'N' }
+            assertAll(
+                { assert process.success },
+                { assert status == [sample: 'PURE_C', status: 'ok', reason: ''] },
+                { assert fa[0] == '>PURE_C' },
+                { assert fa.count { it.startsWith('>') } == 1 },
+                { assert cons.size() == 29903 },
+                { assert jn1.size() > 100 },                                   // barcode SNVs of JN.1 present in the test table
+                { assert covered.size() > 100 },
+                { assert carried.size() == covered.size() },                   // every JN.1 SNV at >= 15x is in the consensus
+                { assert diffs.size() == 115 },                                // and nothing else differs from the reference
+                { assert cons.startsWith('N' * 54 + ref.substring(54, 60)) },  // low-depth ends are masked
+                { assert cons.endsWith('N' * 135) }
+            )
+        }
+    }
+
+    test("synthetic: thresholds, deletion marked with '-', insertion applied, length kept - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'SYN_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv") ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            def status_ok = status.status == 'ok'
+            assertAll(
+                { assert process.success },
+                { assert status_ok },
+                { assert fa[0] == '>SYN_1' },
+                { assert cons.size() == 29903 + 2 },                           // +2: the AC insertion; the deletion keeps length
+                { assert cons[999] == 'C' && ref[999] == 'T' },                // SNV AF 0.9
+                { assert cons[1999] == 'R' && ref[1999] == 'A' },              // AF 0.6, 30 alt reads: IUPAC code (A/G = R)
+                { assert cons[2999] == ref[2999] },                            // ALT_QUAL 15: not applied
+                { assert cons[3999] == ref[3999] },                            // DP 8: not applied
+                { assert cons[4999] == 'T' && ref[4999] == 'C' },              // AF == 0.75 boundary applied
+                { assert cons.substring(10000, 10003) == '---' },              // deletion of 10001-10003 -> '-'
+                { assert cons.substring(10003, 10006) == ref.substring(10003, 10006) },
+                { assert cons.substring(11999, 12002) == ref.substring(11999, 12002) }, // deletion AF 0.5: not applied
+                { assert cons.substring(14999, 15003) == 'T' + 'AC' + ref.substring(15000, 15001) }, // insertion after pos 15000
+                { assert cons.substring(15003, 15010) == ref.substring(15001, 15008) },
+                { assert cons[19999 + 2] == 'C' && ref[19999] == 'T' },        // major alt at the multi-allelic site (shifted by the insertion)
+                { assert !cons.contains('N') }                                 // depth 30 everywhere: nothing masked
+            )
+        }
+    }
+
+    test("low coverage (depth 3 < 15 everywhere) -> status empty, all-N sequence of reference length - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'LOW_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv") ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t3" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert status.status == 'empty' },
+                { assert status.reason },
+                { assert fa[0] == '>LOW_1' },
+                { assert cons.size() == 29903 },
+                { assert cons.every { it == 'N' } }
+            )
+        }
+    }
+
+    test("empty sample (header-only variants, empty depths) -> status empty, all-N, never an empty file - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    def tsv = new File("\${launchDir}/EMPTY.variants.tsv")
+                    tsv.text = 'REGION\\tPOS\\tREF\\tALT\\tREF_DP\\tREF_RV\\tREF_QUAL\\tALT_DP\\tALT_RV\\tALT_QUAL\\tALT_FREQ\\tTOTAL_DP\\tPVAL\\tPASS\\n'
+                    input[0] = [ [ id:'EMPTY_1' ], file(tsv.toString()) ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/EMPTY.depths")
+                    depths.text = ''
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert status == [sample: 'EMPTY_1', status: 'empty', reason: status.reason] },
+                { assert status.reason },
+                { assert fa[0] == '>EMPTY_1' },
+                { assert cons.size() == 29903 },
+                { assert cons.every { it == 'N' } },
+                { assert new File(process.out.fasta[0][1].toString()).length() > 29903 }
+            )
+        }
+    }
+
+    test("good coverage but no variant passes -> status ok, reference sequence - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    def tsv = new File("\${launchDir}/EMPTY.variants.tsv")
+                    tsv.text = 'REGION\\tPOS\\tREF\\tALT\\tREF_DP\\tREF_RV\\tREF_QUAL\\tALT_DP\\tALT_RV\\tALT_QUAL\\tALT_FREQ\\tTOTAL_DP\\tPVAL\\tPASS\\n'
+                    input[0] = [ [ id:'REFLIKE_1' ], file(tsv.toString()) ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert status.status == 'ok' },
+                { assert status.reason.contains('no variant') },
+                { assert cons == ref }
+            )
+        }
+    }
+
+    test("bcftools failure (REF does not match the reference) -> status failed, all-N sequence - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    def tsv = new File("\${launchDir}/MISMATCH.variants.tsv")
+                    tsv.text = 'REGION\\tPOS\\tREF\\tALT\\tREF_DP\\tREF_RV\\tREF_QUAL\\tALT_DP\\tALT_RV\\tALT_QUAL\\tALT_FREQ\\tTOTAL_DP\\tPVAL\\tPASS\\n' +
+                               'NC_045512.2\\t100\\tA\\tT\\t5\\t0\\t37\\t45\\t0\\t35\\t0.9\\t50\\t0.01\\tTRUE\\n'
+                    input[0] = [ [ id:'MISMATCH_1' ], file(tsv.toString()) ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert status.status == 'failed' },
+                { assert status.reason.contains('bcftools consensus failed') },
+                { assert fa[0] == '>MISMATCH_1' },
+                { assert cons.size() == 29903 },
+                { assert cons.every { it == 'N' } }
+            )
+        }
+    }
+
+    test("IUPAC: AF 0.5 with 12 alt reads gives the ambiguity code, weak or low-AF sites stay reference - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'IUPAC_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_iupac.variants.tsv") ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert status.status == 'ok' },
+                { assert cons[6002] == 'R' && ref[6002] == 'A' },              // A/G -> R
+                { assert cons[6499] == 'Y' && ref[6499] == 'C' },              // C/T -> Y
+                { assert cons[7006] == ref[7006] },                            // AF .5 but only 3 alt reads: reference
+                { assert cons[7500] == ref[7500] },                            // AF .33, 4 alt reads: reference
+                { assert cons[8000] == ref[8000] },                            // AF .2: reference
+                { assert cons[10001] == ref[10001] },                          // AF == .25 (not above): reference
+                { assert cons[9017] == 'T' && ref[9017] == 'A' },              // AF .8: plain alt base
+                { assert cons.substring(11008, 11012) == ref.substring(11008, 11012) }, // insertion at AF .5: not applied, never IUPAC
+                { assert cons.substring(11999, 12003) == ref.substring(11999, 12003) }, // deletion at AF .5: not applied
+                { assert cons.size() == 29903 },
+                { assert !cons.contains('N') }
+            )
+        }
+    }
+
+    test("IUPAC off (ext.iupac = false): AF 0.5 leaves the reference base - real") {
+
+        tag "docker"
+        config "./ext_no_iupac.config"
+
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'IUPAC_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_iupac.variants.tsv") ]
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert status.status == 'ok' },
+                { assert cons[6002] == ref[6002] },
+                { assert cons[6499] == ref[6499] },
+                { assert cons[7006] == ref[7006] },                            // AF .5 but only 3 alt reads: reference
+                { assert cons[7500] == ref[7500] },                            // AF .33, 4 alt reads: reference
+                { assert cons[8000] == ref[8000] },                            // AF .2: reference
+                { assert cons[10001] == ref[10001] },                          // AF == .25 (not above): reference
+                { assert cons[9017] == 'T' && ref[9017] == 'A' },              // AF .8: plain alt base
+                { assert cons.substring(11008, 11012) == ref.substring(11008, 11012) }, // insertion at AF .5: not applied, never IUPAC
+                { assert cons.substring(11999, 12003) == ref.substring(11999, 12003) }, // deletion at AF .5: not applied
+                { assert cons.size() == 29903 },
+                { assert !cons.contains('N') }
+            )
+        }
+    }
+}

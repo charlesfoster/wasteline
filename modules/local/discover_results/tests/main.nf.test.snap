@@ -1,0 +1,14 @@
+{
+    "stub": {
+        "content": [
+            [
+                "discovered_samplesheet_1.csv"
+            ]
+        ],
+        "timestamp": "2026-10-15T21:17:07.108672",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

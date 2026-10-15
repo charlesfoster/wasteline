@@ -1,0 +1,19 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.mutations_of_interest.tsv:md5,de2a7078db01ca30f47dcebd77268ed1"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-15T21:02:43.369111",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

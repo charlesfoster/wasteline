@@ -1,0 +1,82 @@
+nextflow_process {
+
+    name "Test Process QC_CONCAT"
+    script "../main.nf"
+    process "QC_CONCAT"
+    tag "modules"
+    tag "modules_local"
+    tag "qc_concat"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.qc_row.tsv") ]
+                input[1] = [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.amplicon_coverage.tsv") ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.qc_summary, process.out.amplicon_coverage).match() }
+            )
+        }
+    }
+
+    test("joins per-sample rows: sorted by sample, a single header - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/modules_phase3/concat"
+                // deliberately out of order
+                input[0] = [ file("\$d/S_B.qc_row.tsv"), file("\$d/S_A.qc_row.tsv") ]
+                input[1] = [ file("\$d/S_B.amplicon_coverage.tsv"), file("\$d/S_A.amplicon_coverage.tsv") ]
+                """
+            }
+        }
+
+        then {
+            def qc = new File(process.out.qc_summary[0].toString()).readLines()
+            def amp = new File(process.out.amplicon_coverage[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert qc.size() == 3 },
+                { assert qc[0].startsWith('sample\tsample_type\tcollection_date\tsite\traw_reads') },
+                { assert qc.drop(1).collect { it.split('\t')[0] } == ['S_A', 'S_B'] },
+                { assert amp.size() == 5 },                                   // 1 header + 2 samples x 2 amplicons
+                { assert amp.count { it.startsWith('sample\t') } == 1 },
+                { assert amp.drop(1).collect { it.split('\t')[0] } == ['S_A', 'S_A', 'S_B', 'S_B'] },
+                { assert amp.drop(1).collect { it.split('\t')[1] } == ['tiny_1', 'tiny_2', 'tiny_1', 'tiny_2'] } // amplicon order kept
+            )
+        }
+    }
+
+    test("a single sample - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.qc_row.tsv")
+                input[1] = file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.amplicon_coverage.tsv")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert new File(process.out.qc_summary[0].toString()).readLines().size() == 2 },
+                { assert new File(process.out.amplicon_coverage[0].toString()).readLines().size() == 3 }
+            )
+        }
+    }
+}

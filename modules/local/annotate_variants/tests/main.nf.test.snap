@@ -1,0 +1,14 @@
+{
+    "stub": {
+        "content": [
+            [
+                "reference\tsample_id\tgene\tnt_pos\tref\talt\teffect\taa_bcsq\taa_standard\tvaf\tdepth\tcompound"
+            ]
+        ],
+        "timestamp": "2026-10-16T07:05:12.687853",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

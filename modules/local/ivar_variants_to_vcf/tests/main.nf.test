@@ -1,0 +1,107 @@
+nextflow_process {
+
+    name "Test Process IVAR_VARIANTS_TO_VCF"
+    script "../main.nf"
+    process "IVAR_VARIANTS_TO_VCF"
+    tag "modules"
+    tag "modules_local"
+    tag "ivar_variants_to_vcf"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv") ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.vcf[0][1].toString().endsWith('S_1.ivar.vcf') },
+                { assert snapshot(process.out.vcf).match() }
+            )
+        }
+    }
+
+    test("real Freyja variants TSV (PURE_C) -> VCF, one record per TSV row - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def tsv = new File("\${launchDir}/PURE_C.variants.tsv")
+                tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.variants.tsv.gz")).bytes
+                input[0] = [ [ id:'PURE_C' ], file(tsv.toString()) ]
+                """
+            }
+        }
+
+        then {
+            def tsv_rows = new java.util.zip.GZIPInputStream(new FileInputStream("${projectDir}/tests/fixtures/modules_phase3/PURE_C.variants.tsv.gz")).text.readLines().size() - 1
+            def lines = new File(process.out.vcf[0][1].toString()).readLines()
+            def header = lines.find { it.startsWith('#CHROM') }.split('\t') as List
+            def records = lines.findAll { !it.startsWith('#') }
+            assertAll(
+                { assert process.success },
+                { assert lines[0] == '##fileformat=VCFv4.2' },
+                { assert header[-1] == 'PURE_C' },                       // sample column = sample ID, not "PURE_C.variants"
+                { assert tsv_rows == 1790 },
+                { assert records.size() == tsv_rows },                   // no thresholds applied here
+                { assert records.every { it.split('\t')[8] == 'GT:REF_DP:REF_RV:REF_QUAL:ALT_DP:ALT_RV:ALT_QUAL:ALT_FREQ' } }
+            )
+        }
+    }
+
+    test("indels use the VCF convention - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                input[0] = [ [ id:'INDEL_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv") ]
+                """
+            }
+        }
+
+        then {
+            def records = new File(process.out.vcf[0][1].toString()).readLines().findAll { !it.startsWith('#') }.collect { it.split('\t') as List }
+            def del = records.find { it[1] == '10000' }
+            def ins = records.find { it[1] == '15000' }
+            assertAll(
+                { assert process.success },
+                { assert records.size() == 11 },
+                { assert del[3] == 'TTCT' && del[4] == 'T' },            // ivar "-TCT" at 10000 -> REF=TTCT ALT=T
+                { assert ins[3] == 'T' && ins[4] == 'TAC' }              // ivar "+AC" at 15000 -> REF=T ALT=TAC
+            )
+        }
+    }
+
+    test("header-only TSV (sample without mapped reads) gives a header-only VCF - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def tsv = new File("\${launchDir}/EMPTY.variants.tsv")
+                tsv.text = 'REGION\\tPOS\\tREF\\tALT\\tREF_DP\\tREF_RV\\tREF_QUAL\\tALT_DP\\tALT_RV\\tALT_QUAL\\tALT_FREQ\\tTOTAL_DP\\tPVAL\\tPASS\\n'
+                input[0] = [ [ id:'EMPTY_1' ], file(tsv.toString()) ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.vcf[0][1].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines.findAll { !it.startsWith('#') }.size() == 0 },
+                { assert lines.find { it.startsWith('#CHROM') }.endsWith('EMPTY_1') }
+            )
+        }
+    }
+}

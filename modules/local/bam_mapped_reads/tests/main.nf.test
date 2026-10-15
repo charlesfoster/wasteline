@@ -1,0 +1,30 @@
+nextflow_process {
+
+    name "Test Process BAM_MAPPED_READS"
+    script "../main.nf"
+    process "BAM_MAPPED_READS"
+    tag "modules"
+    tag "modules_local"
+    tag "bam_mapped_reads"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/assets/samplesheet.csv"), file("\$projectDir/assets/schema_input.json") ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.counted[0][3].toString().endsWith('S_1.mapped_reads.txt') }
+            )
+        }
+    }
+}

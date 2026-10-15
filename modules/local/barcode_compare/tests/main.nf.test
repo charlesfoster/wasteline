@@ -1,0 +1,65 @@
+nextflow_process {
+
+    name "Test Process BARCODE_COMPARE"
+    script "../main.nf"
+    process "BARCODE_COMPARE"
+    tag "modules"
+    tag "modules_local"
+    tag "barcode_compare"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/assets/samplesheet.csv"), file("\$projectDir/assets/schema_input.json") ]
+                input[1] = file("\$projectDir/assets/samplesheet.csv")
+                input[2] = file("\$projectDir/assets/schema_input.json")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.rows.collect { m, f -> file(f.toString()).name }).match() }
+            )
+        }
+    }
+
+    test("two demix files of one sample become long rows with both barcode versions - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                def mk = { name, lineages, abundances ->
+                    def f = new File("\${launchDir}/\${name}")
+                    f.text = "\\tS_1.variants.tsv\\nlineages\\t\${lineages}\\nabundances\\t\${abundances}\\n"
+                    f
+                }
+                def a = new File("\${launchDir}/a.demix"); a.text = "\\tS_1.variants.tsv\\nlineages\\tBA.2 AY.4\\nabundances\\t0.7 0.3\\n"
+                def b = new File("\${launchDir}/b.demix"); b.text = "\\tS_1.variants.tsv\\nlineages\\tBA.2 BA.5\\nabundances\\t0.6 0.4\\n"
+                def va = new File("\${launchDir}/va.json"); va.text = '{"barcode_version": "v_a"}'
+                def vb = new File("\${launchDir}/vb.json"); vb.text = '{"barcode_version": "v_b"}'
+                input[0] = [ [ id:'S_1' ], file(a.toString()), file(b.toString()) ]
+                input[1] = file(va.toString())
+                input[2] = file(vb.toString())
+                """
+            }
+        }
+
+        then {
+            def rows = file(process.out.rows[0][1].toString()).readLines().collect { line -> line.split('\t') as List }
+            assertAll(
+                { assert process.success },
+                { assert rows[0] == ['S_1', 'BA.2', '0.700000', '0.600000', 'v_a', 'v_b'] },
+                { assert rows.collect { r -> r[1] } as Set == ['BA.2', 'BA.5', 'AY.4'] as Set }
+            )
+        }
+    }
+}

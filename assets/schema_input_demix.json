@@ -1,0 +1,60 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/charlesfoster/wasteline/main/assets/schema_input_demix.json",
+    "title": "charlesfoster/wasteline pipeline - params.input schema (mode 'demix')",
+    "description": "Schema for the samplesheet provided with params.input in mode 'demix': existing Freyja variants and depths files",
+    "type": "array",
+    "uniqueEntries": ["sample"],
+    "items": {
+        "type": "object",
+        "properties": {
+            "sample": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "errorMessage": "Sample ID must be provided and may only contain letters, digits, '.', '_' and '-'",
+                "meta": ["id"]
+            },
+            "variants": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+\\.tsv(\\.gz)?$",
+                "errorMessage": "variants must be an existing Freyja variants table (.tsv or .tsv.gz) without spaces in its path"
+            },
+            "depths": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^\\S+$",
+                "errorMessage": "depths must be an existing Freyja depths file (plain or .gz) without spaces in its path"
+            },
+            "fastp_json": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^(\\S+\\.json)?$",
+                "errorMessage": "fastp_json, if given, must be an existing .json file without spaces in its path"
+            },
+            "sample_type": {
+                "type": "string",
+                "enum": ["sample", "negative"],
+                "default": "sample",
+                "errorMessage": "sample_type must be 'sample' or 'negative'",
+                "meta": ["sample_type"]
+            },
+            "collection_date": {
+                "type": "string",
+                "pattern": "^(\\d{4}-\\d{2}-\\d{2})?$",
+                "format": "date",
+                "errorMessage": "collection_date must be an ISO date (YYYY-MM-DD)",
+                "meta": ["collection_date"]
+            },
+            "site": {
+                "type": "string",
+                "errorMessage": "site must be a string",
+                "meta": ["site"]
+            }
+        },
+        "required": ["sample", "variants", "depths"]
+    }
+}

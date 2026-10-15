@@ -1,0 +1,49 @@
+nextflow_process {
+
+    name "Test Process PROVENANCE"
+    script "../main.nf"
+    process "PROVENANCE"
+    tag "modules"
+    tag "modules_local"
+    tag "provenance"
+
+    test("run_info.json carries checksums and the mandatory freyja_data block") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def keys = ['source', 'barcode_version', 'barcode_version_iso', 'barcodes_file', 'barcodes_sha256',
+                            'barcodes_format', 'lineage_mutations_sha256', 'curated_lineages_sha256', 'lineages_yml_sha256',
+                            'pathogen', 'freyja_version', 'freyja_reported_barcode_version', 'dataset_path', 'downloaded_at']
+                def base = new File("\${launchDir}/base.json")
+                base.text = '{"pipeline_version": "0.0.0", "mode": "full"}'
+                def fd = new File("\${launchDir}/freyja_data.json")
+                fd.text = groovy.json.JsonOutput.toJson(keys.collectEntries { key -> [ (key): "v-" + key ] })
+                def versions = new File("\${launchDir}/versions.yml")
+                versions.text = 'FREYJA_DEMIX:\\n  freyja: 2.0.5\\n'
+                input[0] = file(base.toString())
+                input[1] = file("\$projectDir/assets/samplesheet.csv")
+                input[2] = file("\$projectDir/assets/primer_schemes/midnight.bed")
+                input[3] = file("\$projectDir/assets/references/NC_045512.fasta")
+                input[4] = file(fd.toString())
+                input[5] = file(versions.toString())
+                input[6] = file(fd.toString())
+                """
+            }
+        }
+
+        then {
+            def info = new groovy.json.JsonSlurper().parse(new File(process.out.run_info[0].toString()))
+            assertAll(
+                { assert process.success },
+                { assert info.pipeline_version == '0.0.0' },
+                { assert info.freyja_version == '2.0.5' },
+                { assert info.freyja_data.barcode_version == 'v-barcode_version' },
+                { assert info.freyja_data_compare.barcode_version == 'v-barcode_version' },
+                { assert info.input_checksums.primer_bed.sha256 ==~ /[0-9a-f]{64}/ },
+                { assert info.provenance_generated }
+            )
+        }
+    }
+}

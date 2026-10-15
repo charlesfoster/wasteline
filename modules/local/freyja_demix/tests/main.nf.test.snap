@@ -1,0 +1,27 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.demix:md5,d41d8cd98f00b204e9800998ecf8427e"
+                ]
+            ],
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.demix_status.json:md5,8ac31bad3cfccb6e4598098df1e9bdd2"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-15T20:28:49.845534",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

@@ -1,0 +1,14 @@
+{
+    "stub": {
+        "content": [
+            [
+                "freyja_aggregated_controls.tsv:md5,9e06366de72d9f12ddcb756c82257349"
+            ]
+        ],
+        "timestamp": "2026-10-16T02:19:49.224281",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}
