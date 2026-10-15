@@ -1,0 +1,298 @@
+# Migrating from `covid-illumina-snakemake` (`CIS --workflow wastewater`)
+
+wasteline is a Nextflow port of the **wastewater** workflow of
+[`charlesfoster/covid-illumina-snakemake`](https://github.com/charlesfoster/covid-illumina-snakemake) (v0.10.x). The
+routine/clinical workflow is not ported. This page is for people who currently run `CIS --workflow wastewater`.
+
+Contents: [1. Option mapping](#1-old-option---new-parameter) | [2. Behavioural differences](#2-behavioural-differences-that-change-results) |
+[3. Output layout](#3-output-directory-layout) | [4. QC table columns](#4-the-qc-table) | [5. Worked examples](#5-worked-examples) |
+[6. Problems in old results](#6-problems-the-old-pipeline-may-have-left-in-your-results)
+
+Parameter names below were checked against `nextflow_schema.json` (0.1.0dev); `nextflow run charlesfoster/wasteline --help`
+lists the current ones and [parameters.md](parameters.md) documents each. The one old option without a replacement is
+`--kraken2_db`: the optional kraken2 screen of negative controls is **not implemented** (it is future work).
+
+## 1. Old option -> new parameter
+
+Pipeline parameters take two dashes (`--outdir`). Nextflow's own options take one (`-resume`, `-profile`).
+
+| Old option | wasteline | Notes |
+| --- | --- | --- |
+| `<query_directory>` (positional) | `--input samplesheet.csv` | Build the samplesheet with `python bin/make_samplesheet.py <dir> -o samplesheet.csv` (see [5.1](#51-run-an-old-style-directory-of-reads)). |
+| `-w`, `--workflow` | dropped (wastewater only) | The routine workflow is out of scope. |
+| `-o`, `--outdir` | `--outdir` | Required. There is no default; the old default was `results/<reads directory name>`. |
+| `--use_date` | dropped | Name the directory yourself, e.g. `--outdir results/$(date +%F)`. |
+| `-r`, `--reference` | `--fasta` (and `--gff`) | Default is the bundled NC_045512.2. The old pipeline derived the GFF3 by swapping `.fasta` for `.gff3` in the name; now pass `--gff` explicitly. |
+| `-s`, `--scheme` | `--primer_scheme` (bundled) or `--primer_bed <path>` (custom) | Bundled: `midnight` (default), `midnightv2`, `articv3`, `articv4.1`, `articv5.3.2`, `eden`, `swift`, `qiagenv1`, `xgen`. `swift` implies ivar `-x 5` (`--ivar_offset` overrides). Custom BEDs are validated against the reference contig name at start-up (the old pipeline did not check). The bundled `articv3`, `articv5.3.2` and `qiagenv1` BEDs now use the contig `NC_045512.2` (in the old repository they used `MN908947.3`); see [6](#6-problems-the-old-pipeline-may-have-left-in-your-results) for the consequence and for a bug in the old custom-BED handling. |
+| `--suffix` | `python bin/make_samplesheet.py --suffix` | Used only when building the samplesheet; the pipeline itself reads the samplesheet. Default is unchanged: `_L001_R1_001.fastq.gz`. |
+| `-i`, `--isolates` | dropped | Delete the unwanted rows from the samplesheet. (The old option matched names by substring.) |
+| `-k`, `--kraken2_db` | **not implemented** | kraken2 is no longer the negative-control test and there is no `--kraken2_db` parameter (an optional kraken2 screen is future work). Negatives are judged from mapped reads and genome coverage (see 2). |
+| `-m`, `--min_depth` | `--consensus_min_depth` (mask, default 15) and `--consensus_min_depth_variants` (variants, default 10) | The old option set one value (default 10) used both for keeping a variant (`DP >=`) and for masking low-depth positions. These are now two parameters, with defaults 15 (mask) and 10 (variants). See 2. |
+| `-c`, `--consensus_freq` | `--consensus_freq` (default 0.75) | SNV frequency needed to apply the alternative allele. |
+| `-if`, `--indel_freq` | `--indel_freq` (default 0.75) | |
+| `--snv_min_freq` | `--freyja_varthresh` (default **0.0**) and `--consensus_iupac_min_af` (default 0.25) | In the wastewater workflow this option was passed to `freyja variants --varthresh`. See 2 for the default change. |
+| `-v`, `--variant_caller` | dropped | No lofreq/ivar/freyja choice. Variants come from `freyja variants` (samtools mpileup + ivar), and the consensus is built from that same table. |
+| `-t`, `--threads` | none | Resources are Nextflow process settings, not pipeline parameters. Use a `-c` file with `process.cpus` / `resourceLimits` (resource tuning only; never put pipeline parameters in `-c`). |
+| `--max_memory` | none | As above (`process.memory` / `resourceLimits`). |
+| `-f`, `--force` | omit `-resume` | Nextflow re-runs everything unless you pass `-resume`; the sense is inverted. |
+| `-n`, `--dry_run` | `-preview` or `-stub-run` | Nextflow options. `-preview` only builds the workflow graph; `-stub-run` runs each process's `stub:` block instead of the real tool. |
+| `-p`, `--print_dag` | `-with-dag <file>` | A DAG is also written to `pipeline_info/` by default. |
+| `--keep_reads` | `--save_trimmed_reads` | Same default as before: trimmed reads are not kept. |
+| `--redo_demix` | `--mode demix` | Re-demixes from existing variants + depths files with newly resolved barcodes. See [5.2](#52-re-demix-an-old-snakemake-results-directory-with-new-barcodes). Unlike the old option it never deletes or modifies the old results; output goes to `--outdir`. |
+| `--report` | dropped as an option | `summary/report.html` is always built. `--mode report --results_dir <outdir>` re-renders it. |
+| `-xf`, `--skip_freyja_check` | `--barcodes container` (offline) or a pinned `--barcodes` | The old check only bumped the Freyja container version in the Snakefile with `sed`; the data was always refreshed with `freyja update` at run start. Now the Freyja version is pinned per wasteline release, and the data is chosen explicitly with `--barcodes`. |
+| `-xn`, `--skip_nextclade_check` | dropped | nextclade is not used. |
+| `-e`, `--extra_pangolin_options` | dropped | pangolin is not used. |
+| `--legacy` | dropped | Legacy QC column names are not produced. |
+| `--technology` | dropped | The `technology` column no longer exists. |
+| `--verbose` | none | Use Nextflow's `-ansi-log false` and `.nextflow.log`. |
+| `--version` | `--version` | |
+| `--no_singularity` | dropped | Listed in the old README but not defined in the cloned `command.py`. Choose a container engine with `-profile docker\|singularity\|conda`. |
+
+Old behaviour that is now an option: the old rule `amino_acid_consequences` (`<s>/variants/<s>.annotated.tsv`) is `--annotate_variants`
+(opt-in; `bcftools csq`; `samples/<s>/variants/<s>.annotated.tsv` and `summary/annotated_variants.tsv`, same columns).
+`--skip_consensus` (new) turns the consensus chain off; `--consensus_iupac false` turns IUPAC codes off.
+
+Also new, with no old equivalent: `--mode full\|demix\|aggregate\|report\|update_db`, `--previous_results`, `--demix_dir`,
+`--results_dir`, `--barcodes`, `--db_dir`, `--compare_barcodes` (a second demix with another dataset and a report panel),
+`--freyja_boot`/`--freyja_boot_n`/`--freyja_boot_seed` (bootstrap intervals), `--mutations_of_interest`,
+`--include_negatives_in_aggregate`, `--min_genome_coverage_for_demix`, the QC and negative-control thresholds
+(`--qc_min_depth`, `--qc_pass_min_pct`, `--qc_fail_below_pct`, `--qc_max_dropped_amplicons`, `--amplicon_min_depth`,
+`--ntc_max_mapped_reads`, `--ntc_max_genome_coverage_pct`), `--skip_report`, the
+`--freyja_*` demix knobs (`freyja_eps`, `freyja_covcut`, `freyja_depthcutoff`, `freyja_adapt`, `freyja_autoadapt`,
+`freyja_relaxedmrca`, `freyja_solver`, `freyja_confirmedonly`), the `--freyja_plot_*` options and the `--fastp_*` options
+(the old pipeline hard-coded these to the same defaults).
+
+Dropped tools: pangolin, nextclade, pango-collapse, qualimap, snpEff, lofreq, bedtools, R coverage plots, and kraken2 as
+a default step.
+
+## 2. Behavioural differences that change results
+
+| Topic | Old (Snakemake) | New (wasteline) |
+| --- | --- | --- |
+| `freyja variants --varthresh` | 0.25: variants below 25% frequency were discarded before demixing. | **0.0** (Freyja's default); every ALT is kept (`--freyja_varthresh`). This is deliberate; do not expect parity. Demix abundances can change, mostly for low-frequency lineages. |
+| Barcodes | The mutable `freyja_dataset/` inside the installed `CIS` package, refreshed by `freyja update` at the start of every run. Nothing recorded which version was used. | Resolved once per run by `--barcodes latest\|container\|<YYYY-MM-DD>\|<path>` (default `latest`), identical for every sample, and recorded in `pipeline_info/run_info.json` (`freyja_data` block), every `demix_status.json`, `summary/demix_status.tsv`, `summary/barcode_version.json` and the report header. A run never silently falls back to another dataset. |
+| Barcode file format | Freyja 1.5.3 and `usher_barcodes.csv`. | Freyja 2.x and `usher_barcodes.feather`. A custom `.csv` or `.feather` is also accepted by `--barcodes`. Freyja itself changed between 1.5.3 and 2.x, so identical inputs may not give identical abundances even with the same barcodes. |
+| Historical barcodes | Not recoverable. | `--barcodes <YYYY-MM-DD>` only resolves datasets already stored in `--db_dir`; wasteline cannot download old ones. Resolving historical versions is a future item. |
+| Sample IDs | The aggregate step ran `sed -e "s/.vcf//g" -e "s/_/-/g"` over the **whole** aggregated file, so `Site_1_week_2` became `Site-1-week-2`. | IDs are never rewritten. Only the filename suffix Freyja adds to the label (`.variants.tsv`) is removed. If you join old and new tables, normalise `_` -> `-` on the old side. |
+| Failed samples | `freyja demix ... \|\| touch <s>.demix` left a zero-byte file that looked like a result; `freyja variants` ran under `set +e`. | Every sample gets a row in `summary/demix_status.tsv` and a `<sample>.demix_status.json` with `status` (`ok`, `failed`, `skipped_low_coverage`; `missing` for unusable inputs found in old results) and a `reason`. A failed sample never aborts the run. A coverage gate skips demixing below `--min_genome_coverage_for_demix` (default 60% of the genome at depth >= `--freyja_covcut`); Freyja will otherwise demix a 0.6x sample to a confident single lineage. |
+| Negative controls | Matched by `NEG_`/`NC_` anywhere in the full read path. Never run through Freyja. Judged only by kraken2 (FAIL if the summed read length in the kraken2 output exceeded 10,000 bases). | `sample_type=negative` (set by `make_samplesheet.py --negative-pattern`, default `NEG_\|NC_`, matched against the file name). Judged from mapped reads and genome coverage (defaults: FAIL above 1000 mapped reads or above 10% of the genome covered at >= 1x). A negative with real coverage is a run-level error flag (`ntc_reads`) in the report. |
+| Negatives in the aggregate | Not demixed, so never present. | Demixed if they pass the coverage gate (contamination is then visible in `demix_status.tsv` and the report) but **excluded from `freyja aggregate` and `freyja plot`** unless `--include_negatives_in_aggregate` is set. What they contain is in `summary/freyja_aggregated_controls.tsv` and the report's **Negative controls** section; a demixed control keeps status `ok`. |
+| Consensus: variant source | LoFreq by default (or ivar), unrelated to the table fed to Freyja. | Built from the `freyja variants` (ivar) table: one variant caller. Consensus can differ from an old LoFreq consensus at low-frequency sites. |
+| Consensus: IUPAC codes | SNV with AF >= `consensus_freq` (0.75) -> alt; SNV below it (and above a hard-coded 0.1, in practice 0.25 because Freyja had already filtered at 0.25) with `DP >= min_depth` -> IUPAC ambiguity code (`bcftools consensus -H I`); indel below `indel_freq` -> ignored. The old README's "IUPAC at VAF 0.90" is out of date. | Same thresholds and `-H I` mechanism, plus: lower IUPAC bound `consensus_iupac_min_af` 0.25, a guard of at least 5 ALT reads (`consensus_iupac_min_alt_reads`) before an ambiguity code is emitted, and `--consensus_iupac false` to switch IUPAC codes off. All are parameters now (`--consensus_iupac_min_af`, `--consensus_iupac_min_alt_reads`, `--consensus_iupac`); see PLAN 5.11. |
+| Consensus: low-depth mask | Positions with depth < `--min_depth` (10) from `bedtools genomecov` on the BAM (all bases), variant sites exempt. | Depth < `consensus_min_depth` (**15**) from the Freyja depths file (bases with Q >= 20), variant sites exempt. Expect slightly more N than before. |
+| Consensus: failures | A BAM with no variants produced an all-N sequence by a shell check. | `consensus_stats.tsv` has a `status` (`ok`, `empty`, `failed`); an all-N sequence is never left unlabelled, and a missing status is treated as `failed` in the report. |
+| Trimmed reads | Deleted on success unless `--keep_reads`. | Not published unless `--save_trimmed_reads`. The primer-trimmed BAM is published by default (`--save_bam`). |
+| QC engine | qualimap bamqc (counts all bases). | Coverage QC from the Freyja depths file (Q >= 20 bases) plus `samtools flagstat` and the fastp JSON. Numbers will differ slightly from qualimap's. |
+| Aligner and trimming | `bwa mem`, `ivar trim -e`, fastp with the options below. | Unchanged (`bwa mem`, `ivar trim -e`; fastp `--detect_adapter_for_pe --cut_front --cut_tail --trim_poly_x --cut_mean_quality 20 --qualified_quality_phred 20 --unqualified_percent_limit 10 --correction --length_required 50`), now exposed as `--fastp_*` parameters. |
+| Coverage plots | `coverage_plots.pdf` / `check_amplicons.pdf` per sample; in the wastewater rule these were created with `touch` and are empty files. | `summary/amplicon_coverage.tsv` and coverage/amplicon-dropout views in the HTML report. |
+| Report | Snakemake's `--report` (`pipeline_report.html`). | A self-contained `summary/report.html` built every run, re-rendered with `--mode report`. |
+| Time series | Not available. | If samples have a `collection_date` (samplesheet column, or `--metadata` for `make_samplesheet.py`), a time-aware `freyja plot --times` and a report panel are made (also in `aggregate` and `demix` modes). |
+| Lineage uncertainty, barcode comparison | Not available. | Opt-in `--freyja_boot` (bootstrap 95% intervals) and `--compare_barcodes` (second dataset, per-lineage deltas). |
+
+## 3. Output directory layout
+
+```
+OLD (<outdir>)                                          NEW (<outdir>)
+sample_sheet.csv                                        summary/samplesheet.csv
+<name>_QC.csv                                           summary/qc_summary.tsv
+<name>.consensus_genomes.fasta                          summary/consensus_genomes.fasta
+                                                        summary/consensus_stats.tsv
+<name>_softwareVersions.txt                             pipeline_info/software_versions.yml
+config.yaml                                             pipeline_info/run_info.json (also holds the params)
+pipeline_report.html (--report)                         summary/report.html, summary/report_data.json
+freyja_aggregated/freyja_aggregated.tsv                 summary/freyja_aggregated.tsv
+freyja_aggregated/freyja_plot.pdf                       summary/freyja_plot.pdf (+ freyja_plot_times.pdf)
+                                                        summary/demix_status.tsv, summary/barcode_version.json
+                                                        summary/amplicon_coverage.tsv
+                                                        pipeline_info/execution_*.{html,txt}
+<s>/fastp/<s>_fastp.{json,html}                         samples/<s>/fastp/<s>.fastp.{json,html}
+<s>/fastp/<s>_trimmed_R{1,2}.fq.gz (deleted)            samples/<s>/fastp/*.fastq.gz (only with --save_trimmed_reads)
+<s>/ivar/<s>.primertrim.sorted.bam                      samples/<s>/bam/<s>.primertrimmed.bam
+<s>/freyja/<s>.depths                                   samples/<s>/freyja/<s>.depths
+<s>/freyja/<s>.freyja_variants.tsv                      samples/<s>/freyja/<s>.variants.tsv
+<s>/freyja/<s>.demix                                    samples/<s>/freyja/<s>.demix
+                                                        samples/<s>/freyja/<s>.demix_status.json
+<s>/variants/<s>.consensus.fa                           samples/<s>/consensus/<s>.consensus.fa
+<s>/variants/<s>.annotated.tsv                          samples/<s>/variants/<s>.annotated.tsv (--annotate_variants)
+                                                        summary/annotated_variants.tsv
+<s>/coverage/*.pdf, <s>/bamqc/, <s>/pangolin/,          dropped
+  <s>/nextclade/
+<neg>/kraken2/                                          dropped (NTC rows are in summary/qc_summary.tsv)
+```
+
+`<name>` is the reads directory name (or today's date with `--use_date`). The new per-sample `consensus/` and `coverage/`
+subdirectories (and `variants/`, with the Freyja inputs in `freyja/`) were checked against a real run on the synthetic data; every
+file is described in [output.md](output.md).
+
+## 4. The QC table
+
+`<name>_QC.csv` (comma-separated) becomes `summary/qc_summary.tsv` (tab-separated, `NA` for missing values, one row per
+sample including negatives).
+
+| Old column | New column | Notes |
+| --- | --- | --- |
+| `id` | `sample` | |
+| `num_reads` | `mapped_reads` (also `raw_reads`, `trimmed_reads`) | Old value was qualimap's read count in the primer-trimmed BAM, so `mapped_reads` is the closest match. Counts are reads, a pair counts as 2. New `mapped_pct` is mapped / trimmed reads. |
+| `num_bases` | dropped | |
+| `coverage` | `pct_genome_ge_10x` | Old value was qualimap's "% of reference with coverage >= 10X", stored as text. New values are 0-100 floats with 2 dp. Also `pct_genome_ge_1x` and `pct_genome_ge_min_depth`. |
+| `mean_depth` | `mean_depth` | Also `median_depth`. |
+| `stdev_depth` | `depth_sd` | Population SD over every genome position. |
+| `QC` | `qc_status`, `qc_reasons` | Old: PASS if >= 80% (`int(x) > 79`) of the genome at >= 10x, else FAIL. New: `PASS`, `WARN`, `FAIL` or `NA`, with machine-readable reasons (`low_coverage`, `amplicon_dropout`, `no_reads`, `no_depths`, `ntc_reads`). PASS still needs >= 80% at >= 10x. The thresholds are parameters: `--qc_min_depth` (10), `--qc_pass_min_pct` (80), `--qc_fail_below_pct` (50), `--qc_max_dropped_amplicons` (1), `--amplicon_min_depth` (10); negative controls use `--ntc_max_mapped_reads` and `--ntc_max_genome_coverage_pct`. |
+| `neg_control` | `sample_type` (`sample` or `negative`) | |
+| `technology`, `analysis_date` | dropped | The run date is `start` in `pipeline_info/run_info.json`. |
+| `lineage`, `scorpio_*`, `lineage_conflict`, `pangolin_*`, `lineage_designation_version`, `clade`, `Nextclade_*`, `total*` | dropped | Lineage information now comes from Freyja: `summary/freyja_aggregated.tsv` and the report. |
+| (pango-collapse columns) | dropped | |
+| (none) | `collection_date`, `site`, `amplicons_total`, `amplicons_dropped`, `demix_status`, `demix_reason`, `consensus_length`, `consensus_n_pct`, `barcode_version` | New. |
+
+Full column order and meaning: `docs/PLAN.md` section 6a. Negative controls had `-` placeholders in the old table; the
+new table has real values or `NA`.
+
+## 5. Worked examples
+
+### 5.1 Run an old-style directory of reads
+
+Old command:
+
+```bash
+CIS --workflow wastewater --variant_caller freyja --scheme midnight --suffix _L001_R1_001.fastq.gz /data/reads/run7
+```
+
+New commands:
+
+```bash
+# 1. samplesheet from the directory (same discovery as the old pipeline: _S<n>_L001 is stripped from the ID,
+#    R2 is derived from R1, Undetermined* is skipped, NEG_*/NC_* become sample_type=negative)
+python bin/make_samplesheet.py /data/reads/run7 -o samplesheet.csv
+
+# optional: validate it, including that every file exists
+python bin/check_samplesheet.py samplesheet.csv --mode full --check-files
+
+# 2. run
+nextflow run charlesfoster/wasteline -profile docker \
+    --input samplesheet.csv \
+    --outdir results/run7 \
+    --primer_scheme midnight
+```
+
+Renamed reads, with dates for the time-series plot:
+
+```bash
+python bin/make_samplesheet.py /data/reads/run7 --suffix _R1.fq.gz --metadata meta.csv -o samplesheet.csv
+```
+
+where `meta.csv` is keyed by `sample` and may provide `collection_date` (ISO `YYYY-MM-DD`), `site` and `sample_type`:
+
+```csv
+sample,collection_date,site
+Site_1_week_2,2024-03-01,SiteOne
+```
+
+Other `make_samplesheet.py` options: `--negative-pattern` (default `NEG_|NC_`), `--exclude-pattern` (default `Undet`),
+`--recursive`, `--relative`. See `docs/helper_scripts.md`. The script fails with a list of problems on a missing R2, on
+IDs that collide once `_S<n>_L001` is stripped, or on IDs outside `[A-Za-z0-9._-]`.
+
+Use `-profile docker` on macOS. Add `-resume` to continue an interrupted run (the opposite of the old `--force`).
+Re-running in the same `--outdir` without `-resume` recomputes everything.
+
+### 5.2 Re-demix an old Snakemake results directory with new barcodes
+
+This replaces `CIS ... --redo_demix`. Nothing in the old directory is modified.
+
+```bash
+nextflow run charlesfoster/wasteline -profile docker \
+    --mode demix \
+    --previous_results /data/old_results/run7 \
+    --barcodes latest \
+    --outdir results/run7_redemix
+```
+
+To see what will be used first, or to edit the list of samples:
+
+```bash
+python bin/make_samplesheet.py --from-results /data/old_results/run7 --mode demix -o demix_sheet.csv
+nextflow run charlesfoster/wasteline -profile docker --mode demix --input demix_sheet.csv --barcodes latest --outdir results/run7_redemix
+```
+
+The legacy layout is detected per sample: variants `<s>/freyja/<s>.freyja_variants.tsv` (or the gzipped copy in
+`<s>/variants/`), depths `<s>/freyja/<s>.depths`, fastp JSON `<s>/fastp/<s>_fastp.json`. Samples without the required
+files are skipped with a `NOTE: skipped ...` line (the old pipeline never produced Freyja files for `NEG_`/`NC_`
+samples, so those are skipped). `sample_type`, `collection_date` and `site` are carried over from a `samplesheet.csv` in
+the old directory if present, otherwise `sample_type` is inferred from the ID.
+
+Things to know:
+
+- Those old variants files were produced with `--varthresh 0.25`, so a re-demix reuses the 25%-filtered variants. Barcodes
+  change, the variants threshold does not. To apply `--freyja_varthresh 0.0` you must re-run `--mode full` from the reads.
+- The re-run record has `previous_runs` with `barcode_version: unknown` for the old directory, because the old pipeline
+  recorded none.
+- To re-demix with the barcodes the old pipeline was using, point `--barcodes` at the old dataset directory (it lives in
+  the installed `CIS` Python package as `freyja_dataset/`, and was refreshed at the start of every run, so it holds the
+  most recent run's barcodes, not necessarily those of older results directories):
+
+  ```bash
+  --barcodes /path/to/site-packages/CIS/freyja_dataset
+  ```
+
+  A bare `usher_barcodes.csv` can also be passed and is used verbatim (recorded as `custom`).
+  <!-- UNVERIFIED: not tested that a Freyja 1.5.3 dataset directory contains every file wasteline expects (lineages.yml, last_barcode_update.txt, ...). -->
+- <!-- UNVERIFIED: re-demixing real Freyja 1.5.3 variants/depths files with Freyja 2.x has not been run end-to-end; the legacy layout is covered by the test fixture only. -->
+  Check `summary/demix_status.tsv` afterwards: samples with a failed or low-coverage status are listed there with a
+  reason.
+
+### 5.3 Aggregate old demix files
+
+Aggregate-only needs `.demix` files and no variants or depths. Either point at the directory (searched recursively for
+`*.demix`; the sample ID is the file name without `.demix`):
+
+```bash
+nextflow run charlesfoster/wasteline -profile docker \
+    --mode aggregate \
+    --demix_dir /data/old_results/run7 \
+    --outdir results/run7_aggregate
+```
+
+or use `--previous_results` / a generated sheet (this also carries over `sample_type`, `collection_date` and `site`):
+
+```bash
+python bin/make_samplesheet.py --from-results /data/old_results/run7 --mode aggregate --metadata meta.csv -o aggregate_sheet.csv
+nextflow run charlesfoster/wasteline -profile docker --mode aggregate --input aggregate_sheet.csv --outdir results/run7_aggregate
+```
+
+Several results directories can be combined by giving `--previous_results` a comma-separated list. Sample labels come
+from the sample ID, not from the variants file name that Freyja recorded inside each `.demix` file (the originals are
+never modified). Underscores are kept, so labels will differ from the old `freyja_aggregated.tsv`, where `_` had become `-`.
+
+Old zero-byte `.demix` files (failed demixes from `|| touch`) are not real results. List them before aggregating:
+`find /data/old_results/run7 -name '*.demix' -size 0`.
+<!-- UNVERIFIED: make_samplesheet.py --from-results includes zero-byte legacy .demix files in the aggregate sheet (tested with a fake directory); how the aggregate step then treats them has not been run. -->
+
+Mixing results from different barcode versions in one aggregate is allowed but is recorded as `unknown` for the old
+directories, so the plot cannot be traced to a single dataset.
+
+## 6. Problems the old pipeline may have left in your results
+
+Found while porting; worth checking in existing results (see also PLAN section 12). wasteline does not reproduce them.
+
+- **Default variant caller.** With `-w wastewater` the default `-v lofreq` (and `-v ivar`) passed a VCF to `freyja demix`,
+  which expects Freyja's own variants TSV; failures were hidden by `|| touch`. Only `-v freyja` fed Freyja its intended
+  input. Check for zero-byte `.demix` files.
+- **Custom primer BEDs.** `command.py` only uses the scheme if `<primer_schemes dir>/<value>.bed` is a file, and otherwise
+  silently falls back to `midnight`. Because `.bed` is appended to the value, a custom `--scheme` path given **with** its `.bed`
+  extension (`/data/my.bed` becomes `/data/my.bed.bed`) never matched, so the run used the midnight primers without a
+  warning (a path without the extension happens to resolve, since `os.path.join` keeps an absolute last component). Verified
+  by reading `CIS/command.py` of the cloned repository; not run. Verify which primers a past custom run used.
+- **`--redo_demix`.** `command.py` calls `glob.glob(...)` (to delete the old `*.demix` files) but never imports `glob` (its
+  imports are `os, snakemake, argparse, sys, re, pathlib, psutil, ...`), so by static reading the option raises a `NameError`
+  before anything is re-run (not executed to confirm).
+- **Primer trimming with three bundled schemes.** In the old repository the BEDs of the `articv3`, `articv5.3.2` and `qiagenv1`
+  schemes name the contig `MN908947.3` while the bundled reference's contig is `NC_045512.2` (the other six BEDs use
+  `NC_045512.2`). With a contig name that is not in the BAM header, primer trimming with those three schemes was **likely**
+  ineffective (the behaviour of `ivar trim` with a mismatched contig name was not tested here), and the contig names were
+  not checked anywhere. Not tested by running the old pipeline (UNVERIFIED). In wasteline the three BEDs use `NC_045512.2` and
+  a mismatching BED is refused at start-up. If you used one of these schemes, treat the old results with caution.
+- **Negative-control matching.** `NEG_`/`NC_` was matched anywhere in the full path of the read file, so a directory named
+  like that would reclassify every sample.
+- **Empty coverage PDFs.** The wastewater `genomecov` rule `touch`es both PDFs; they are zero-byte.
+- **Stale datasets.** The Freyja dataset was overwritten in place at the start of each run, so results from different
+  days used different, unrecorded barcodes.

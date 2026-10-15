@@ -1,0 +1,97 @@
+# charlesfoster/wasteline: Changelog
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## v0.1.0dev - Unreleased
+
+Initial release of charlesfoster/wasteline: a Nextflow DSL2 (nf-core style) port of the wastewater workflow of
+[covid-illumina-snakemake](https://github.com/charlesfoster/covid-illumina-snakemake) for Illumina amplicon SARS-CoV-2
+data. The Snakemake "routine"/clinical workflow is out of scope.
+
+### `Added`
+
+- Five run modes selected with `--mode`: `full` (FASTQ to results), `demix` (re-run `freyja demix` on existing variants
+  and depths, e.g. with newer barcodes, from a samplesheet or `--previous_results`, including legacy Snakemake results),
+  `aggregate` (aggregate existing `.demix` files), `report` (rebuild the HTML report of a finished run) and `update_db`
+  (download the latest Freyja data).
+- Read processing: fastp (parameters exposed as `--fastp_*`), `bwa mem`, `ivar trim` with nine bundled primer schemes
+  (`midnight`, `midnightv2`, `articv3`, `articv4.1`, `articv5.3.2`, `eden`, `swift`, `qiagenv1`, `xgen`; all use the contig
+  `NC_045512.2` of the bundled reference) or `--primer_bed` (its contig must match the reference, checked at start-up), and
+  primer-trimmed BAM output (`--save_bam`).
+- Freyja lineage deconvolution: `freyja variants`, `freyja demix` per sample, `freyja aggregate` with exact sample labels,
+  `freyja plot` and the time-aware plot, with all main knobs exposed as `--freyja_*`.
+- Freyja data handled as a first-class input: `--barcodes` takes `latest`, `container` (offline), a stored version
+  (`YYYY-MM-DD`, `MM_DD_YYYY-HH-MM`, `YYYY-MM-DDTHH-MM`) or a dataset directory / `.csv` / `.feather` file. The dataset is
+  resolved once so every sample uses the same data, downloaded datasets are kept in `--db_dir`, and the barcode version
+  and checksums are recorded everywhere (`demix_status.tsv`, `barcode_version.json`, `run_info.json`, the report).
+- A coverage gate before demixing (`--min_genome_coverage_for_demix`) and a per-sample demix status (`ok`, `failed`,
+  `skipped_low_coverage`, `missing`) with reasons. A failed or skipped sample never aborts the run.
+- Coverage QC computed from the Freyja depths file, `samtools flagstat` and the fastp JSON (`qc_summary.tsv`, PASS/WARN/FAIL
+  with reason tokens; the published table is complete, including the demix, consensus and barcode columns), per-amplicon coverage and dropout (`amplicon_coverage.tsv`), and negative-control assessment
+  (`sample_type=negative`, `--ntc_max_mapped_reads`, `--ntc_max_genome_coverage_pct`).
+- Per-sample consensus genomes built from the Freyja variants (no second variant caller): depth masking (`N`), IUPAC
+  ambiguity codes for mixed sites, `-` for deletions, a status per consensus (`ok`, `empty`, `failed`), and
+  `consensus_genomes.fasta` / `consensus_stats.tsv`; tunable with `--consensus_*` and `--indel_freq`, or off with
+  `--skip_consensus`.
+- Opt-in `--mutations_of_interest` (SNVs, indels and amino-acid changes) giving per-sample allele frequency and depth.
+- Opt-in `--compare_barcodes <latest|container|date|stamp|path>` (modes `full` and `demix`): every sample is demixed a second
+  time with another Freyja dataset; `summary/barcode_compare.tsv` and `barcode_compare_status.tsv`, a `freyja_data_compare`
+  block in `run_info.json`, and a barcode-comparison panel in the report. Ignored with a warning in the other modes.
+- Opt-in `--freyja_boot` (with `--freyja_boot_n`, default 100, and `--freyja_boot_seed`, default 0): `freyja boot` bootstrap
+  95% intervals (2.5/97.5 percentiles) per lineage in `summary/freyja_boot_summary.tsv`, shown in the report tooltips.
+- Opt-in `--annotate_variants`: amino-acid consequences of the variants applied to the consensus (`bcftools csq` with the GFF3),
+  `samples/<s>/variants/<s>.annotated.tsv` and `summary/annotated_variants.tsv`; refused at start-up with `--skip_consensus`.
+- Negative controls are demixed when they pass the coverage gate but kept out of the aggregate unless
+  `--include_negatives_in_aggregate`; their lineages are in `summary/freyja_aggregated_controls.tsv` and a **Negative controls**
+  report section, and a control that demixed `ok` stays `ok` in the report.
+- The time-series plot and report panel also work in `aggregate` and `demix` modes (collection dates come from the samplesheet).
+- `--pathogen` is validated (only `SARS-CoV-2` is accepted) and passed to `freyja update`, `demix`, `boot` and `plot`.
+- A self-contained, offline HTML report (`summary/report.html`) built from `summary/report_data.json`: run-level flags,
+  QC table, lineage abundance (summarized groups and all lineages), coverage tracks, amplicon dropout heatmap, demix
+  status, mutations of interest, time series per site, consensus table and provenance.
+- Full provenance in `pipeline_info/run_info.json` (pipeline and tool versions, git commit, parameters, input checksums,
+  per-process containers, and the `freyja_data` block) and `-profile locked` with a generated container digest lock
+  (`conf/containers.lock.config`, `bin/lock_containers.py`).
+- Helper scripts: `bin/make_samplesheet.py` (from FASTQ directories or existing results), `bin/check_samplesheet.py`.
+- A deterministic synthetic test dataset (`tests/data`, `tests/make_test_data.py`), pytest unit tests (about 440), nf-test tests
+  for every local module and mode (stub and Docker), an upstream canary, and end-to-end and demix-equivalence scripts.
+- CI: lint, pytest, nf-test and a daily Freyja release check that opens a bump pull request and auto-merges same-major
+  bumps when CI passes (`.github/workflows/ci.yml`, `.github/workflows/freyja-update.yml`, `bin/bump_freyja.py`).
+- Documentation: usage, output, parameters, report (with screenshots), development, CI, QC scripts, report data schema, test
+  data, migration from Snakemake, troubleshooting, a quick start, and a status page mapping the plan to the implementation
+  (`docs/PLAN_STATUS.md`).
+
+### `Changed`
+
+- Compared with the Snakemake pipeline: `freyja variants` keeps Freyja's default `--varthresh 0.0` instead of 0.25;
+  sample IDs are never rewritten (`_` is no longer turned into `-`); demix failures are recorded instead of swallowed
+  with `|| touch`; Freyja barcodes are a per-run, versioned, checksummed input instead of a mutable shared dataset;
+  negative controls are judged from mapped reads and genome coverage rather than kraken2. See
+  `docs/migration_from_snakemake.md`.
+- Requires Nextflow >= 26.04.0 (strict syntax parser): modes are dispatched with `--mode`, and boolean/numeric
+  parameters are typed in `main.nf`.
+
+### `Fixed`
+
+- Not applicable for the initial release.
+
+### `Dependencies`
+
+- Freyja `2.0.5` (`quay.io/biocontainers/freyja:2.0.5--pyhdfd78af_0`), the one tool bumped automatically.
+- fastp `1.3.6`, bwa `0.7.19`, samtools `1.24`, ivar `1.4.4`, bcftools `1.23`, Python `3.12.12`, MultiQC `1.35` (image used
+  only for its Jinja2 to render the report); every container is pinned to an exact tag.
+- Nextflow `>=26.04.0` (CI tests `26.04.0` and `26.04.6`), nf-schema `2.5.1`, generated with nf-core tools `4.1.0`.
+
+### `Deprecated`
+
+- Nothing.
+
+### Known issues
+
+- Only `docker` has been run end to end; the `singularity`/`apptainer` and `conda`/`mamba` profiles are configured but untested,
+  and the GitHub workflows have not run yet.
+- `--mode demix --previous_results <dir>` lists a `db/` directory inside the results (as left by the `test` profiles) as a
+  sample with status `missing` (`docs/troubleshooting.md`).
+- Not implemented from the plan: `--kraken2_db` (optional negative-control screening), other pathogens, CRAM output,
+  historical barcode versions, a minibwa comparison (`docs/development.md`, `docs/PLAN_STATUS.md`).

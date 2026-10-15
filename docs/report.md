@@ -1,0 +1,322 @@
+# The HTML report
+
+`summary/report.html` is one self-contained file: inline CSS, SVG and a little vanilla JavaScript, no external
+fonts, scripts or images (the shipped report contains no URL), so it can be e-mailed, archived with the results,
+opened offline and printed (print styles are included; it also follows the browser's light/dark setting). It is
+rendered from `summary/report_data.json` by `bin/render_report.py` using the Jinja2 template
+`assets/templates/report.html.j2`. Every piece of data in the report comes from the other output files described in
+[output.md](output.md); the report adds no results of its own, except the merging of QC, demix and consensus status per
+sample.
+
+The screenshots below are of a real `full` run on the synthetic test dataset (7 samples: three mixtures, one pure
+sample, one low-coverage sample, one clean and one contaminated negative control) with `--compare_barcodes container
+--freyja_boot --annotate_variants` and the test barcode set `tests/data/barcodes_test.csv`.
+
+![Report header, run-level flags and QC table](images/report_overview.png)
+
+![Lineage abundance and coverage tracks](images/report_lineage_coverage.png)
+
+The contaminated control `NEG_CONTAM` is a QC `FAIL` (`ntc_reads`) and raises the red run-level flag, but its demix is
+`ok`: in the lineage panel it carries an `ok` badge (no bar, because controls are left out of the aggregate) and its
+content is in the "Negative controls" section:
+
+![Negative controls and barcode comparison sections](images/report_controls_comparison.png)
+
+(The "Demix status" and "Time series" sections that lie between these two sections in the report are not shown in
+the third image.)
+
+Contents: [header](#header-and-barcode-version) | [run-level flags](#run-level-flags) | [QC](#quality-control) |
+[lineages](#lineage-abundance) | [coverage tracks](#coverage-tracks) | [amplicon dropout](#amplicon-dropout) |
+[negative controls](#negative-controls) | [demix status](#demix-status) |
+[mutations of interest](#mutations-of-interest) | [time series](#time-series) |
+[barcode comparison](#barcode-comparison) | [consensus](#consensus-genomes) | [provenance](#provenance) |
+[modes](#what-is-available-in-each-mode) | [rebuild](#rebuilding-the-report) | [known issues](#known-issues)
+
+## Controls used throughout
+
+- **Filter bar** above most panels: a text filter on the sample name, a QC filter, "only WARN/FAIL", and "hide controls"
+  (negative controls). Filters work per panel and are meant for runs with 100+ samples; the QC table and the demix and
+  consensus tables are sortable by clicking a column header.
+- **Negative controls** carry an `NTC` chip next to their name and are printed in italics.
+- **Hover** any bar segment, heatmap cell or coverage track for a tooltip (lineage and abundance, amplicon and mean depth,
+  allele counts, ...). With `--freyja_boot` the lineage tooltips also show the 95% bootstrap interval, for example
+  `BA.2: 71.2% (95% interval 67.0-72.7%)`.
+- Colours are a colour-blind-safe categorical palette (10 colours; further categories are grey "Other").
+
+## Header and barcode version
+
+The top of the page shows the title, the mode and pipeline version and a prominent box with the **Freyja barcode
+version** the lineage calls were made with (`09_17_2026-00-46`, or `custom` for your own barcode file). Always read
+lineage results together with this version: the same reads give different lineage names with different barcodes.
+The box also shows the source (`latest`, `container`, `pinned`, `custom`), the ISO date, and for custom barcodes the
+start of the file's sha256. Under it: number of samples (and controls), pipeline version, git commit, Freyja and
+Nextflow versions, run start time, and the time the report data was generated. "Key parameters" unfolds the main
+settings used. A table of contents links to the sections (in the current template it has no link for the Negative
+controls section, which sits between "Amplicon dropout" and "Demix status"); sections that have no data for the run are
+omitted from it (mutations of interest, time series, barcode comparison) or show a "not available" note.
+
+## Run-level flags
+
+A short list of things you should know before trusting the run, most severe first: `ERROR` (red), `WARN` (amber),
+`INFO` (blue). With no flags, a green "no flags" note is shown. Each flag has a machine code (shown at the right) and
+the affected samples where relevant. All codes:
+
+| Code                           | Level | Raised when                                                                                                                                 |
+| ------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ntc_reads`                    | error | A negative control has mapped reads above `--ntc_max_mapped_reads` (or QC reason `ntc_reads`): possible contamination.                      |
+| `ntc_fail`                     | error | A negative control failed QC for another reason.                                                                                            |
+| `demix_failed`                 | error | `freyja demix` failed for one or more (non-control) samples.                                                                                |
+| `all_samples_failed`           | error | Every non-control sample failed QC or has no usable lineage result.                                                                         |
+| `freyja_data_missing`          | error | Lineage results exist but `run_info.json` records no `freyja_data.barcode_version`: the barcode dataset is unknown.                         |
+| `mixed_barcode_versions`       | error | Samples were demixed with different barcode versions.                                                                                       |
+| `qc_fail`                      | warn  | One or more (non-control) samples have QC `FAIL`.                                                                                           |
+| `demix_skipped`                | warn  | Demixing was skipped for low genome coverage (`skipped_low_coverage`) for one or more samples.                                              |
+| `demix_missing`                | warn  | No demix result was found for one or more samples (status `missing`).                                                                       |
+| `barcode_compare_failed`       | warn  | With `--compare_barcodes`: the second demix (the other barcode dataset) failed for the listed samples; they have no rows in the comparison. |
+| `barcode_unknown`              | warn  | The barcode version is `unknown` (legacy Snakemake results).                                                                                |
+| `previous_run_barcode_unknown` | warn  | A previous run the results build on recorded no barcode version (legacy results).                                                           |
+| `no_samples`                   | warn  | No samples at all; the report is empty.                                                                                                     |
+| `input_problems`               | warn  | Some input rows or values could not be parsed (with the first messages).                                                                    |
+| `qc_warn`                      | info  | One or more samples have QC `WARN`.                                                                                                         |
+| `barcode_custom`               | info  | A custom barcode file was used; its version is not tied to a Freyja release (use the checksum).                                             |
+| `barcode_container`            | info  | The snapshot bundled in the Freyja container was used; it may be older than the latest Freyja data.                                         |
+| `previous_run_barcode_differs` | info  | A previous run used a different barcode version than this run.                                                                              |
+| `no_ntc`                       | info  | The run has no negative-control sample.                                                                                                     |
+| `qc_not_available`             | info  | No QC summary was provided (for example `aggregate` mode).                                                                                  |
+| `input_note`                   | info  | Free-text notes from the report builder.                                                                                                    |
+
+In the example run: `ntc_reads` (the contaminated control `NEG_CONTAM`, 5998 mapped reads), `qc_fail` and `demix_skipped`
+(`LOWCOV_D`), `barcode_custom`, and `qc_warn` (`Site_1_week_2`). A negative control that demixed `ok` raises no demix flag
+and is never counted as a failed sample.
+
+## Quality control
+
+Counters first: how many samples PASS, WARN, FAIL, are "not assessed" (`NA`) and how many negative controls there are
+(the counters exclude negative controls). Then the sortable table, one row per sample:
+
+| Column                   | Meaning                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Sample, Type, Date, Site | From the samplesheet.                                                                                                                   |
+| QC                       | Badge: green `PASS`, amber `WARN`, red `FAIL`, grey `NA`. See [QC rules](output.md#summaryqc_summarytsv) for how the status is decided. |
+| Reasons                  | The `qc_reasons` tokens: `low_coverage`, `amplicon_dropout`, `no_reads`, `no_depths`, `ntc_reads`.                                      |
+| Raw reads, Mapped %      | From fastp and `samtools flagstat` (`-` in `demix` mode without them).                                                                  |
+| Mean depth               | Mean depth over the whole genome (zeros included).                                                                                      |
+| >=10x %                  | % of the genome at depth >= 10.                                                                                                         |
+| >=min depth %            | % of the genome at depth >= `--consensus_min_depth` (what will not be masked in the consensus).                                         |
+| Amplicons dropped        | `dropped / total` amplicons.                                                                                                            |
+| Demix                    | Badge for the demix status: `ok` (green), `skipped_low_coverage` and `missing` (amber), `failed` (red).                                 |
+| Top group                | The most abundant summarized lineage group and its %.                                                                                   |
+| Consensus N %            | % `N` in the consensus.                                                                                                                 |
+
+A negative control is judged differently from samples: it FAILS if it has real reads/coverage, and it never fails for
+low coverage. `NEG_E` (5 mapped reads) is a PASS; `NEG_CONTAM` (thousands of reads of BA.2) is a FAIL. In the Demix
+column a clean control such as `NEG_E` shows `skipped_low_coverage`, which is the expected outcome for a control.
+
+## Lineage abundance
+
+Per sample, what Freyja estimated. A two-button toggle selects the **resolution**:
+
+- **Summarized groups** (default): Freyja's `summarized` grouping (`Omicron`, `Delta`, `XBB.1.5*`, `BA.2.86*`, ...).
+  Easy to read for a surveillance overview. Note the grouping: JN.1 appears as `BA.2.86* (BA.2.86.X)`.
+- **All lineages**: individual (sub)lineages from Freyja's `lineages`/`abundances` (`BA.2`, `AY.4`, `JN.1`, ...).
+
+For each view the panel has a shared colour legend, a stacked bar per sample (hover for the exact value; segments below
+0.2% of the bar are merged into grey "Other"), and a sample x lineage heatmap of % abundance (square-root colour scale;
+at most the 20 most abundant groups or 25 most abundant lineages are shown as columns). Samples with no lineage result
+show their demix status badge and reason instead of a bar (for example `skipped_low_coverage: less than 60% of the genome
+covered at >= 10x`), and are counted under the heatmap. A negative control that demixed `ok` (`NEG_CONTAM`) shows an
+`ok` badge without a bar and is also counted there: controls are deliberately not in the aggregate this panel is drawn
+from (decision D8); their lineages are in [Negative controls](#negative-controls). The filter bar here works on the
+sample name. Colours are shared only within a view.
+
+With `--freyja_boot`, the tooltip of every bar segment and heatmap cell of the **All lineages** view ends with the 95%
+bootstrap interval of that lineage (`freyja_boot_summary.tsv`, the `intervals` field of
+[report_data.md](report_data.md)). The intervals are per individual lineage, so the **Summarized groups** view shows
+none (only a group named like a lineage would pick one up). Intervals only appear in the tooltips; the bars themselves
+are not drawn with error bars.
+
+Read abundances as a relative composition of the lineages whose barcodes are in the dataset, not as absolute viral load;
+low-abundance calls (a few percent) in mixtures are often noise.
+
+## Coverage tracks
+
+One small card per sample (QC badge in the corner): mean depth per bin of about 50 bp (at most 600 bins) over the
+genome on a **log scale** (the note gives the top value). Overlays:
+
+- dashed line: the amplicon dropout threshold (`--amplicon_min_depth`, 10x);
+- dotted line: the consensus minimum depth (`--consensus_min_depth`, 15x);
+- shaded bands: amplicons that were dropped (mean depth below the threshold).
+
+Under each track: mean depth, % of the genome at 10x and the number of dropped amplicons. Use it to see at a glance where
+a sample lost coverage (`Site_1_week_2` has two dropped amplicons; `LOWCOV_D` and `NEG_E` have all 29 dropped). The data
+come from the depths files (full and `demix` mode).
+
+## Amplicon dropout
+
+A heatmap of samples (rows) x amplicons (columns, in genome order) coloured by mean depth: dark red = dropped with no
+coverage, orange = dropped (< threshold), then light to dark blue for increasing depth (<100x, <1000x, <10000x,
+
+> =10000x), grey = no data. The top bar shows, per amplicon, the fraction of non-control samples in which it dropped out:
+> a tall bar means a systematic problem (primer failure, a mutation under a primer) rather than one bad sample. The
+> amplicon number ruler is below it. Hover a cell for the amplicon and its mean depth. Needs a primer scheme (always in
+> `full`; in `demix` only with `--primer_scheme`/`--primer_bed`).
+
+## Negative controls
+
+Appears when at least one negative control (`sample_type=negative`) demixed `ok`. Negative controls are demixed when
+they pass the coverage gate, so that a contaminated control is visible, but they are **excluded from the aggregate, the
+lineage view and the time series** (decision D8; unless the run used `--include_negatives_in_aggregate`, in which case
+the last column reads "included"). This section is where they are shown: a sortable table with one row per control:
+
+| Column                      | Meaning                                                                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Control                     | Sample ID with the `NTC` chip.                                                                                                           |
+| QC, Reasons                 | The control's QC badge and reason tokens (`FAIL` / `ntc_reads` for a contaminated control).                                              |
+| Mapped reads, Genome >=1x % | From the QC row: how much of the control mapped to the genome.                                                                           |
+| Demix coverage %            | Freyja's genome coverage of the control's demix.                                                                                         |
+| Lineages detected           | The five most abundant lineages with their % (`BA.2 100.0%`), with "..." if there are more. Taken from `freyja_aggregated_controls.tsv`. |
+| Aggregate                   | `excluded` (default) or `included`.                                                                                                      |
+
+In the screenshot above `NEG_CONTAM` (5,998 mapped reads, 99.4% of the genome at >= 1x) contains BA.2, the lineage of
+the mixtures run beside it: the signature of carry-over contamination. A clean control that was skipped for low
+coverage (`NEG_E`) has no row here (look at QC and Demix status). The run-level `ntc_reads` flag in the flags list is
+what raises the alarm; this section tells you what the contamination is.
+
+## Demix status
+
+Counters (ok / skipped for low coverage / failed, plus "no result" when relevant) and a table with the status, the
+reason, the barcode version used, Freyja's genome coverage % and the fit residual of each sample. This is the place
+to find out why a sample has no lineage bar. Negative controls are listed too: an `ok` control (`NEG_CONTAM`) is `ok`
+here, shown without coverage and residual because those come from the aggregate it is not part of (they are in the
+Negative controls table).
+
+## Mutations of interest
+
+Only when `--mutations_of_interest` was given. A heatmap of the alternate-allele frequency (%) per sample and mutation.
+Cells with a dashed outline have depth below the consensus minimum depth (treat with care); a dash (`-`) means no
+coverage or no data. Hover for the allele counts ("alt 41 of 52 reads"). The values are those of
+`summary/mutations_of_interest.tsv`.
+
+## Time series
+
+Only when at least two distinct collection dates exist among non-control samples with a lineage result. Shows the mean
+abundance of the top summarized groups (up to 6) per collection date, with one panel per `site` (samples with no site
+form a "(no site)" panel) on shared axes. Hover a point for its value. Negative controls and samples without a lineage
+result are excluded. (This is the report's own panel; `freyja_plot_times.pdf` is Freyja's time-aware plot.)
+
+The panel needs `collection_date` (and optionally `site`) for the samples. In `full` and `demix` mode they come from
+the QC table; in **`aggregate` mode** (no QC table) the report reads them from the samplesheet in effect: an `--input`
+sheet with those columns, or the `summary/samplesheet.csv` carried in a `--previous_results` directory. With
+`--demix_dir` there is no metadata, so no time series. (Verified: an `aggregate` run on a `full` run's results drew the
+4-date panel; the `--demix_dir` run did not.)
+
+## Barcode comparison
+
+Appears with `--compare_barcodes` (modes `full` and `demix`): every sample is demixed with a second Freyja barcode
+dataset and the report compares the two estimates. A is the dataset of `--barcodes`, B the one of `--compare_barcodes`
+(the header line names both barcode versions, here `custom` and `09_17_2026-00-46`). It shows:
+
+- **Samples with the largest changes**: per sample, the _turnover_ (half the sum of the absolute abundance changes over
+  all lineages: 0 = identical estimates, 100% = completely different) and the largest single change in percentage
+  points; the 50 samples with the highest turnover.
+- **Largest lineage changes**: the 100 biggest sample x lineage changes, with A and B as small bars, the percentage of
+  each, and the change in points (orange = increased in B, blue = decreased); sortable.
+
+In the screenshot, `Site_1_week_2` has the highest turnover (43.2%): its BA.5 falls from 60.7% to 29.1% and a BA.5.5
+appears (29.1%) in the container's barcode set; `PURE_C` (JN.1) and the contaminated control are unchanged. Different
+barcode sets can assign the same signal to different lineages, so a big turnover tells you the lineage names are
+dataset-dependent for that sample, not that the sample changed. Negative controls that demixed are included in the
+comparison. Samples skipped by the coverage gate have no rows (they are `skipped_low_coverage` in
+`barcode_compare_status.tsv`); a second demix that fails raises the `barcode_compare_failed` flag. The data are in
+`summary/barcode_compare.tsv` ([output.md](output.md#summarybarcode_comparetsv-and-summarybarcode_compare_statustsv)).
+
+## Consensus genomes
+
+Table per consensus: length, `N` count, `N %`, other (IUPAC) ambiguous bases and status badge (`ok` green, `empty` amber,
+`failed` red). See [consensus conventions](output.md#consensus-fasta-conventions). Negative controls have none. The
+FASTA itself is `summary/consensus_genomes.fasta`.
+
+## Provenance
+
+- **Freyja dataset**: the full `freyja_data` block (source, barcode version, sha256 of the barcode file and other dataset
+  files, Freyja version, dataset path, download time); see [output.md](output.md#the-freyja_data-block) for each field and
+  the difference between `freyja_reported_barcode_version` and `freyja_bundled_barcode_version`.
+- **Previous runs**: for `demix`/`aggregate` reports, the earlier runs the results build on, with their barcode version
+  (an amber `unknown` for legacy Snakemake results, which recorded none).
+- Two folds: "Full run provenance" (the whole `run_info.json` without parameters) and "All pipeline parameters".
+
+## What is available in each mode
+
+| Panel                                            |             `full`             |                                     `demix`                                     |                                               `aggregate`                                                |      `report`       |
+| ------------------------------------------------ | :----------------------------: | :-----------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------: | :-----------------: |
+| Header, barcode box, run-level flags, provenance |              yes               |                                       yes                                       |                                                   yes                                                    | as the original run |
+| Quality control                                  |              yes               |              yes (no mapped/raw reads without a fastp JSON / BAM)               |                                                    no                                                    | as the original run |
+| Lineage abundance, demix status                  |              yes               |                                       yes                                       |                                    yes (samples found in the inputs)                                     | as the original run |
+| Coverage tracks                                  |              yes               |                                       yes                                       |                                                    no                                                    | as the original run |
+| Amplicon dropout                                 |              yes               |                   only with `--primer_scheme`/`--primer_bed`                    |                                                    no                                                    | as the original run |
+| Mutations of interest                            | with `--mutations_of_interest` |                         with `--mutations_of_interest`                          |                                                    no                                                    | as the original run |
+| Time series                                      |        when >= 2 dates         |                                 when >= 2 dates                                 | when >= 2 dates in the samplesheet in effect (`--input` or `--previous_results`; not with `--demix_dir`) | as the original run |
+| Negative controls                                |  when a control demixed `ok`   |                                      same                                       |                              same (a control `.demix` found in the inputs)                               | as the original run |
+| Barcode comparison                               |   with `--compare_barcodes`    |                            with `--compare_barcodes`                            |                                                    no                                                    | as the original run |
+| Bootstrap intervals (tooltips)                   |      with `--freyja_boot`      | with `--freyja_boot` <!-- UNVERIFIED: demix mode with --freyja_boot not run --> |                                                    no                                                    | as the original run |
+| Consensus genomes                                |   unless `--skip_consensus`    |                            unless `--skip_consensus`                            |                                                    no                                                    | as the original run |
+
+Unavailable panels say "not available in mode '<mode>'". A report built by `--mode report` shows the mode label of
+the original run (it re-renders the original `report_data.json`); in the verified run the re-rendered `report.html` was
+byte-for-byte identical to the original.
+
+## Rebuilding the report
+
+The report can be re-rendered from a finished run at any time, for example after upgrading the pipeline (new template),
+without touching the results:
+
+```bash
+nextflow run charlesfoster/wasteline -profile docker \
+    --mode report --results_dir results --outdir results_report
+```
+
+- `--results_dir` is the earlier results directory; it must contain `pipeline_info/run_info.json`. It is read only.
+- `--outdir` must be a different directory; the new `summary/report.html` is written there (plus Nextflow's own
+  `pipeline_info`).
+- If `summary/report_data.json` exists in `--results_dir` it is reused and only the HTML is rendered again. If it is
+  missing the data is rebuilt from the other `summary/` files and the depths files, then rendered.
+- To rebuild with different QC thresholds you need to re-run the QC, so use `--mode demix --previous_results results`
+  (cheap: no mapping) rather than `--mode report`.
+
+Without Nextflow, the two scripts can be run directly (Python >= 3.11, stdlib plus `jinja2`; see
+[report_data.md](report_data.md)). This was run on the results of the real `full` run above and reproduced the
+published `report_data.json` (apart from the timestamp and the completion keys in `provenance`), the report data and
+HTML, and with `--write-qc-tsv qc_summary.tsv` added a byte-identical `summary/qc_summary.tsv`:
+
+```bash
+python bin/build_report_data.py --run-info results/pipeline_info/run_info.json \
+    --qc results/summary/qc_summary.tsv --amplicons results/summary/amplicon_coverage.tsv \
+    --aggregated results/summary/freyja_aggregated.tsv --demix-status results/summary/demix_status.tsv \
+    --consensus results/summary/consensus_stats.tsv --depths results/samples/*/freyja/*.depths \
+    --barcode-compare results/summary/barcode_compare.tsv \
+    --controls-aggregated results/summary/freyja_aggregated_controls.tsv \
+    --samplesheet results/summary/samplesheet.csv --boot results/summary/freyja_boot_summary.tsv \
+    --compare-status results/summary/barcode_compare_status.tsv \
+    --mode full --out report_data.json
+python bin/render_report.py --data report_data.json --template assets/templates/report.html.j2 --out report.html
+```
+
+(`--depths` takes depths files, so let the shell expand the glob **unquoted**: the script does not expand a quoted
+`'*.depths'` pattern itself, and then the report has no coverage tracks. A directory also works. Leave out the options
+for files your run did not produce.)
+
+## Known issues
+
+Found while documenting 0.1.0dev (real runs on the synthetic dataset); they affect how the report reads, not the
+result files. Two earlier issues are fixed and verified in the final run: an `ok` negative control is no longer shown
+as `failed` (it keeps `ok` and has its own section), and `missing` rows in `demix_status.tsv` no longer raise an
+`input_problems` warning (an `aggregate` run on a `full` run's results only raised `demix_missing`).
+
+- The report in `--mode report` shows the original run's mode label.
+- The table of contents at the top has no link to the Negative controls section.
+- In `aggregate` mode on `--previous_results`, a negative control that was skipped for low coverage (`NEG_E`) has no
+  usable `.demix` and is not in the discovered samplesheet, so the report lists it as an ordinary sample flagged
+  `demix_missing` rather than as a control.
+- With `--include_negatives_in_aggregate` the controls are in the main aggregate, so they also appear in the lineage
+  view (the time series always leaves controls out); the Negative controls table then shows them as "included"
+  <!-- UNVERIFIED: not run; derived from the report builder and template code -->.

@@ -25,13 +25,16 @@ qualimap, kraken2 as a default, snpEff.
 | D6 | `freyja plot` is broken in Freyja 2.0.3-2.0.5 containers (pandas 3.0.x `TypeError` in `prepSummaryDict`; exits 0 with no PDF). Verified by the planner on Freyja's own bundled example data. Decision: keep the single pinned Freyja container (no custom pandas<3 env, which would break the one-container auto-bump). `FREYJA_AGGREGATE_PLOT` tries `freyja plot` normally; if no PDF appears it retries through `python -c` with `pd.options.future.infer_string=False` set before calling `freyja._cli.cli()`; if that also yields no PDF it writes `freyja_plot.failed.txt` (with the reason) and the run continues. The same check applies when `freyja plot` exits 0 without a PDF because no sample exceeds `--mincov`. Our HTML report draws its own abundance plots and never depends on `freyja plot`. The workaround is a documented stopgap: a test (`freyja plot` on the bundled example, run without the workaround) flags when upstream is fixed so it can be removed. Upstream issue to be reported by the user. |
 | D7 | Coverage QC is computed from the Freyja **depths file** (4-col, per position, Q>=20 bases) plus samtools flagstat and the fastp JSON, not from mosdepth. Reason: the same QC then works in `demix` mode, where there is no BAM, and it is one fewer tool/container. This supersedes the mosdepth wording in §5.9 and F12's "mosdepth or samtools coverage". |
 | D8 | Negative controls (`sample_type=negative`) are demixed if they pass the coverage gate (so contamination is visible in the demix-status table/report) but are **excluded from the aggregate and `freyja plot`** by default; `--include_negatives_in_aggregate` (default false) overrides. A negative that passes the gate (i.e. has real coverage) is also a run-level error flag (`ntc_reads`). |
+| D10 | Legacy zero-byte `.demix` files (the old pipeline's `|| touch` on failure) are never aggregated: `make_samplesheet.py --from-results` skips them with a reason, and the workflow records the sample in `demix_status.tsv` with status `missing` and reason `empty demix file (failed in the old pipeline)`. |
+| D11 | Boolean CLI params break on Nextflow >= 26.04 with the strict parser (strings, not booleans). Handled in the integration round (typed `params` block or an explicit actionable error); see CLAUDE.md gotchas. |
+| D12 | Minimum Nextflow is **26.04.0** (was 25.10.4). Boolean/number CLI params only convert correctly through a typed `params {}` block under Nextflow >= 26.04's strict parser; on 25.10 included scripts and config saw unconverted strings (e.g. `--save_bam false` still published the BAM, silently), so older versions are refused rather than mis-run. h2seq and monty already use 26.04. Made by the integration agent; reversible if production Linux hosts cannot run 26.04. |
 | D9 | `freyja demix --version` only ever reports the data bundled in the package, so it cannot confirm an external dataset. The authoritative barcode record is the dataset's own `last_barcode_update.txt` + sha256s. `freyja_reported_barcode_version` is filled only for `source=container`; otherwise null, with the container's bundled version in `freyja_bundled_barcode_version`. This supersedes the "parsed from demix --version against that exact dataset" wording in §5.13. |
 | D5 | Per-sample consensus genomes are kept (F17 changed), built from the ivar-based Freyja variants TSV (no LoFreq). pangolin/nextclade/pango-collapse are dropped. |
 
 ## 3. Pipeline modes
 
-`--mode full|demix|aggregate|report|update_db` (schema enum, default `full`). Named entry workflows `-entry DEMIX`,
-`AGGREGATE`, `REPORT`, `UPDATE_DB` are thin aliases that set the mode.
+`--mode full|demix|aggregate|report|update_db` (schema enum, default `full`). `--mode` is the only dispatch: named
+entry workflows (`-entry`) are rejected by Nextflow >= 26.04's strict parser, so they were dropped.
 
 | Mode | Input | Runs | Does NOT run |
 |---|---|---|---|
@@ -183,11 +186,15 @@ the `_LEFT/_RIGHT` or `_F/_R` primers (also handle names like `nCoV-2019_1_F`, `
 `covid19genome_..._F/_R` style) spanning from the left primer start to the right primer end (inner coordinates are
 not used).
 
-**`demix_status.tsv`**: `sample, status, reason, barcode_version` (status `ok|failed|skipped_low_coverage`).
+**`demix_status.tsv`**: `sample, status, reason, genome_coverage_pct, barcode_version, barcode_version_iso` (status
+`ok|failed|skipped_low_coverage|missing`; `missing` = discovery-skipped or zero-byte legacy demix, barcode columns empty).
 
 **`freyja_aggregated.tsv`**: Freyja's own aggregate format (tab-separated; index column = sample label; columns
-`summarized, lineages, abundances, resid, coverage`; list-valued fields stored as Python-style strings). Look at the
+`summarized, lineages, abundances, resid, coverage, pathogen`; list-valued fields stored as Python-style strings). Look at the
 bundled example `aggregated_result.tsv` inside the Freyja container to see it.
+
+**`annotated_variants.tsv`** (opt-in, `--annotate_variants`): `reference, sample_id, gene, nt_pos, ref, alt, effect, aa_bcsq, aa_standard, vaf, depth, compound`
+(`compound` = positions of a joint multi-SNV codon change, e.g. `23063+23064`, else `NA`).
 
 **`mutations_of_interest.tsv`**: `sample, name, mutation, ref_depth, alt_depth, depth, alt_freq`.
 
@@ -209,6 +216,23 @@ bundled example `aggregated_result.tsv` inside the Freyja container to see it.
   `alt_depth 0`, `alt_freq 0`, `ref_depth = depth` (from `--depths`; amino-acid = min over the 3 codon positions).
   Amino-acid fallback uses the GFF3 (needs `--gff` and `--reference`); ORF1a vs ORF1ab named from the mRNA `Name`.
 - The real ivar TSV has a 20th column `POS_AA`.
+
+
+**Contract changes from the integration round:**
+- `qc_max_dropped_amplicons` default is **1** (was 10): >1 dropped amplicons -> WARN `amplicon_dropout`.
+- `tests/data/truth.json` gained `expected_qc_status`, `expected_in_aggregate`, `expected_consensus_status`; new sample
+  `NEG_CONTAM` (contaminated negative that passes the coverage gate).
+- `demix_status.tsv` may contain `missing` rows (discovery-skipped or zero-byte legacy demix files) with an empty barcode version.
+- `consensus_stats.tsv` may contain `failed` rows with `NA` values for samples whose consensus steps failed (synthesised by the
+  workflow; consensus/QC steps use `errorStrategy 'ignore'`).
+- `summary/samplesheet.csv` is published in every mode that has an input sheet. Aggregate mode writes no `barcode_version.json`
+  (it demixes nothing). BUILD_REPORT_DATA/RENDER_REPORT do not emit `topic: versions` (it deadlocked PROVENANCE), so their
+  python/jinja2 versions are only in `run_info.containers`.
+- `make_samplesheet.py --from-results --skipped-out` writes `sample, reason, sample_type, collection_date, site`; the helper
+  scripts `make_samplesheet.py`/`check_samplesheet.py` run on Python >= 3.9 (3.8 checked statically).
+- `primer_scheme` defaults to null (meaning midnight in `full`; in `demix` amplicon coverage runs only when a scheme/BED is
+  given explicitly); `run_info` records the effective scheme. `run_info.params` omits `pipelines_testdata_base_path`.
+- `process.resourceLimits` is computed from the host (cpus, 90% of memory, 240 h) because nf-core lint forbids `max_*` params.
 
 **`report_data.json`**: documented in `docs/report_data.md` (owned by the report task); assembled by
 `bin/build_report_data.py` from the files above plus `run_info.json`.

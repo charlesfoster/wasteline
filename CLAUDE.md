@@ -50,6 +50,9 @@ Docker Desktop must be running for container tests.
 - Containers are `linux/amd64` only; Apple Silicon needs `--platform linux/amd64` (handled in a profile, not by hand).
 - The Snakemake pipeline used `freyja variants --varthresh 0.25`, discarding low-frequency variants. Freyja's default is
   0.0 and that is our default. Do not "restore parity" here.
+- Nextflow >= 26.04's strict (v2) parser passes CLI booleans as strings (`--x`, `--x=false`) and nf-schema rejects them;
+  `-params-file` works, as does `NXF_SYNTAX_PARSER=v1`. Named entries (`-entry`) are rejected too: dispatch is `--mode` only.
+- `nf-test test --profile docker,test` (not `docker` alone, until resource defaults are fixed).
 - Mac + conda is unreliable; use `-profile docker` on macOS.
 - Do not commit or push unless the user asks.
 - Never delete directories wholesale or clean up "empty" directories (`find -empty -delete`, `rmdir` sweeps, `git clean`).
