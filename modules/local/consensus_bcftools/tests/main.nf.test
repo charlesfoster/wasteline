@@ -54,6 +54,7 @@ nextflow_process {
                     def tsv = new File("\${launchDir}/PURE_C.variants.tsv")
                     tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.variants.tsv.gz")).bytes
                     input[0] = [ [ id:'PURE_C' ], file(tsv.toString()) ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }
@@ -105,7 +106,7 @@ nextflow_process {
             def diffs = (0..<ref.size()).findAll { cons[it] != ref[it] && cons[it] != 'N' }
             assertAll(
                 { assert process.success },
-                { assert status == [sample: 'PURE_C', status: 'ok', reason: ''] },
+                { assert status == [sample: 'PURE_C', status: 'ok', reason: '', warnings: []] },
                 { assert fa[0] == '>PURE_C' },
                 { assert fa.count { it.startsWith('>') } == 1 },
                 { assert cons.size() == 29903 },
@@ -128,6 +129,7 @@ nextflow_process {
                 process {
                     """
                     input[0] = [ [ id:'SYN_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }
@@ -198,6 +200,7 @@ nextflow_process {
                 process {
                     """
                     input[0] = [ [ id:'LOW_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }
@@ -259,6 +262,7 @@ nextflow_process {
                     def tsv = new File("\${launchDir}/EMPTY.variants.tsv")
                     tsv.text = 'REGION\\tPOS\\tREF\\tALT\\tREF_DP\\tREF_RV\\tREF_QUAL\\tALT_DP\\tALT_RV\\tALT_QUAL\\tALT_FREQ\\tTOTAL_DP\\tPVAL\\tPASS\\n'
                     input[0] = [ [ id:'EMPTY_1' ], file(tsv.toString()) ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }
@@ -300,7 +304,7 @@ nextflow_process {
             def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
             assertAll(
                 { assert process.success },
-                { assert status == [sample: 'EMPTY_1', status: 'empty', reason: status.reason] },
+                { assert status == [sample: 'EMPTY_1', status: 'empty', reason: status.reason, warnings: []] },
                 { assert status.reason },
                 { assert fa[0] == '>EMPTY_1' },
                 { assert cons.size() == 29903 },
@@ -321,6 +325,7 @@ nextflow_process {
                     def tsv = new File("\${launchDir}/EMPTY.variants.tsv")
                     tsv.text = 'REGION\\tPOS\\tREF\\tALT\\tREF_DP\\tREF_RV\\tREF_QUAL\\tALT_DP\\tALT_RV\\tALT_QUAL\\tALT_FREQ\\tTOTAL_DP\\tPVAL\\tPASS\\n'
                     input[0] = [ [ id:'REFLIKE_1' ], file(tsv.toString()) ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }
@@ -369,7 +374,7 @@ nextflow_process {
         }
     }
 
-    test("bcftools failure (REF does not match the reference) -> status failed, all-N sequence - real") {
+    test("synthetic ivar indels: 9-base deletion printed as N, 3-base deletion, insertion, deletion to the genome end - consensus keeps its length, deletions are '-' - real") {
 
         tag "docker"
         setup {
@@ -377,10 +382,8 @@ nextflow_process {
                 script "../../ivar_variants_to_vcf/main.nf"
                 process {
                     """
-                    def tsv = new File("\${launchDir}/MISMATCH.variants.tsv")
-                    tsv.text = 'REGION\\tPOS\\tREF\\tALT\\tREF_DP\\tREF_RV\\tREF_QUAL\\tALT_DP\\tALT_RV\\tALT_QUAL\\tALT_FREQ\\tTOTAL_DP\\tPVAL\\tPASS\\n' +
-                               'NC_045512.2\\t100\\tA\\tT\\t5\\t0\\t37\\t45\\t0\\t35\\t0.9\\t50\\t0.01\\tTRUE\\n'
-                    input[0] = [ [ id:'MISMATCH_1' ], file(tsv.toString()) ]
+                    input[0] = [ [ id:'IND_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_ivar_indels.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }
@@ -415,16 +418,211 @@ nextflow_process {
         }
 
         then {
-            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
             def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
             def fa = new File(process.out.fasta[0][1].toString()).readLines()
             def cons = fa.findAll { !it.startsWith('>') }.join('')
             def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
             assertAll(
                 { assert process.success },
-                { assert status.status == 'failed' },
-                { assert status.reason.contains('bcftools consensus failed') },
+                { assert fa[0] == '>IND_1' },
+                { assert status == [sample: 'IND_1', status: 'ok', reason: '', warnings: []] },
+                // ivar "-NNNNNNNNN" at 11287 (AF 0.99 in the failing real sample): 9 marked deleted bases, anchor kept
+                { assert ref.substring(11286, 11296) == 'GTCTGGTTTT' },
+                { assert cons.substring(11286, 11296) == 'G' + '-' * 9 },
+                { assert cons.substring(11296, 11300) == ref.substring(11296, 11300) },
+                { assert cons[4999] == 'A' && ref[4999] == 'C' },
+                { assert cons.substring(14999, 15003) == 'T' + 'AC' + ref.substring(15000, 15001) },   // insertion applied, +2 shift after it
+                { assert cons.substring(19999 + 2, 20003 + 2) == 'T---' },                              // 3-base deletion TGA marked
+                { assert cons.substring(23999 + 2, 24002 + 2) == 'G--' },                               // deletion GCA -> G--, the AF 0.2 SNV is ignored
+                { assert cons.endsWith('A---') },                                                       // deletion running to the genome end keeps the length
+                { assert cons.substring(9000, 9010) == ref.substring(9000, 9010) },                      // AF 0.002 deletion ignored
+                { assert cons.size() == 29903 + 2 },                                                    // +2 for the AC insertion; deletions keep the length
+                { assert cons.count('-') == 9 + 3 + 2 + 3 },
+                { assert !cons.contains('N') }
+            )
+        }
+    }
+
+    test("SNV inside a deleted span: bcftools skips it, listed in warnings, status ok - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'OVL_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_ivar_overlap.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert fa[0] == '>OVL_1' },
+                { assert status.status == 'ok' },
+                { assert status.warnings == ['skipped variant at NC_045512.2:11296 (overlaps another variant)'] },
+                { assert status.reason.contains('1 variant(s) not applied') },
+                { assert cons.size() == 29903 },
+                { assert cons.substring(11286, 11296) == 'G' + '-' * 9 },                 // the deletion is applied
+                { assert cons[11295] == '-' },                                            // the SNV inside it (11296) is not applied
+                { assert cons[4999] == 'A' && ref[4999] == 'C' }
+            )
+        }
+    }
+
+    test("VCF records whose REF does not match the reference are skipped with a warning, the genome is kept (status ok) - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'MISMATCH_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_ivar_mismatch.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
                 { assert fa[0] == '>MISMATCH_1' },
+                { assert status.status == 'ok' },                                                       // not discarded: broken records are skipped
+                { assert status.warnings == ['skipped variant at NC_045512.2:100 (REF mismatch)', 'skipped variant at NC_045512.2:20000 (REF mismatch)'] },
+                { assert status.reason.contains('2 variant(s) not applied') && status.reason.contains('NC_045512.2:100') },
+                { assert cons.size() == 29903 },
+                { assert cons[99] == ref[99] && cons[19999] == ref[19999] },                            // skipped: reference base
+                { assert cons[4999] == 'A' && ref[4999] == 'C' },                                       // other variants applied
+                { assert cons.substring(11286, 11296) == 'G' + '-' * 9 },
+                { assert !cons.contains('N') },
+                { assert new File(process.out.log[0][1].toString()).text.contains('retry 2') }
+            )
+        }
+    }
+
+    test("more than 10 mismatching records -> status failed, all-N sequence - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'MANY_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_ivar_many_mismatch.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            assertAll(
+                { assert process.success },
+                { assert fa[0] == '>MANY_1' },
+                { assert status.status == 'failed' },                                                   // 12 bad positions > 10 retries
+                { assert status.reason.contains('bcftools consensus failed') },
+                { assert status.reason.contains('does not match the REF allele') },
                 { assert cons.size() == 29903 },
                 { assert cons.every { it == 'N' } }
             )
@@ -440,6 +638,7 @@ nextflow_process {
                 process {
                     """
                     input[0] = [ [ id:'IUPAC_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_iupac.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }
@@ -508,6 +707,7 @@ nextflow_process {
                 process {
                     """
                     input[0] = [ [ id:'IUPAC_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_iupac.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }

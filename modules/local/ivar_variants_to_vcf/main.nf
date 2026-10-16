@@ -9,6 +9,7 @@ process IVAR_VARIANTS_TO_VCF {
 
     input:
     tuple val(meta), path(variants) // Freyja/ivar <sample>.variants.tsv (header-only is fine)
+    path fasta                      // reference FASTA; [] = none (legacy, WRONG for ivar's `-NNN` deletions: warns loudly)
 
     output:
     tuple val(meta), path("${prefix}.ivar.vcf"), emit: vcf
@@ -20,10 +21,13 @@ process IVAR_VARIANTS_TO_VCF {
     script:
     // ext.args: bin/ivar_variants_to_vcf.py options. Do NOT pass --pass_only / --allele_freq_thresh
     // for the consensus: AF, quality and depth thresholds are applied by CONSENSUS_FILTER_VCF.
+    // The reference is needed to build indel REF/ALT alleles: ivar prints deleted bases as N, so alleles built
+    // from them do not match the reference and bcftools consensus aborts.
     def args = task.ext.args ?: ''
+    def reference = fasta ? "--reference ${fasta}" : ''
     prefix = task.ext.prefix ?: "${meta.id}"
     """
-    ivar_variants_to_vcf.py ${args} ${variants} ${prefix}.ivar.raw.vcf
+    ivar_variants_to_vcf.py ${args} ${reference} ${variants} ${prefix}.ivar.raw.vcf
 
     # The converter names the VCF sample column after the input file ("S.variants"); use the sample ID.
     awk -F'\\t' -v OFS='\\t' -v id='${meta.id}' '/^#CHROM/ { \$NF = id } { print }' ${prefix}.ivar.raw.vcf > ${prefix}.ivar.vcf

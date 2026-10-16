@@ -8,7 +8,8 @@ process CONSENSUS_STATS {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    tuple val(meta), path(fasta) // <sample>.consensus.fa from CONSENSUS_BCFTOOLS
+    tuple val(meta), path(fasta), path(status_json) // <sample>.consensus.fa and <sample>.consensus_status.json from CONSENSUS_BCFTOOLS
+                                                    // (status_json may be [] : status/reason are then recomputed from the sequence)
     path reference               // reference FASTA: its length is the n_pct denominator
 
     output:
@@ -19,7 +20,10 @@ process CONSENSUS_STATS {
     task.ext.when == null || task.ext.when
 
     script:
+    // The status JSON wins for failed/empty (a failed sample is an all-N sequence, which alone reads as "empty");
+    // its reason (and the warnings text of an ok sample) goes to the last column, `reason`.
     def args = task.ext.args ?: ''
+    def status_arg = status_json ? "--status-json ${status_json}" : ''
     prefix = task.ext.prefix ?: "${meta.id}"
     """
     ref_len=\$(awk '/^>/ { n++; next } n == 1 { total += length(\$0) } END { print total + 0 }' ${reference})
@@ -29,6 +33,7 @@ process CONSENSUS_STATS {
         --fasta ${fasta} \\
         --sample ${meta.id} \\
         --reference-length \$ref_len \\
+        ${status_arg} \\
         ${args} \\
         --output ${prefix}.consensus_stats.tsv
     """
@@ -36,6 +41,6 @@ process CONSENSUS_STATS {
     stub:
     prefix = task.ext.prefix ?: "${meta.id}"
     """
-    printf 'sample\\tlength\\tn_count\\tn_pct\\tambiguous_count\\tstatus\\n${meta.id}\\t0\\t0\\t0.00\\t0\\tok\\n' > ${prefix}.consensus_stats.tsv
+    printf 'sample\\tlength\\tn_count\\tn_pct\\tambiguous_count\\tstatus\\treason\\n${meta.id}\\t0\\t0\\t0.00\\t0\\tok\\tNA\\n' > ${prefix}.consensus_stats.tsv
     """
 }

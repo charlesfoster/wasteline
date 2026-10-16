@@ -16,6 +16,7 @@ nextflow_process {
             process {
                 """
                 input[0] = [ [ id:'S_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv") ]
+                input[1] = []
                 """
             }
         }
@@ -38,6 +39,7 @@ nextflow_process {
                 def tsv = new File("\${launchDir}/PURE_C.variants.tsv")
                 tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.variants.tsv.gz")).bytes
                 input[0] = [ [ id:'PURE_C' ], file(tsv.toString()) ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                 """
             }
         }
@@ -65,6 +67,7 @@ nextflow_process {
             process {
                 """
                 input[0] = [ [ id:'INDEL_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_indels.variants.tsv") ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                 """
             }
         }
@@ -91,6 +94,7 @@ nextflow_process {
                 def tsv = new File("\${launchDir}/EMPTY.variants.tsv")
                 tsv.text = 'REGION\\tPOS\\tREF\\tALT\\tREF_DP\\tREF_RV\\tREF_QUAL\\tALT_DP\\tALT_RV\\tALT_QUAL\\tALT_FREQ\\tTOTAL_DP\\tPVAL\\tPASS\\n'
                 input[0] = [ [ id:'EMPTY_1' ], file(tsv.toString()) ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                 """
             }
         }
@@ -101,6 +105,57 @@ nextflow_process {
                 { assert process.success },
                 { assert lines.findAll { !it.startsWith('#') }.size() == 0 },
                 { assert lines.find { it.startsWith('#CHROM') }.endsWith('EMPTY_1') }
+            )
+        }
+    }
+
+    test("ivar deletions printed as N: alleles come from the reference, every REF matches it - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                input[0] = [ [ id:'WW_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_ivar_indels.variants.tsv") ]
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def records = new File(process.out.vcf[0][1].toString()).readLines().findAll { !it.startsWith('#') }.collect { it.split('\t') as List }
+            def at = { String pos -> records.findAll { it[1] == pos } }
+            assertAll(
+                { assert process.success },
+                { assert records.size() == 8 },                                     // 9 TSV rows, the +ANT insertion is skipped
+                { assert records.every { ref.substring((it[1] as int) - 1, (it[1] as int) - 1 + it[3].size()) == it[3] } },
+                { assert at('11287')[0][3] == 'GTCTGGTTTT' && at('11287')[0][4] == 'G' },   // ivar "-NNNNNNNNN" (AF 0.99 in the real sample)
+                { assert at('16000').isEmpty() },                                    // insertion containing N
+                { assert at('20000')[0][3] == 'TTGA' && at('20000')[0][4] == 'T' },  // 3-base deletion with real bases
+                { assert at('15000')[0][3] == 'T' && at('15000')[0][4] == 'TAC' },   // insertion
+                { assert at('24000').size() == 2 },                                  // SNV + deletion at the same anchor
+                { assert at('29900')[0][3] == 'AAAA' && at('29900')[0][4] == 'A' }   // deletion to the genome end
+            )
+        }
+    }
+
+    test("no reference given (legacy): runs with a warning and uses ivar's printed bases - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                input[0] = [ [ id:'NOREF_1' ], file("\$projectDir/tests/fixtures/modules_phase3/synthetic_ivar_indels.variants.tsv") ]
+                input[1] = []
+                """
+            }
+        }
+
+        then {
+            def records = new File(process.out.vcf[0][1].toString()).readLines().findAll { !it.startsWith('#') }.collect { it.split('\t') as List }
+            assertAll(
+                { assert process.success },
+                { assert records.find { it[1] == '11287' }[3] == 'GNNNNNNNNN' }       // the invalid record the reference-based path fixes
             )
         }
     }

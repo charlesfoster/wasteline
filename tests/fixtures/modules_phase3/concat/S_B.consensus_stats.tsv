@@ -1,2 +1,2 @@
-sample	length	n_count	n_pct	ambiguous_count	status
-S_B	12	2	16.67	0	ok
+sample	length	n_count	n_pct	ambiguous_count	status	reason
+S_B	12	2	16.67	0	ok	1 variant(s) not applied: skipped variant at NC_045512.2:11287 (REF mismatch)

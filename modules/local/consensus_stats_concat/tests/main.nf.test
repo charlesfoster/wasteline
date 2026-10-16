@@ -44,8 +44,10 @@ nextflow_process {
             def lines = new File(process.out.tsv[0].toString()).readLines()
             assertAll(
                 { assert process.success },
-                { assert lines[0] == 'sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus' },
-                { assert lines.drop(1).collect { it.split('\t')[0] } == ['S_A', 'S_B'] }
+                { assert lines[0] == 'sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus\treason' },
+                { assert lines.drop(1).collect { it.split('\t')[0] } == ['S_A', 'S_B'] },
+                { assert lines[1].split('\t')[-1] == 'NA' },
+                { assert lines[2].split('\t')[-1].contains('REF mismatch') }
             )
         }
     }

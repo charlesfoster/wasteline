@@ -1,2 +1,2 @@
-sample	length	n_count	n_pct	ambiguous_count	status
-S_A	12	2	16.67	0	ok
+sample	length	n_count	n_pct	ambiguous_count	status	reason
+S_A	12	2	16.67	0	ok	NA
