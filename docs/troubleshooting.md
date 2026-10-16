@@ -156,6 +156,31 @@ reference's name (the coordinates are the same when it is the same sequence), fo
 [usage.md](usage.md#4-reference-and-primer-schemes). The check exists on purpose: with a mismatched contig `ivar trim` would
 silently trim nothing. (Reproduced with a copy of `articv4.1.bed` with the contig renamed.)
 
+### `primer_scheme_check` says `mismatch` (or the default scheme is not mine)
+
+The default primer scheme in mode `full` is `qiagenv1` (QIAseq Direct SARS-CoV-2; the old Snakemake pipeline used `midnight`).
+If your library is another protocol and you did not pass `--primer_scheme`, trimming and amplicon-dropout calls use the wrong
+scheme; the pipeline notices when the reads begin at primers (`primer_scheme_check` = `mismatch`, `primer_scheme_best` names the
+scheme that fits, the report shows the flag `primer_scheme_mismatch`). **Fix.** Re-run with `--primer_scheme <best>` (the
+effective scheme is in `pipeline_info/run_info.json`). `uninformative` is not a problem: the reads do not start at primers (for
+example tagmentation libraries), so the check cannot tell. Details: [usage.md](usage.md#primer-scheme-check).
+
+### The dropout-impact and unexplained-mutation tables are missing
+
+A single warning at start-up says `Skipping the dropout-impact and unexplained-mutation tables`: the Freyja dataset in effect has
+no readable lineage-to-mutation lists. They need `lineage_mutations.json` (every dataset downloaded or bundled with Freyja 2.x
+has it) or a barcodes `.csv`; a custom `.feather`-only `--barcodes` has neither. **Fix.** Point `--barcodes` at a dataset directory
+(or a `.csv`). `dropout_impact.tsv` also needs an amplicon table (amplicon protocol; in `--mode demix` an explicit `--primer_scheme`).
+Errors inside these analyses never fail the run: the table is just absent.
+
+### `freyja_growth_rates.failed.txt`, `freyja_dashboard.failed.txt` or no time series
+
+The time-series tables need at least two distinct collection dates among the non-control samples. The growth rates and the
+dashboard need `--freyja_growth_min_dates` (4) distinct dates within the last `--freyja_growth_days` (56) days spanning at least
+`--freyja_growth_min_span_days` (14) days; otherwise the `.failed.txt` file says what was missing (the run is not failed). Samples without
+a `collection_date`, negative controls and samples below `--freyja_plot_mincov` coverage are not used. The dashboard page fetches its
+styling from the internet when opened; offline it looks plain.
+
 ### Warning: `--primer_scheme/--primer_bed are ignored`
 
 ```
@@ -324,7 +349,9 @@ drops samples below `--freyja_plot_mincov` (the table `freyja_aggregated.tsv` ke
 
 Positions with depth below `--consensus_min_depth` (default 10) are written as `N`, so a sample with patchy coverage has a high
 `n_pct`; a sample with no usable depth is `empty` (all `N`, reference length); `failed` means a consensus step failed for that
-sample (the run continues, and the row is still present). Check `amplicons_dropped` and the coverage track, and lower
+sample (the run continues, and the row is still present; `reason`, the last column of `consensus_stats.tsv`, says why). A sample
+whose variants could not all be applied is `ok` with the skipped variants listed in `reason` and in `consensus_status.json`
+(`warnings`); the report shows an INFO flag. `failed` raises the WARN flag `consensus_failed`. Check `amplicons_dropped` and the coverage track, and lower
 `--consensus_min_depth` only if you accept less supported bases. Negative controls get no consensus.
 
 ### QC says `WARN` (`amplicon_dropout`) for almost everything

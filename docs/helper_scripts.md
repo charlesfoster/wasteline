@@ -12,18 +12,18 @@ python bin/make_samplesheet.py reads/ -o samplesheet.csv
 python bin/make_samplesheet.py reads/ --suffix _R1.fq.gz --metadata meta.csv --recursive -o samplesheet.csv
 ```
 
-Output columns: `sample,fastq_1,fastq_2,sample_type,collection_date,site` (sorted by `sample`; absolute paths unless
+Output columns: `sample,fastq_1,fastq_2,sample_type,collection_date,site` plus `viral_load` when any sample has one (sorted by `sample`; absolute paths unless
 `--relative`, which writes paths relative to the output file's directory).
 
-| Option | Default | Meaning |
-|---|---|---|
-| `--suffix` | `_L001_R1_001.fastq.gz` | R1 file suffix; must end `.fastq.gz`/`.fq.gz`. An `R2` suffix is treated as `R1`. |
-| `--negative-pattern` | `NEG_\|NC_` | Regex searched in the file name; a match gives `sample_type=negative`. |
-| `--exclude-pattern` | `Undet` | Regex searched in the file name; matching files are skipped (e.g. `Undetermined_*`). |
-| `--metadata` | none | CSV keyed by `sample`; may supply `collection_date`, `site`, and override `sample_type`. |
-| `--recursive` | off | Search sub-directories. |
-| `--relative` | off | Relative instead of absolute paths. |
-| `-o` | stdout | Output CSV. |
+| Option               | Default                 | Meaning                                                                                                                                  |
+| -------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `--suffix`           | `_L001_R1_001.fastq.gz` | R1 file suffix; must end `.fastq.gz`/`.fq.gz`. An `R2` suffix is treated as `R1`.                                                        |
+| `--negative-pattern` | `NEG_\|NC_`             | Regex searched in the file name; a match gives `sample_type=negative`.                                                                   |
+| `--exclude-pattern`  | `Undet`                 | Regex searched in the file name; matching files are skipped (e.g. `Undetermined_*`).                                                     |
+| `--metadata`         | none                    | CSV keyed by `sample`; may supply `collection_date`, `site`, `viral_load` (a positive number; blank allowed) and override `sample_type`. |
+| `--recursive`        | off                     | Search sub-directories.                                                                                                                  |
+| `--relative`         | off                     | Relative instead of absolute paths.                                                                                                      |
+| `-o`                 | stdout                  | Output CSV.                                                                                                                              |
 
 Sample ID rules:
 
@@ -51,24 +51,24 @@ python bin/make_samplesheet.py --from-results old_run/ --mode demix -o demix_she
 python bin/make_samplesheet.py --from-results old_run/ --mode aggregate -o aggregate_sheet.csv
 ```
 
-- `demix` sheet: `sample,variants,depths,fastp_json,sample_type,collection_date,site`
-- `aggregate` sheet: `sample,demix,sample_type,collection_date,site`
+- `demix` sheet: `sample,variants,depths,fastp_json,sample_type,collection_date,site[,viral_load]`
+- `aggregate` sheet: `sample,demix,sample_type,collection_date,site[,viral_load]`
 
 Both layouts are detected automatically (per sample):
 
-| | New (wasteline) | Legacy (Snakemake) |
-|---|---|---|
-| variants | `samples/<s>/freyja/<s>.variants.tsv` | `<s>/freyja/<s>.freyja_variants.tsv`, else `<s>/variants/<s>.freyja_variants.tsv.gz` |
-| depths | `samples/<s>/freyja/<s>.depths` | `<s>/freyja/<s>.depths` |
-| demix | `samples/<s>/freyja/<s>.demix` (`.demix.tsv` also accepted) | `<s>/freyja/<s>.demix` |
-| fastp JSON | `samples/<s>/fastp/<s>.fastp.json` | `<s>/fastp/<s>_fastp.json` |
+|            | New (wasteline)                                             | Legacy (Snakemake)                                                                   |
+| ---------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| variants   | `samples/<s>/freyja/<s>.variants.tsv`                       | `<s>/freyja/<s>.freyja_variants.tsv`, else `<s>/variants/<s>.freyja_variants.tsv.gz` |
+| depths     | `samples/<s>/freyja/<s>.depths`                             | `<s>/freyja/<s>.depths`                                                              |
+| demix      | `samples/<s>/freyja/<s>.demix` (`.demix.tsv` also accepted) | `<s>/freyja/<s>.demix`                                                               |
+| fastp JSON | `samples/<s>/fastp/<s>.fastp.json`                          | `<s>/fastp/<s>_fastp.json`                                                           |
 
 - If both layouts exist in one directory a warning is printed; a sample present in both uses the new layout.
 - Samples missing required files (variants+depths for `demix`, demix for `aggregate`) are skipped with a printed
   `NOTE: skipped ...` reason; if nothing usable remains the command fails.
 - gzipped variants (legacy `.tsv.gz`) are emitted as-is with a note; check the pipeline can read them.
 - `sample_type=negative` is inferred with `--negative-pattern` on the sample ID. `sample_type`, `collection_date` and
-  `site` are carried over from `<dir>/samplesheet.csv` or `<dir>/summary/samplesheet.csv` when present
+  `site` (and a valid `viral_load`) are carried over from `<dir>/samplesheet.csv` or `<dir>/summary/samplesheet.csv` when present
   (the sheet's `sample_type` wins over inference), and `--metadata` can also be given.
 - Paths are absolute (or relative to the output file with `--relative`).
 
@@ -81,20 +81,26 @@ python bin/check_samplesheet.py samplesheet.csv --mode full --check-files
 Prints one JSON object on stdout and a human-readable table on stderr; exit code 0 if valid, 1 otherwise.
 
 ```json
-{"ok": false, "mode": "full", "n_samples": 3, "errors": ["line 3 (B): empty fastq_2 (paired-end data is required)"], "warnings": []}
+{
+  "ok": false,
+  "mode": "full",
+  "n_samples": 3,
+  "errors": ["line 3 (B): empty fastq_2 (paired-end data is required)"],
+  "warnings": []
+}
 ```
 
 Rules:
 
-| Mode | Required columns | Optional |
-|---|---|---|
-| `full` | `sample,fastq_1,fastq_2` | `sample_type,collection_date,site` |
-| `demix` | `sample,variants,depths` | `fastp_json,sample_type,collection_date,site` |
-| `aggregate` | `sample,demix` | `sample_type,collection_date,site` |
+| Mode        | Required columns         | Optional                                                 |
+| ----------- | ------------------------ | -------------------------------------------------------- |
+| `full`      | `sample,fastq_1,fastq_2` | `sample_type,collection_date,site,viral_load`            |
+| `demix`     | `sample,variants,depths` | `fastp_json,sample_type,collection_date,site,viral_load` |
+| `aggregate` | `sample,demix`           | `sample_type,collection_date,site,viral_load`            |
 
 - Unknown columns give a warning. Duplicate header names are an error.
 - `sample` matches `^[A-Za-z0-9._-]+$` and is unique.
-- `sample_type` is `sample` or `negative`; `collection_date` is a real ISO `YYYY-MM-DD` date.
+- `sample_type` is `sample` or `negative`; `collection_date` is a real ISO `YYYY-MM-DD` date; `viral_load` is blank or a positive finite number.
 - Paired-end is required: an empty `fastq_2` is an error. FASTQ paths must end `.fastq.gz`/`.fq.gz`, contain no
   whitespace, and `fastq_1` and `fastq_2` must differ.
 - `--check-files` verifies that every referenced file exists (relative paths resolve against the sheet's directory),

@@ -114,6 +114,7 @@ nextflow_pipeline {
                 input    = absoluteSamplesheet(outputDir, projectDir)
                 barcodes = 'container'
                 db_dir   = "$outputDir/db"
+                primer_scheme = 'midnight' // the synthetic reads are Midnight amplicons; the default scheme is qiagenv1 (D14)
             }
         }
 
@@ -134,6 +135,8 @@ nextflow_pipeline {
                 { assert qc.LOWCOV_D.qc_status == 'FAIL' && qc.LOWCOV_D.qc_reasons.contains('low_coverage') },
                 { assert qc.Site_1_week_2.qc_reasons.contains('amplicon_dropout') },
                 { assert qc.MIX_A.qc_status == 'PASS' },
+                { assert qc.MIX_A.primer_scheme_check == 'ok' && qc.MIX_A.primer_scheme_best.contains('midnight') },
+                { assert qc.MIX_A.primer_trimmed_pct.toDouble() > 0 },
                 { assert new File("$outputDir/summary/consensus_stats.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] } == ['LOWCOV_D', 'MIX_A', 'MIX_B', 'PURE_C', 'Site_1_week_2'] },
                 { assert new File("$outputDir/summary/consensus_genomes.fasta").text.count('>') == 5 },
                 { assert new File("$outputDir/summary/report.html").length() > 0 },

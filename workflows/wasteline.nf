@@ -10,6 +10,17 @@ include { SAMTOOLS_VIEW          } from '../modules/nf-core/samtools/view/main'
 include { SAMTOOLS_FLAGSTAT      } from '../modules/nf-core/samtools/flagstat/main'
 include { SAMTOOLS_MARKDUP       } from '../modules/local/samtools_markdup/main'
 include { BAM_MAPPED_READS       } from '../modules/local/bam_mapped_reads/main'
+include { MINIBWA_MEM            } from '../modules/local/minibwa_mem/main'
+include { SAMTOOLS_CRAM          } from '../modules/local/samtools_cram/main'
+include { READ_STARTS            } from '../modules/local/read_starts/main'
+include { PRIMER_SCHEME_CHECK    } from '../modules/local/primer_scheme_check/main'
+include { DROPOUT_IMPACT         } from '../modules/local/dropout_impact/main'
+include { UNEXPLAINED_MUTATIONS  } from '../modules/local/unexplained_mutations/main'
+include { UNEXPLAINED_MUTATIONS_CONCAT } from '../modules/local/unexplained_mutations_concat/main'
+include { TIMESERIES_TABLE       } from '../modules/local/timeseries_table/main'
+include { TIMESERIES_TABLE as TIMESERIES_TABLE_LINEAGES } from '../modules/local/timeseries_table/main'
+include { FREYJA_RELGROWTHRATE   } from '../modules/local/freyja_relgrowthrate/main'
+include { FREYJA_DASH            } from '../modules/local/freyja_dash/main'
 include { IVAR_TRIM              } from '../modules/nf-core/ivar/trim/main'
 include { SAMTOOLS_SORT          } from '../modules/nf-core/samtools/sort/main'
 include { FREYJA_VARIANTS        } from '../modules/local/freyja_variants/main'
@@ -41,6 +52,8 @@ include { FREYJA_DATA as FREYJA_DATA_COMPARE } from '../subworkflows/local/freyj
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { primerBed              } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { protocolSettings       } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { defaultPrimerScheme    } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { mutationTablesUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { ivarOffset             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { previousRuns           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
@@ -121,6 +134,16 @@ workflow WASTELINE {
                 optionalFile(results, 'samplesheet.csv'),
                 optionalFile(results, 'freyja_boot_summary.tsv'),
                 optionalFile(results, 'barcode_compare_status.tsv'),
+            ]), channel.value([
+                optionalFile(results, 'dropout_impact.tsv'),
+                optionalFile(results, 'dropout_impact_summary.tsv'),
+                optionalFile(results, 'unexplained_mutations.tsv'),
+                optionalFile(results, 'freyja_timeseries.tsv'),
+                optionalFile(results, 'freyja_timeseries_lineages.tsv'),
+                optionalFile(results, 'freyja_growth_rates.csv'),
+                optionalFile(results, 'freyja_growth_rates.failed.txt'),
+                optionalFile(results, 'freyja_growth_inputs.json'),
+                file("${results}/summary/freyja_dashboard.html").exists() ? 'freyja_dashboard.html' : '',
             ]))
             RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
         }
@@ -154,6 +177,8 @@ workflow WASTELINE {
         def ch_freyja_in = channel.empty()
         def ch_fastp = channel.empty()      // [ meta, fastp.json ]
         def ch_flagstat = channel.empty()   // [ meta, flagstat ]
+        def ch_ivar_log = channel.empty()   // [ meta, ivar trim log ]       (amplicon protocol with trimming)
+        def ch_scheme_summary = channel.empty() // [ meta, primer scheme check summary ] (same)
 
         if (mode == 'full') {
             def ch_fasta_meta = ch_fasta.map { fasta -> [ [ id: fasta.baseName ], fasta ] }
@@ -165,13 +190,22 @@ workflow WASTELINE {
             ch_fastp = FASTP.out.json
 
             //
-            // Alignment: bwa mem (sorted) -> mapped reads only (+ index) -> primer trimming -> sorted + indexed BAM
+            // Alignment: bwa mem or minibwa (sorted) -> mapped reads only (+ index) -> primer trimming -> sorted + indexed BAM
             //
-            BWA_INDEX(ch_fasta_meta)
-            BWA_MEM(FASTP.out.reads, BWA_INDEX.out.index, ch_fasta_meta, true)
+            def ch_aligned = channel.empty()
+            if (params.aligner == 'minibwa') {
+                // experimental, docs/aligner_evaluation.md: the index is built inside the task
+                MINIBWA_MEM(FASTP.out.reads, ch_fasta_meta, true)
+                ch_aligned = MINIBWA_MEM.out.bam
+            }
+            else {
+                BWA_INDEX(ch_fasta_meta)
+                BWA_MEM(FASTP.out.reads, BWA_INDEX.out.index, ch_fasta_meta, true)
+                ch_aligned = BWA_MEM.out.bam
+            }
 
             SAMTOOLS_VIEW(
-                BWA_MEM.out.bam.map { meta, bam -> [ meta, bam, [] ] },
+                ch_aligned.map { meta, bam -> [ meta, bam, [] ] },
                 [ [:], [], [] ],
                 [ [:], [] ],
                 [ [:], [] ],
@@ -192,6 +226,20 @@ workflow WASTELINE {
                 // samples skip trimming and carry their (empty) BAM on; the coverage gate then records them
                 // as skipped_low_coverage downstream.
                 IVAR_TRIM(ch_mapped.mapped.map { meta, bam, bai, _count -> [ meta, bam, bai ] }, ch_bed)
+                ch_ivar_log = IVAR_TRIM.out.log
+
+                // Does the primer scheme match the reads? Needs the mapped BAM BEFORE trimming (trimming moves
+                // the 5' ends). Declared scheme = the effective one, or the custom BED.
+                if (params.primer_scheme_check) {
+                    READ_STARTS(ch_mapped.mapped.map { meta, bam, _bai, _count -> [ meta, bam ] })
+                    PRIMER_SCHEME_CHECK(
+                        READ_STARTS.out.tsv,
+                        params.primer_bed ? 'custom' : (params.primer_scheme ?: defaultPrimerScheme()),
+                        file("${projectDir}/assets/primer_schemes", checkIfExists: true),
+                        params.primer_bed ? file(params.primer_bed, checkIfExists: true) : [],
+                    )
+                    ch_scheme_summary = PRIMER_SCHEME_CHECK.out.summary
+                }
 
                 SAMTOOLS_SORT(IVAR_TRIM.out.bam, [ [:], [], [] ], 'bai')
 
@@ -214,6 +262,12 @@ workflow WASTELINE {
             if (settings.duplicates == 'mark') {
                 SAMTOOLS_MARKDUP(ch_final_bam)
                 ch_final_bam = SAMTOOLS_MARKDUP.out.bam
+            }
+
+            // --bam_format cram: a reference-based CRAM is published instead of the BAM (a leaf: Freyja, QC and
+            // the consensus keep using the BAM, which stays in the work directory)
+            if (params.save_bam && params.bam_format == 'cram') {
+                SAMTOOLS_CRAM(ch_final_bam, ch_fasta, [])
             }
 
             FREYJA_VARIANTS(ch_final_bam, ch_fasta)
@@ -391,7 +445,11 @@ workflow WASTELINE {
                 .join(ch_flagstat, remainder: true)
                 .join(ch_fastp, remainder: true)
                 .join(ch_amplicons, remainder: true)
-                .map { meta, depths, flagstat, fastp_json, amplicons -> [ meta, depths, flagstat ?: [], fastp_json ?: [], amplicons ?: [] ] }
+                .join(ch_ivar_log, remainder: true)
+                .join(ch_scheme_summary, remainder: true)
+                .map { meta, depths, flagstat, fastp_json, amplicons, ivar_log, scheme_summary ->
+                    [ meta, depths, flagstat ?: [], fastp_json ?: [], amplicons ?: [], ivar_log ?: [], scheme_summary ?: [] ]
+                }
             QC_SAMPLE(ch_qc_in)
 
             QC_CONCAT(
@@ -408,11 +466,11 @@ workflow WASTELINE {
             //
             if (!params.skip_consensus) {
                 def ch_consensus_samples = ch_variants.filter { meta, _variants -> meta.sample_type != 'negative' }
-                IVAR_VARIANTS_TO_VCF(ch_consensus_samples)
+                IVAR_VARIANTS_TO_VCF(ch_consensus_samples, ch_fasta)
                 CONSENSUS_FILTER_VCF(IVAR_VARIANTS_TO_VCF.out.vcf)
                 LOW_DEPTH_MASK(ch_depths.join(CONSENSUS_FILTER_VCF.out.bed), ch_fasta)
                 CONSENSUS_BCFTOOLS(CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed), ch_fasta)
-                CONSENSUS_STATS(CONSENSUS_BCFTOOLS.out.fasta, ch_fasta)
+                CONSENSUS_STATS(CONSENSUS_BCFTOOLS.out.fasta.join(CONSENSUS_BCFTOOLS.out.status), ch_fasta)
 
                 def ch_stats = ch_consensus_samples
                     .join(CONSENSUS_STATS.out.tsv, remainder: true)
@@ -422,7 +480,7 @@ workflow WASTELINE {
                     }
                 def ch_failed_stats = ch_stats.failed
                     .collectFile { meta, _variants, _stats ->
-                        [ "${meta.id}.consensus_stats.tsv", "sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus\n${meta.id}\tNA\tNA\tNA\tNA\tfailed\n" ]
+                        [ "${meta.id}.consensus_stats.tsv", "sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus\treason\n${meta.id}\tNA\tNA\tNA\tNA\tfailed\tconsensus steps did not complete\n" ]
                     }
                 CONSENSUS_STATS_CONCAT(ch_stats.built.map { _meta, _variants, stats -> stats }.mix(ch_failed_stats).collect())
                 CONSENSUS_CONCAT(CONSENSUS_BCFTOOLS.out.fasta.map { _meta, fasta -> fasta }.collect())
@@ -447,6 +505,80 @@ workflow WASTELINE {
                 MUTATIONS_OF_INTEREST_CONCAT(MUTATIONS_OF_INTEREST.out.tsv.map { _meta, tsv -> tsv }.collect())
                 ch_moi = MUTATIONS_OF_INTEREST_CONCAT.out.tsv.ifEmpty([])
             }
+        }
+
+        //
+        // Analyses on top of the demix (all optional; an error in one never fails the run)
+        //
+        def ch_dropout_impact = channel.empty()
+        def ch_dropout_summary = channel.empty()
+        def ch_unexplained = channel.empty()
+        def ch_timeseries = channel.empty()
+        def ch_timeseries_lineages = channel.empty()
+        def ch_growth_rates = channel.empty()
+        def ch_growth_failed = channel.empty()
+        def ch_growth_inputs = channel.empty()
+        def ch_dashboard = channel.empty()
+
+        if ((mode == 'full' || mode == 'demix') && ((params.dropout_impact && use_amplicons) || params.unexplained_mutations)) {
+            // both need the lineage -> mutation lists of the dataset: warn once and skip when it has none
+            def mutation_reason = mutationTablesUnsupportedReason()
+            if (mutation_reason) {
+                log.warn "Skipping the dropout-impact and unexplained-mutation tables: ${mutation_reason}. Use a Freyja dataset directory (with lineage_mutations.json) or a barcodes .csv to get them."
+            }
+            else {
+                // which dropped amplicons would have mattered for the lineages detected?
+                if (params.dropout_impact && use_amplicons) {
+                    DROPOUT_IMPACT(
+                        ch_amplicon_coverage.filter { coverage -> coverage },
+                        FREYJA_AGGREGATE_PLOT.out.aggregated,
+                        FREYJA_DATA.out.dataset,
+                    )
+                    ch_dropout_impact = DROPOUT_IMPACT.out.impact
+                    ch_dropout_summary = DROPOUT_IMPACT.out.summary
+                }
+
+                // variants that no detected lineage explains (non-negative samples)
+                if (params.unexplained_mutations) {
+                    def ch_unexplained_in = ch_variants
+                        .filter { meta, _variants -> meta.sample_type != 'negative' }
+                        .join(ch_demixed, remainder: true)
+                        .filter { meta, variants, _demix -> meta && variants }
+                        .map { meta, variants, demix -> [ meta, variants, demix ?: [] ] }
+                    UNEXPLAINED_MUTATIONS(ch_unexplained_in, FREYJA_DATA.out.dataset, ch_gff, ch_fasta)
+                    UNEXPLAINED_MUTATIONS_CONCAT(UNEXPLAINED_MUTATIONS.out.tsv.map { _meta, tsv -> tsv }.collect())
+                    ch_unexplained = UNEXPLAINED_MUTATIONS_CONCAT.out.tsv
+                }
+            }
+        }
+
+        // Time series: needs at least two distinct collection dates among the non-negative aggregated samples
+        // (growth rates and the dashboard check their own, stricter minimum and write a failure note instead)
+        def ch_ts_go = ch_aggregate_in
+            .filter { meta, _demix -> meta.collection_date && meta.sample_type != 'negative' }
+            .map { meta, _demix -> meta.collection_date }
+            .unique()
+            .count()
+            .filter { n -> n >= 2 }
+        def ch_ts_agg = FREYJA_AGGREGATE_PLOT.out.aggregated.combine(ch_ts_go).map { agg, _n -> agg }
+        def ch_metadata = ch_samplesheet.first()
+
+        if (params.timeseries) {
+            TIMESERIES_TABLE(ch_ts_agg, ch_metadata)
+            ch_timeseries = TIMESERIES_TABLE.out.table
+            // second, lineage-level table (every Freyja lineage instead of the summarized groups)
+            TIMESERIES_TABLE_LINEAGES(ch_ts_agg, ch_metadata)
+            ch_timeseries_lineages = TIMESERIES_TABLE_LINEAGES.out.table
+        }
+        if (params.freyja_growth) {
+            FREYJA_RELGROWTHRATE(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_metadata, FREYJA_DATA.out.dataset)
+            ch_growth_rates = FREYJA_RELGROWTHRATE.out.growth_rates
+            ch_growth_failed = FREYJA_RELGROWTHRATE.out.failed
+            ch_growth_inputs = FREYJA_RELGROWTHRATE.out.inputs
+        }
+        if (params.freyja_dash) {
+            FREYJA_DASH(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_metadata, FREYJA_DATA.out.dataset, params.freyja_dash_title, params.freyja_dash_intro)
+            ch_dashboard = FREYJA_DASH.out.dashboard
         }
 
         // The samplesheet in effect (also for results-directory inputs) travels with the results, so a
@@ -493,7 +625,16 @@ workflow WASTELINE {
             .combine(wrapItem(ch_report_sheets))
             .combine(wrapItem(ch_boot_summary.ifEmpty([])))
             .combine(wrapItem(ch_compare_status.ifEmpty([])))
-        BUILD_REPORT_DATA(ch_report_in, ch_report_extra)
+        def ch_report_analyses = wrapItem(ch_dropout_impact.ifEmpty([]))
+            .combine(wrapItem(ch_dropout_summary.ifEmpty([])))
+            .combine(wrapItem(ch_unexplained.ifEmpty([])))
+            .combine(wrapItem(ch_timeseries.ifEmpty([])))
+            .combine(wrapItem(ch_timeseries_lineages.ifEmpty([])))
+            .combine(wrapItem(ch_growth_rates.ifEmpty([])))
+            .combine(wrapItem(ch_growth_failed.ifEmpty([])))
+            .combine(wrapItem(ch_growth_inputs.ifEmpty([])))
+            .combine(ch_dashboard.map { dashboard -> dashboard.name }.ifEmpty(''))
+        BUILD_REPORT_DATA(ch_report_in, ch_report_extra, ch_report_analyses)
         RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
     }
     }
@@ -544,9 +685,9 @@ def runInfoBase(mode) {
     def plain_params = params.findAll { key, _value -> key.toString() != 'pipelines_testdata_base_path' }.collectEntries { key, value ->
         [ (key.toString()): (value == null || value instanceof Boolean || value instanceof Number) ? value : value.toString() ]
     }
-    // the effective primer scheme is recorded even when the default (null = midnight) applies
+    // the effective primer scheme is recorded even when the default (null = the default scheme, D14) applies
     if (protocolSettings(mode).amplicons && !params.primer_bed && !params.primer_scheme) {
-        plain_params.primer_scheme = 'midnight'
+        plain_params.primer_scheme = defaultPrimerScheme()
     }
     def info = [
         pipeline_name: workflow.manifest.name,

@@ -60,6 +60,30 @@
   {% endif %}
 </div>
 {%- endmacro %}
+{% macro growth_block(g) -%}
+{% if g.status %}
+<h3 id="growth-rates">Growth advantage <small>(freyja relgrowthrate)</small></h3>
+{% if g.status == 'ok' and g.rows %}
+<p class="note">{% if g.inputs.n_samples %}Fitted on {{ g.inputs.n_samples }} sample(s) over {{ g.inputs.n_dates_window or g.inputs.n_dates }} collection date(s){% if g.inputs.window_span_days %} spanning {{ g.inputs.window_span_days }} days{% endif %}{% if g.inputs.n_with_viral_load %}, {{ g.inputs.n_with_viral_load }} with a viral load{% endif %}. {% endif %}All sites are pooled.</p>
+<div class="scroll"><table class="sortable" id="growth-table">
+  <thead><tr><th data-sort>Lineage</th><th class="n" data-sort title="Relative growth advantage per serial interval versus all other lineages">Estimated advantage %</th><th data-sort title="Freyja's bootstrap 95% interval (on the growth-rate scale)">Bootstrap 95% interval</th></tr></thead>
+  <tbody>
+  {% for r in g.rows %}
+  <tr><td>{{ r.lineage }}</td><td class="n {{ 'pos' if (r.advantage_pct or 0) > 0 else 'neg' }}" data-v="{{ r.advantage_pct|sortval }}">{% if r.advantage_pct is not none %}{{ '+' if r.advantage_pct > 0 }}{{ r.advantage_pct|dec(1) }}{% else %}&ndash;{% endif %}</td><td class="mono">{{ r.interval_text|dash }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<p class="note"><b>How to read this.</b> The advantage is the lineage's relative growth versus all the other lineages per serial interval ({{ g.params.serial_interval or 5.5 }} days, <code>exp(interval &times; r) &minus; 1</code> for the logistic growth rate <i>r</i> of its share): +60% means it grows about 60% faster per serial interval, a negative value that it is declining. The bootstrap interval is Freyja's percentile interval of the growth rate times the serial interval, i.e. on a different scale than the estimate, so the estimate can fall outside it: treat it as a rough indication of uncertainty, not as a confidence interval. Few collection dates or a short time span make the numbers unstable; abundances are pooled over all sites.</p>
+{% elif g.status == 'ok' %}
+<p class="na-note">Freyja returned no lineage with a growth estimate (no lineage was above its abundance threshold in the fitted window).</p>
+{% else %}
+<p class="na-note"><b>Growth rates could not be computed.</b> {{ g.reason or 'No reason was recorded.' }}</p>
+{% endif %}
+{% endif %}
+{% if g.dashboard %}
+<p class="note">An interactive Freyja dashboard was also produced: <code>{{ g.dashboard }}</code> (in the results folder). It is not part of this report and needs internet access to load its styling; this report works offline.</p>
+{% endif %}
+{%- endmacro %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -236,6 +260,24 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
   table.heat th.s{position:static}
 }
 </style>
+{% if extras %}
+<style>
+.b-info{color:var(--info);background:var(--info-bg)}.b-info::before{content:"i"}
+.rtip{text-decoration:underline dotted;cursor:help}
+tr.hl td{background:var(--warn-bg)}
+tr.hl:hover td{background:var(--warn-bg)}
+table.capped tr.more{display:none}
+table.capped.show-more tr.more,.filtering table.capped tr.more{display:table-row}
+button.showall{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 12px;cursor:pointer}
+.tsctl{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;margin:6px 0 10px;font-size:.9rem}
+.tsctl select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.seg button{background:var(--panel)}
+.seg button[aria-pressed=true]{background:var(--link);color:var(--bg);border-color:var(--link)}
+.seg button+button{border-left:0}
+@media print{table.capped tr.more{display:table-row}.tsctl{display:none}}
+</style>
+{% endif %}
 </head>
 <body>
 <div class="wrap">
@@ -271,8 +313,10 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
     <a href="#sec-flags">Run flags</a><a href="#sec-qc">QC</a><a href="#sec-lineage">Lineages</a>
     {% if controls %}<a href="#sec-controls">Negative controls</a>{% endif %}
     <a href="#sec-coverage">Coverage</a><a href="#sec-amplicons">Amplicon dropout</a><a href="#sec-demix">Demix status</a>
+    {% if dx %}<a href="#sec-dropout-impact">Dropout impact</a>{% endif %}
     {% if moi %}<a href="#sec-moi">Mutations of interest</a>{% endif %}
-    {% if ts %}<a href="#sec-timeseries">Time series</a>{% endif %}
+    {% if ue %}<a href="#sec-unexplained">Unexplained mutations</a>{% endif %}
+    {% if ts_new or ts or growth %}<a href="#sec-timeseries">Time series</a>{% endif %}
     {% if bc %}<a href="#sec-barcode">Barcode comparison</a>{% endif %}
     <a href="#sec-consensus">Consensus</a><a href="#sec-provenance">Provenance</a>
   </nav>
@@ -310,6 +354,8 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
       <th class="n" data-sort>Raw reads</th><th class="n" data-sort>Mapped %</th><th class="n" data-sort>Mean depth</th>
       <th class="n" data-sort>&ge;10x %</th><th class="n" data-sort>&ge;min depth %</th><th class="n" data-sort>Amplicons dropped</th>
       <th data-sort>Demix</th><th data-sort>Top group</th><th class="n" data-sort>Consensus N %</th>
+      {% if qc_extra.trim %}<th class="n" data-sort title="{{ qc_extra.trim_title }}">Primer trimmed %</th>{% endif %}
+      {% if qc_extra.check %}<th data-sort title="Do read starts line up with the declared primer scheme?">Primer scheme</th>{% endif %}
     </tr></thead>
     <tbody>
     {% for s in samples %}
@@ -319,7 +365,7 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
       <td>{{ s.collection_date|dash }}</td>
       <td>{{ s.site|dash }}</td>
       <td data-v="{{ {'FAIL': 0, 'WARN': 1, 'PASS': 2}.get(s._qc, 3) }}">{{ qcbadge(s.qc_status) }}</td>
-      <td class="reasons">{{ s.qc_reasons|join('; ') }}</td>
+      <td class="reasons">{% if s._rtip %}{% for r in s.qc_reasons %}{% if r in qc_extra.reason_titles %}<span class="rtip" title="{{ qc_extra.reason_titles[r] }}">{{ r }}</span>{% else %}{{ r }}{% endif %}{{ '; ' if not loop.last }}{% endfor %}{% else %}{{ s.qc_reasons|join('; ') }}{% endif %}</td>
       <td class="n" data-v="{{ s.raw_reads|sortval }}">{{ s.raw_reads|num }}</td>
       <td class="n" data-v="{{ s.mapped_pct|sortval }}">{{ s.mapped_pct|pct }}</td>
       <td class="n" data-v="{{ s.mean_depth|sortval }}">{{ s.mean_depth|dec }}</td>
@@ -329,6 +375,8 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
       <td data-v="{{ s._demix.status or '' }}">{{ dxbadge(s._demix.status) }}</td>
       <td data-v="{{ s._top[0] if s._top else '' }}">{% if s._top %}{{ s._top[0] }} <span class="reasons">{{ s._top[1]|frac(0) }}%</span>{% else %}&ndash;{% endif %}</td>
       <td class="n" data-v="{{ s.consensus_n_pct|sortval }}">{{ s.consensus_n_pct|pct }}</td>
+      {% if qc_extra.trim %}<td class="n" data-v="{{ s.primer_trimmed_pct|sortval }}" title="{{ qc_extra.trim_title }}">{{ s.primer_trimmed_pct|pct }}</td>{% endif %}
+      {% if qc_extra.check %}<td data-v="{{ s.primer_scheme_check or '' }}">{% if s.primer_scheme_check %}<span class="badge b-{{ {'ok': 'pass', 'mismatch': 'warn'}.get(s.primer_scheme_check, 'na') }}" title="{{ s._pcheck_title }}">{{ s.primer_scheme_check }}</span>{% endif %}</td>{% endif %}
     </tr>
     {% endfor %}
     </tbody>
@@ -414,6 +462,53 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
   {% endif %}
 </section>
 
+{% if dx %}
+<section id="sec-dropout-impact">
+  <h2>Amplicon dropout impact</h2>
+  <p class="note">A dropped amplicon hides every mutation inside it. For each dropped amplicon this shows how many <b>lineage-informative</b> sites it covers (mutations carried by some but not nearly all lineages of the Freyja dataset) and how many of those belong to the lineages detected in the sample{% if dx.min_abundance is not none %} (abundance &ge; {{ (dx.min_abundance * 100)|round(1) }}%){% endif %}. Amber rows (<i>affects detected lineages</i>) mean the abundance estimate of those lineages may be biased. Samples without a lineage estimate (skipped, failed, controls) show &ldquo;no lineage estimate&rdquo;.</p>
+  <div class="cards">
+    <div class="stat"><b>{{ dx.n_affected }}</b><span>sample(s) with dropout affecting detected lineages</span></div>
+    <div class="stat"><b>{{ dx.summary|length }}</b><span>sample(s) with dropped amplicons (of {{ dx.n_samples }})</span></div>
+  </div>
+  {% if dx.summary %}
+  <h3>Per-sample summary</h3>
+  <div class="scroll qc-wrap"><table class="sortable">
+    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Dropped amplicons</th><th class="n" data-sort>Informative sites lost</th><th class="n" data-sort title="Share of the lineage-informative sites the scheme can observe that lie in dropped amplicons">% informative sites lost</th><th class="n" data-sort>Dropouts affecting detected lineages</th></tr></thead>
+    <tbody>
+    {% for x in dx.summary %}
+    <tr{% if x.affects %} class="hl"{% endif %}><td>{{ x.sample }}{% if x.ntc %}<em class="chip">NTC</em>{% endif %}</td><td class="n" data-v="{{ x.n_dropped|sortval }}">{{ x.n_dropped|num }}</td><td class="n" data-v="{{ x.lost|sortval }}">{{ x.lost|num }} / {{ x.total|num }}</td><td class="n" data-v="{{ x.pct|sortval }}">{{ x.pct|pct(2) }}</td><td class="n" data-v="{{ x.n_affecting|sortval if not x.no_estimate else '' }}">{% if x.no_estimate %}<span class="reasons">no lineage estimate</span>{% else %}{{ x.n_affecting|num }}{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if dx.n_without %}<p class="note">{{ dx.n_without }} sample(s) without dropped amplicons are not listed.</p>{% endif %}
+  {% endif %}
+  {% if dx.table.rows %}
+  <h3>Dropped amplicons</h3>
+  {{ filterbar('dx-table', true) }}
+  <div class="scroll qc-wrap" id="dx-table">
+  <table class="sortable capped">
+    <thead><tr><th data-sort>Sample</th><th data-sort>Amplicon</th><th class="n" data-sort>Span (bp)</th><th class="n" data-sort>Mean depth</th><th class="n" data-sort>Informative sites</th><th class="n" data-sort>In detected lineages</th><th>Affected lineages (informative sites)</th></tr></thead>
+    <tbody>
+    {% for r in dx.table.rows %}
+    <tr data-sample="{{ r.sample }}" data-qc="{{ r.qc }}" data-ntc="{{ 1 if r.ntc else 0 }}" class="{{ 'hl' if r.affects }}{{ ' more' if loop.index > dx.table.n_visible else '' }}">
+      <td>{{ r.sample }}{% if r.ntc %}<em class="chip">NTC</em>{% endif %}</td>
+      <td>{{ r.amplicon|dash }}</td>
+      <td class="n" data-v="{{ r.start|sortval }}">{{ r.start|num }}&ndash;{{ r.end|num }}</td>
+      <td class="n" data-v="{{ r.mean_depth|sortval }}">{{ r.mean_depth|dec(1) }}</td>
+      <td class="n" data-v="{{ r.n_inf|sortval }}">{{ r.n_inf|num }}</td>
+      <td class="n" data-v="{{ r.n_det|sortval }}">{% if r.no_estimate %}<span class="reasons">no lineage estimate</span>{% else %}{{ r.n_det|num }}{% endif %}</td>
+      <td>{% if r.affects %}<span class="badge b-warn">affects detected lineages</span> {% endif %}{% for l in r.lineages %}{{ l.lineage }} ({{ l.n_sites }}){% if not loop.last %}, {% endif %}{% endfor %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if dx.table.n > dx.table.n_visible %}<p class="note"><button type="button" class="showall" data-target="#dx-table">Show all {{ dx.table.n_shown|num }} rows</button>{% if dx.table.truncated %} (of {{ dx.table.n|num }}; the rest are in <code>dropout_impact.tsv</code>){% endif %}</p>{% endif %}
+  {% else %}
+  <p class="note">No amplicon was dropped in any sample.</p>
+  {% endif %}
+</section>
+{% endif %}
 {% if controls %}
 <section id="sec-controls">
   <h2>Negative controls</h2>
@@ -492,7 +587,85 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
 </section>
 {% endif %}
 
-{% if ts %}
+{% if ue %}
+<section id="sec-unexplained">
+  <h2>Unexplained mutations</h2>
+  <p class="note"><b>What this is.</b> High-frequency single-nucleotide mutations in a sample that the demixed lineage mixture does not account for: for each site the frequency <i>expected</i> from the detected lineages and their abundances is compared with the <i>observed</i> frequency. A recurrent mutation (unexplained in {{ ue.min_recurrence|int if ue.min_recurrence else 'several' }} or more samples) is an early hint of a novel or cryptic lineage, or of a lineage missing from the barcodes. <b>It is not a variant caller</b>: sequencing errors, mixed-in reference lineages, low depth and amplicon dropout can all produce false hits, so confirm anything interesting on the reads.{% if ue.thresholds %} Thresholds: {{ ue.thresholds|join('; ') }}.{% endif %}</p>
+  {% if ue.table.rows %}
+  <div class="cards">
+    <div class="stat"><b>{{ ue.table.n|num }}</b><span>unexplained mutation call(s)</span></div>
+    <div class="stat"><b>{{ ue.n_samples }}</b><span>sample(s)</span></div>
+    <div class="stat"><b>{{ ue.n_recurrent }}</b><span>recurrent mutation(s)</span></div>
+  </div>
+  {{ filterbar('ue-table', true) }}
+  <div class="scroll qc-wrap" id="ue-table">
+  <table class="sortable capped">
+    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Position</th><th data-sort>Change</th><th data-sort>Gene</th><th data-sort>Amino acid</th><th data-sort>Effect</th><th class="n" data-sort>Observed %</th><th class="n" data-sort>Expected %</th><th class="n" data-sort>Depth</th><th class="n" data-sort>Alt reads</th><th class="n" data-sort title="One-sided binomial tail probability of the alt read count given the expected frequency">p-value</th><th data-sort>Recurrence</th></tr></thead>
+    <tbody>
+    {% for r in ue.table.rows %}
+    <tr data-sample="{{ r.sample }}" data-qc="{{ r.qc }}" data-ntc="{{ 1 if r.ntc else 0 }}" class="{{ 'hl' if r.recurrent }}{{ ' more' if loop.index > ue.table.n_visible else '' }}">
+      <td>{{ r.sample }}{% if r.ntc %}<em class="chip">NTC</em>{% endif %}</td>
+      <td class="n" data-v="{{ r.position|sortval }}">{{ r.position|default('', true) }}</td>
+      <td class="mono">{{ r.ref|dash }}&gt;{{ r.alt|dash }}</td>
+      <td>{{ r.gene|dash }}</td>
+      <td class="mono">{{ r.aa_change|dash }}</td>
+      <td>{{ r.effect|dash }}</td>
+      <td class="n" data-v="{{ r.observed_freq|sortval }}">{{ r.observed_freq|frac(1) }}</td>
+      <td class="n" data-v="{{ r.expected_freq|sortval }}" title="excess {{ r.excess|frac(1) }} percentage points">{{ r.expected_freq|frac(1) }}</td>
+      <td class="n" data-v="{{ r.depth|sortval }}">{{ r.depth|num }}</td>
+      <td class="n" data-v="{{ r.alt_depth|sortval }}">{{ r.alt_depth|num }}</td>
+      <td class="n" data-v="{{ r.p_value|sortval }}">{{ r.p_value|sci }}</td>
+      <td data-v="{{ r.n_samples|sortval if r.recurrent else 0 }}">{% if r.recurrent %}<span class="badge b-info" title="The same mutation is unexplained in {{ r.n_samples if r.n_samples is not none else 'several' }} samples">recurrent{% if r.n_samples is not none %} ({{ r.n_samples }}){% endif %}</span>{% else %}<span class="reasons">single sample</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if ue.table.n > ue.table.n_visible %}<p class="note"><button type="button" class="showall" data-target="#ue-table">Show all {{ ue.table.n_shown|num }} rows</button>{% if ue.table.truncated %} (of {{ ue.table.n|num }}; the rest are in <code>unexplained_mutations.tsv</code>){% endif %}</p>{% endif %}
+  {% else %}
+  <p class="na-note">None found with the current thresholds.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% if ts_new %}
+<section id="sec-timeseries" class="ts">
+  <h2>Time series</h2>
+  <div id="ts-root" data-level="{{ ts_new.views[0].level }}" data-weight="{{ ts_new.views[0].weight }}">
+  <div class="tsctl">
+    <span class="seg" role="group" aria-label="Lineage resolution"><button type="button" data-ts="level" data-v="summ" aria-pressed="{{ 'true' if ts_new.views[0].level == 'summ' else 'false' }}">Summarized groups</button><button type="button" data-ts="level" data-v="full" aria-pressed="{{ 'true' if ts_new.views[0].level == 'full' else 'false' }}"{% if not ts_new.has_lineages %} disabled title="No full-lineage time series in this run (needs freyja_timeseries_lineages.tsv)"{% endif %}>All lineages</button></span>
+    <span class="seg" role="group" aria-label="Abundance weighting"{% if not ts_new.has_load %} title="Load-weighting is unavailable: no viral_load was recorded in the samplesheet"{% endif %}><button type="button" data-ts="weight" data-v="unw" aria-pressed="true">Unweighted</button><button type="button" data-ts="weight" data-v="w" aria-pressed="false"{% if not ts_new.has_load %} disabled title="No viral load recorded: add a viral_load column to the samplesheet"{% endif %}>Viral-load weighted</button></span>
+    <label>Site <select id="ts-site" aria-label="Site">
+      <option value="each">Each site</option>
+      {% if ts_new.has_pooled %}<option value="__all__">All sites (pooled)</option>{% endif %}
+      {% for st in ts_new.sites %}<option value="{{ st.key }}">{{ st.name }}</option>{% endfor %}
+    </select></label>
+  </div>
+  <p class="note">Mean abundance of the top lineage groups per collection date ({{ ts_new.n_dates }} dates, {{ ts_new.first }} to {{ ts_new.last }}); negative controls, undated samples and samples below the coverage cut-off{% if ts_new.min_coverage is not none %} ({{ ts_new.min_coverage|int }}% of the genome){% endif %} are excluded. Several samples on the same date and site are averaged. <i>Viral-load weighted</i> lets each sample count in proportion to its viral load, so a low-load sample moves the curve less; dates without any recorded load are left blank. The pooled panel combines sites by sample count (or by total viral load when weighted).{% if ts_new.lineages_total_groups %} The full-lineage view is based on the most abundant lineages only ({{ ts_new.lineages_total_groups }} lineages occur in the data).{% endif %}</p>
+  {% for v in ts_new.views %}
+  <div class="tsview" id="{{ v.id }}" data-level="{{ v.level }}" data-weight="{{ v.weight }}"{% if not loop.first %} hidden{% endif %}>
+    <ul class="legend">{% for item in v.legend %}<li><i class="sw {{ item.cls }}"></i>{{ item.name }}</li>{% endfor %}</ul>
+    <div class="tsgrid">
+      {% for p in v.panels %}
+      <figure class="tspanel" data-site="{{ p.key }}" style="margin:0"{% if p.key == '__all__' %} hidden{% endif %}>
+        <figcaption><b>{{ p.title }}</b></figcaption>
+        <svg viewBox="0 0 {{ ts_new.width }} {{ ts_new.height }}" role="img" aria-label="Lineage abundance over time: {{ p.title }}">
+          {% for t in v.yticks %}<line class="grid" x1="{{ ts_new.x0 }}" x2="{{ ts_new.x1 }}" y1="{{ t.y }}" y2="{{ t.y }}"/><text x="{{ ts_new.x0 - 4 }}" y="{{ t.y + 3 }}" text-anchor="end">{{ t.label }}</text>{% endfor %}
+          <text x="{{ ts_new.x0 }}" y="{{ ts_new.height - 6 }}" text-anchor="start">{{ ts_new.first }}</text>
+          <text x="{{ ts_new.x1 }}" y="{{ ts_new.height - 6 }}" text-anchor="end">{{ ts_new.last }}</text>
+          {% for l in p.lines %}
+          <polyline class="{{ l.cls }}" points="{{ l.points }}"/>
+          {% for pt in l.dots %}<circle class="{{ l.cls }}" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"><title>{{ pt.title }}</title></circle>{% endfor %}
+          {% endfor %}
+        </svg>
+      </figure>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+  {% if growth %}{{ growth_block(growth) }}{% endif %}
+</section>
+{% elif ts %}
 <section id="sec-timeseries" class="ts">
   <h2>Time series</h2>
   <p class="note">Mean abundance of the top summarized groups per collection date ({{ ts.n_dates }} dates, {{ ts.first }} to {{ ts.last }}); negative controls and samples without a lineage result are excluded. One panel per site, shared axes.</p>
@@ -513,6 +686,12 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
     </figure>
     {% endfor %}
   </div>
+  {% if growth %}{{ growth_block(growth) }}{% endif %}
+</section>
+{% elif growth %}
+<section id="sec-timeseries" class="ts">
+  <h2>Time series</h2>
+  {{ growth_block(growth) }}
 </section>
 {% endif %}
 
@@ -545,12 +724,12 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
   <h2>Consensus genomes</h2>
   {% if consensus %}
   <div class="scroll"><table class="sortable">
-    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Length</th><th class="n" data-sort>N count</th><th class="n" data-sort>N %</th><th class="n" data-sort>Other ambiguous</th><th data-sort>Status</th></tr></thead>
+    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Length</th><th class="n" data-sort>N count</th><th class="n" data-sort>N %</th><th class="n" data-sort>Other ambiguous</th><th data-sort>Status</th>{% if cons_reason %}<th data-sort>Reason</th>{% endif %}</tr></thead>
     <tbody>
     {% for r in consensus %}
     <tr><td>{{ r.sample }}</td><td class="n" data-v="{{ r.length|sortval }}">{{ r.length|num }}</td><td class="n" data-v="{{ r.n_count|sortval }}">{{ r.n_count|num }}</td>
       <td class="n" data-v="{{ r.n_pct|sortval }}">{{ r.n_pct|pct(2) }}</td><td class="n" data-v="{{ r.ambiguous_count|sortval }}">{{ r.ambiguous_count|num }}</td>
-      <td data-v="{{ r.status or '' }}"><span class="badge b-{{ {'ok': 'pass', 'empty': 'warn', 'failed': 'fail'}.get(r.status, 'na') }}">{{ r.status or 'n/a' }}</span></td></tr>
+      <td data-v="{{ r.status or '' }}"><span class="badge b-{{ {'ok': 'pass', 'empty': 'warn', 'failed': 'fail'}.get(r.status, 'na') }}"{% if r.reason %} title="{{ r.reason }}"{% endif %}>{{ r.status or 'n/a' }}</span></td>{% if cons_reason %}<td class="reasons wrap-any">{{ r.reason|dash }}</td>{% endif %}</tr>
     {% endfor %}
     </tbody>
   </table></div>
@@ -681,5 +860,70 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
   window.addEventListener("beforeprint", function () { $$("details").forEach(function (d) { d.open = true; }); });
 })();
 </script>
+{% if extras %}
+<script>
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* long tables: "show all" button; an active filter searches every row */
+  $$("button.showall").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var scope = $(btn.getAttribute("data-target"));
+      var table = scope && $("table.capped", scope);
+      if (!table) { return; }
+      var on = table.classList.toggle("show-more");
+      btn.textContent = on ? "Show fewer rows" : btn.getAttribute("data-label");
+    });
+    btn.setAttribute("data-label", btn.textContent);
+  });
+  $$(".filterbar").forEach(function (bar) {
+    var scope = $(bar.getAttribute("data-scope"));
+    if (!scope || !$("table.capped", scope)) { return; }
+    var update = function () {
+      var active = false;
+      $$("input,select", bar).forEach(function (c) {
+        if (c.type === "checkbox" ? c.checked : c.value !== "") { active = true; }
+      });
+      scope.classList.toggle("filtering", active);
+    };
+    $$("input,select", bar).forEach(function (c) { c.addEventListener("input", update); c.addEventListener("change", update); });
+  });
+
+  /* time series: resolution, weighting and site selector */
+  var root = $("#ts-root");
+  if (root) {
+    var state = { level: root.getAttribute("data-level"), weight: root.getAttribute("data-weight"), site: "each" };
+    var sel = $("#ts-site", root);
+    var apply = function () {
+      var shown = false;
+      $$(".tsview", root).forEach(function (v) {
+        var on = v.getAttribute("data-level") === state.level && v.getAttribute("data-weight") === state.weight;
+        v.hidden = !on;
+        if (on) { shown = true; }
+        $$(".tspanel", v).forEach(function (p) {
+          var key = p.getAttribute("data-site");
+          p.hidden = state.site === "each" ? key === "__all__" : key !== state.site;
+        });
+      });
+      $$("button[data-ts]", root).forEach(function (b) {
+        b.setAttribute("aria-pressed", state[b.getAttribute("data-ts")] === b.getAttribute("data-v") ? "true" : "false");
+      });
+      return shown;
+    };
+    $$("button[data-ts]", root).forEach(function (b) {
+      b.addEventListener("click", function () {
+        var prev = state[b.getAttribute("data-ts")];
+        state[b.getAttribute("data-ts")] = b.getAttribute("data-v");
+        if (!apply()) { state[b.getAttribute("data-ts")] = prev; apply(); }
+      });
+    });
+    if (sel) { sel.addEventListener("change", function () { state.site = sel.value; apply(); }); }
+    apply();
+  }
+})();
+</script>
+{% endif %}
 </body>
 </html>

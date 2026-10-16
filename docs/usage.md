@@ -24,7 +24,7 @@ Library types: [probe-capture data](#probe-capture-data-eg-twist---protocol-capt
 Optional extras, each with a worked example: [comparing barcode versions](#comparing-barcode-versions---compare_barcodes) (`--compare_barcodes`),
 [bootstrap intervals](#bootstrap-confidence-intervals---freyja_boot) (`--freyja_boot`),
 [variant annotation](#annotating-variants---annotate_variants) (`--annotate_variants`),
-[mutations of interest](#10-mutations-of-interest), and [time series](#time-series-collection-dates).
+[mutations of interest](#10-mutations-of-interest), and [time series](#time-series-growth-rates-and-the-dashboard).
 
 ## 1. Prerequisites
 
@@ -76,8 +76,13 @@ Rules common to all modes:
   [section 9](#9-negative-controls-and-qc-thresholds)).
 - `collection_date` is an ISO date `YYYY-MM-DD` or empty. If any samples have dates, a time-aware plot
   (`freyja_plot_times.pdf`) and the report's time-series panel are produced from the dated samples (see
-  [time series](#time-series-collection-dates)).
+  [time series](#time-series-growth-rates-and-the-dashboard)).
 - `site` is free text.
+- `viral_load` (optional, any mode) is a positive number: the concentration of virus in the sample, in any unit you use
+  consistently (for example gene copies per litre of wastewater). Leave it blank where unknown. It is used only for the
+  load-weighted time series and, with `--freyja_growth_scale_by_viral_load`, the growth-rate fit
+  ([below](#time-series-growth-rates-and-the-dashboard)). `bin/make_samplesheet.py --metadata` accepts the column and carries it
+  over from `summary/samplesheet.csv` of earlier results; it is written to the sheet only when some sample has a value.
 - Relative file paths are resolved against the **directory you launch Nextflow from**, not the samplesheet's location.
   Use absolute paths (the default of `make_samplesheet.py`).
 
@@ -183,19 +188,23 @@ GFF3 annotation. Override with `--fasta` and `--gff`. Only SARS-CoV-2 is support
 
 **Primer scheme** (modes `full`, and `demix` if you want per-amplicon coverage): choose a bundled scheme with
 `--primer_scheme`, or give your own BED with `--primer_bed <file>` (which overrides `--primer_scheme`). The default in
-`full` mode is `midnight`. The BED's contig name **must** match a contig of the reference FASTA, otherwise the run stops
+`full` mode is **`qiagenv1`** (QIAseq Direct SARS-CoV-2; the old Snakemake pipeline defaulted to `midnight`, see
+[migration_from_snakemake.md](migration_from_snakemake.md#the-default-primer-scheme-changed)): if you use another protocol, say
+so with `--primer_scheme`. The scheme in effect is recorded in `pipeline_info/run_info.json` (`params.primer_scheme`), also when
+you did not give one. In mode `demix` amplicon-level QC happens only when you give a scheme or BED explicitly (the scheme of
+old results is not known). The BED's contig name **must** match a contig of the reference FASTA, otherwise the run stops
 at start-up (otherwise `ivar trim` would silently trim nothing).
 
 | `--primer_scheme`    | Amplicons | Primer names look like        |
 | -------------------- | --------- | ----------------------------- |
-| `midnight` (default) | 29        | `nCoV-2019_1_F`               |
+| `midnight`           | 29        | `nCoV-2019_1_F`               |
 | `midnightv2`         | 29        | `SARSCoV_1200_1_F`            |
 | `articv3`            | 98        | `nCoV-2019_1_F`               |
 | `articv4.1`          | 99        | `nCoV-2019_1_F`               |
 | `articv5.3.2`        | 96        | `SARS-CoV-2_400_1_F`          |
 | `eden`               | 14        | `SARS2_A1_F`                  |
 | `swift`              | 343       | `covid19genome_0-200_s0_M1_F` |
-| `qiagenv1`           | 223       | `QIAseq_221_LEFT`             |
+| `qiagenv1` (default) | 223       | `QIAseq_221_LEFT`             |
 | `xgen`               | 343       | `covid19genome_0-200_s0_M1F`  |
 
 All nine bundled BEDs use the contig name `NC_045512.2`, the same as the bundled reference, so every scheme works as-is
@@ -240,7 +249,7 @@ What changes with `--protocol capture`:
 |                                      | `amplicon` (default)                                  | `capture`                                                                                                               |
 | ------------------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Primer trimming (`ivar trim`)        | yes                                                   | **no**: the mapped BAM goes straight to the sorted, indexed BAM                                                         |
-| Primer scheme / BED                  | required (default `midnight`)                         | **ignored** (a warning says so; no start-up contig check)                                                               |
+| Primer scheme / BED                  | required (default `qiagenv1`)                         | **ignored** (a warning says so; no start-up contig check)                                                               |
 | Amplicon coverage and dropout        | `amplicon_coverage.tsv`, `amplicon_dropout` QC reason | **not produced**; `amplicons_total` / `amplicons_dropped` are `NA`; the report's amplicon section says "not applicable" |
 | PCR duplicates (`--duplicates auto`) | left alone                                            | **marked** (`samtools markdup`; flagged, never removed)                                                                 |
 | BAM names                            | `<id>.primertrimmed.bam`                              | `<id>.mapped.markdup.bam` (+ `<id>.markdup_stats.txt`)                                                                  |
@@ -265,6 +274,37 @@ capture, no amplicon-level QC (a primer scheme/BED would be ignored). It is impl
 **Not available for capture:** per-amplicon coverage/dropout. In mode `demix` the protocol only matters for the optional
 amplicon coverage (it is never computed for `capture`); demix has no BAM, so duplicates are not touched there.
 
+### Primer scheme check
+
+A wrong primer scheme is a quiet error: `ivar trim` trims the wrong places and the amplicon dropout calls are wrong, but
+everything still runs. In mode `full` (amplicon protocol with primer trimming) the pipeline therefore checks the declared
+scheme against the reads, on the mapped BAM **before** trimming: it counts the mapped reads whose 5' end lies within
+`--primer_check_window` (2) bp of a same-strand primer 5' end, for the declared scheme and for every bundled scheme, and reports
+the enrichment over chance (and a binomial p-value). Per sample, `summary/qc_summary.tsv` gets four columns:
+
+| Column                     | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `primer_scheme_check`      | `ok` (the declared scheme is enriched at least `--primer_check_min_enrichment` times, 5, and significantly), `mismatch` (the declared scheme is not, and another, non-equivalent scheme is enriched with at least 3 times its enrichment), `uninformative` (no scheme stands out, for example because the reads do not start at primers; or the best one is not decisively better) or `NA` (fewer than 500 usable reads, no pre-trimming BAM) |
+| `primer_scheme_best`       | the best-matching scheme(s), joined by `/` (`midnight/midnightv2` have identical coordinates)                                                                                                                                                                                                                                                                                                                                                 |
+| `primer_scheme_enrichment` | enrichment of the declared scheme (1 decimal)                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `primer_trimmed_pct`       | percentage of mapped reads from which `ivar trim` removed primer sequence (from the ivar log)                                                                                                                                                                                                                                                                                                                                                 |
+
+A `mismatch` adds the WARN reason `primer_scheme_mismatch` to the sample and a run-level flag to the report; `uninformative` is
+not a warning. The per-scheme table is in `samples/<s>/coverage/<s>.primer_scheme_check.tsv` (one row per scheme) and the
+one-row summary next to it (`<s>.primer_scheme_summary.tsv`). Real example: midnight-shaped reads with `--primer_scheme midnight`
+give enrichment about 41-43 (`ok`, best `midnight/midnightv2`); declared `articv4.1` gives `mismatch`, best
+`midnight/midnightv2`.
+
+**Limits.** The check needs libraries whose reads begin at primer sites, such as QIAseq or ligation/PCR libraries with short
+amplicons. Tagmentation-based libraries (a Nextera-style prep of long amplicons, for example the Midnight protocol on
+Nextera) break amplicons at random positions, so read starts do not mark primers and the result is `uninformative` or
+`ok`-with-low-enrichment even when the scheme is right. A scheme that is a subset of or very similar to another cannot be told
+apart (`midnight` and `midnightv2`). The method has been calibrated on the synthetic data only (it separates the right scheme
+by a factor of about 10 from all others there); on real runs watch the enrichment of known-good runs first and consider
+`--primer_check_min_enrichment` if your libraries are less strongly anchored. `--primer_scheme_check false` switches it off;
+`--qc_min_primer_trimmed_pct` (default 0, off) is a blunter WARN on the ivar trimming percentage alone. Details of the
+method are in [qc_scripts.md](qc_scripts.md#primer_scheme_checkpy).
+
 ## 5. Running each mode
 
 All examples use `-profile docker`; add `-resume` to continue an interrupted run. Pipeline parameters take **two** dashes
@@ -279,6 +319,8 @@ nextflow run charlesfoster/wasteline -profile docker \
     --primer_scheme midnight \
     --barcodes latest
 ```
+
+(`--primer_scheme` is given here because the reads are Midnight amplicons; without it `qiagenv1` is used.)
 
 Expect (per sample): fastp trimming, `bwa mem`, `ivar trim` with the primer BED, `freyja variants` (variants and depths),
 then, once per run, the Freyja data and `freyja demix` per sample, `freyja aggregate` + plots, QC, consensus genomes and the
@@ -367,7 +409,7 @@ are reported as `empty demix file (failed in the old pipeline)`). Nothing is dem
 supplies the lineage hierarchy used to group the plot: `--barcodes latest` (the default) would download data just for
 that, so `container` is the sensible choice offline. With `--demix_dir` there is no metadata, so no time-aware plot; use
 `--previous_results` or a samplesheet to keep `collection_date` (then the plot and the report's time-series panel are produced,
-see [time series](#time-series-collection-dates)). `--compare_barcodes`, `--freyja_boot` and `--annotate_variants` are
+see [time series](#time-series-growth-rates-and-the-dashboard)). `--compare_barcodes`, `--freyja_boot` and `--annotate_variants` are
 **ignored with a warning** in `aggregate` mode (they need variants and depths):
 
 ````
@@ -494,6 +536,20 @@ Then redo only the lineage estimate with `--mode demix --previous_results result
 bundled in the package, so `freyja_reported_barcode_version` is filled only for `container`; the authoritative record is the
 dataset's own `last_barcode_update.txt` and the checksums.
 
+### Replaying a run: `bin/replay_run.py`
+
+Step 0 of reproducing a run: `python3 bin/replay_run.py results --pipeline-dir /path/to/wasteline` reads
+`results/pipeline_info/run_info.json` and the recorded parameters and prints the whole recipe: the pipeline version
+(`git checkout <commit>`), a params file, the barcodes (`--barcodes <iso stamp>` while that dataset is still stored, the recorded
+custom file, or `container`), a check of the recorded inputs (samplesheet, primer BED, reference, earlier results) by checksum, the
+profile (`locked` is added when the containers were recorded with digests) and the command, with a **new** `--outdir`
+(`results_replay` unless you give `--outdir`; the original is never overwritten). `--execute` runs it after printing it, but
+only when no hard problem was found (`--force` overrides checksum and commit mismatches, never a missing file). Caveats: it
+needs `--pipeline-dir` to leave out parameters that equal the schema defaults; stored Freyja datasets cannot be downloaded
+again (it tells you when one has to be restored); uncommitted changes of the original checkout are not recorded;
+`--compare_barcodes` and email options are deliberately not repeated. The script uses only the standard library and runs on the
+host Python (3.8 or newer). The end-to-end test replays the full synthetic run and checks the demix files are byte-identical.
+
 ### Comparing barcode versions: `--compare_barcodes`
 
 `--compare_barcodes <spec>` demixes every sample a **second** time against another dataset and puts the two estimates side by
@@ -610,15 +666,37 @@ option is ignored with a warning. The intervals describe sampling noise in the r
 barcode-dataset uncertainty (use [`--compare_barcodes`](#comparing-barcode-versions---compare_barcodes) for that).
 <!-- UNVERIFIED: only the defaults (--freyja_boot_n 100, --freyja_boot_seed 0) were run; other values were not tried. -->
 
-### Time series: collection dates
+### Time series, growth rates and the dashboard
 
 When at least some samples have a `collection_date`, a time-aware plot (`summary/freyja_plot_times.pdf`, `freyja plot --times`;
 `--freyja_plot_interval MS|W|D` and `--freyja_plot_windowsize`) and the report's time-series panel (needs at least two distinct
 dates) are produced from the dated, non-control samples. Dates come from the samplesheet in `full`, `demix` and `aggregate` modes
 (`--previous_results` carries them over from the earlier run's `summary/samplesheet.csv`; with `--demix_dir` there is no metadata).
 The report panel shows the mean abundance of the top summarized groups per date and per `site`
-([report.md](report.md#time-series)). Verified: `--mode aggregate --previous_results results` on the synthetic data writes
-`freyja_plot_times.pdf` and a time-series entry in `report_data.json`.
+([report.md](report.md#time-series)).
+
+**Time-series tables** (`--timeseries`, on by default, all modes; written when there are at least two distinct collection dates
+among the non-control samples): `summary/freyja_timeseries.tsv` (summarized lineage groups) and
+`summary/freyja_timeseries_lineages.tsv` (every lineage Freyja reported), both long tables with the columns
+`site collection_date lineage_group abundance abundance_load_weighted n_samples mean_viral_load total_viral_load`. `abundance` is the
+mean over the samples of that site and date (a group a sample lacks counts as 0); `abundance_load_weighted` is the mean weighted by
+`viral_load` (`NA` when no sample has one). Negative controls, samples without a date, samples below `--freyja_plot_mincov`
+genome coverage and samples missing from the samplesheet are left out (the process log counts each reason).
+
+**Relative growth rates** (`--freyja_growth`, off by default) run `freyja relgrowthrate` on the last `--freyja_growth_days` (56) days:
+`summary/freyja_growth_rates.csv` (lineage, estimated relative advantage, bootstrap 95 % interval) and
+`summary/freyja_growth_inputs.json` (what went into the fit). The fit needs enough data: at least `--freyja_growth_min_dates` (4)
+distinct dates spanning at least `--freyja_growth_min_span_days` (14) days in the window. With less, there is no table but a
+`summary/freyja_growth_rates.failed.txt` saying why (never a failed run). The bootstrap is seeded (`--freyja_growth_seed`) so a
+repeated run gives the same intervals. `--freyja_growth_scale_by_viral_load` weights the fit by `viral_load`; samples without a
+load are then dropped from it. On the synthetic series in `tests/data_timeseries` (a lineage rising with a known logistic growth)
+the estimate is positive for the rising lineage; treat the numbers as indications of direction, not as precise estimates, unless
+your series is long and your samples comparable.
+
+**Dashboard** (`--freyja_dash`, off by default): `summary/freyja_dashboard.html`, Freyja's interactive dashboard, with
+`--freyja_dash_title` and `--freyja_dash_intro` (inserted as HTML). Plotly is embedded, but the Bootstrap styling and a logo are
+loaded from the internet when the page is opened, so it looks plain offline. The same data requirements as the growth rates apply
+(otherwise `summary/freyja_dashboard.failed.txt`). The report links the dashboard file by name; it does not embed it.
 
 ## 8. Consensus genomes
 
@@ -712,6 +790,51 @@ Defaults are in [parameters.md](parameters.md).
 
 Other reason tokens: `no_reads`, `no_depths`. The columns of `qc_summary.tsv` are in [output.md](output.md). A QC `FAIL` does not
 stop a sample being demixed (only the coverage gate does).
+
+### Dropout impact
+
+A dropped amplicon matters most when it hides mutations that tell the detected lineages apart. `summary/dropout_impact.tsv` has
+one row per dropped amplicon of each sample (modes `full`, and `demix` with an explicit primer scheme; `--dropout_impact false`
+turns it off). For every dropped amplicon it counts the _informative_ sites inside it (single-nucleotide substitutions carried
+by some but not nearly all lineages of the Freyja dataset: fixed mutations cannot separate lineages) and how many belong to
+lineages detected in that sample (abundance of at least `--dropout_min_abundance`, 0.01). `affects_detected_lineage` is `true`
+when a detected lineage carries at least one informative site in the dropped span, and `affected_lineages` names them with
+the number of sites (`XBB.1.5:9,BA.2:3`). `summary/dropout_impact_summary.tsv` has one row per sample: how many informative
+sites the scheme can see at all, how many were lost (`pct_informative_sites_lost`) and in how many dropped amplicons it matters.
+Real example (synthetic `Site_1_week_2`, XBB.1.5 + BA.5): amplicon `nCoV-2019_22` (spike) hides 28 informative sites, 10 of them
+in the detected lineages (`XBB.1.5:9,BA.2:3,BA.5:3`), so the abundance estimate may be biased; `nCoV-2019_7` hides 5 sites, none
+in a detected lineage, so it does not matter for the lineage estimate. The report lists the affected samples and raises the flag
+`dropout_affects_lineages`. Limits: only substitutions are considered (the dataset's mutation lists contain no indels);
+it needs the dataset's `lineage_mutations.json` or a barcodes `.csv`, so with a custom `.feather`-only `--barcodes` the table is
+skipped with one warning; it says which sites are hidden, not by how much the estimate moves.
+
+### Unexplained mutations
+
+`summary/unexplained_mutations.tsv` lists frequent single-nucleotide variants in a sample that the demixed lineage mixture does not
+predict: for each variant the expected frequency is the sum over the detected lineages of abundance times "lineage carries the
+mutation" (from the dataset); the variant is reported when it has depth of at least `--unexplained_min_depth` (20), at least
+`--unexplained_min_alt_depth` (10) supporting reads, an observed frequency of at least `--unexplained_min_freq` (0.05), exceeds
+the expectation by at least `--unexplained_min_excess` (0.05), and passes a binomial guard against depth noise
+(`--unexplained_max_pvalue`, `0.05 / 29903`; `1` disables it). Columns include the gene and amino-acid change, and
+`n_samples`/`recurrent`: the same mutation unexplained in at least `--unexplained_min_recurrence` (2) samples is flagged
+(recurrence across samples or sites is the more convincing signal). Per-sample tables are in
+`samples/<s>/variants/<s>.unexplained_mutations.tsv`. Modes `full` and `demix`; negative controls are not analysed.
+
+**What it is and is not.** It is a screening aid: an early hint of a lineage missing from the barcodes, a cryptic lineage or a
+recurrent artefact. It is **not a variant caller** and says nothing about lineage assignment. Sequencing error, primer
+effects, a lineage too rare to be demixed and mixtures that the barcodes represent badly all produce rows; confirm anything
+interesting on the reads. On the synthetic samples at the default thresholds the table is empty (a deliberately spiked sample
+in the test data is detected, with a p-value many orders of magnitude below the cut-off).
+
+### Alignment format and aligner: `--bam_format`, `--aligner`
+
+`--bam_format cram` publishes a reference-based CRAM (`samples/<s>/bam/<s>.primertrimmed.cram` + `.crai`) instead of the BAM
+(needs `--save_bam`, the default). CRAM is much smaller; reading it needs the reference FASTA that made the run (it is recorded
+in `run_info.json`), `samtools view -T reference.fa`. Everything else (Freyja, QC, consensus) still uses the BAM inside the run,
+so results do not change. `--aligner minibwa` maps with minibwa instead of `bwa mem`; it is **experimental**: `bwa mem` stays the
+default and the validated choice, and the evaluation (speed is irrelevant at 30 kb, the tool is a young 0.x release with a preprint
+only) is in [aligner_evaluation.md](aligner_evaluation.md). `tests/compare_aligners.sh` runs both on the synthetic data and
+compares abundances and consensus genomes.
 
 ## 10. Mutations of interest
 

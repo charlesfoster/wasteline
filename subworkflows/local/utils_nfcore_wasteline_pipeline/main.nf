@@ -226,6 +226,7 @@ def sampleMeta(meta) {
         sample_type: meta.sample_type ?: 'sample',
         collection_date: meta.collection_date ?: null,
         site: meta.site ?: null,
+        viral_load: meta.viral_load ?: null,
     ]
 }
 
@@ -456,13 +457,20 @@ def protocolSettings(mode) {
 }
 
 //
+// The bundled scheme used when neither --primer_scheme nor --primer_bed is given (PLAN D14: QIAseq)
+//
+def defaultPrimerScheme() {
+    return 'qiagenv1'
+}
+
+//
 // Primer BED: --primer_bed, else the bundled --primer_scheme
 //
 def primerBed() {
     if (params.primer_bed) {
         return file(params.primer_bed, checkIfExists: true)
     }
-    return file("${projectDir}/assets/primer_schemes/${params.primer_scheme ?: 'midnight'}.bed", checkIfExists: true)
+    return file("${projectDir}/assets/primer_schemes/${params.primer_scheme ?: defaultPrimerScheme()}.bed", checkIfExists: true)
 }
 
 //
@@ -542,4 +550,24 @@ def resolveBarcodes(barcodes, db_dir, option) {
         error("${option} file '${spec}' must end in .csv or .feather")
     }
     return [ kind: 'path', source: 'custom', path: path ]
+}
+
+//
+// Can the mutation-level analyses (dropout impact, unexplained mutations) read the Freyja dataset in effect?
+// They need the lineage -> mutation lists: a dataset directory with a non-empty lineage_mutations.json, or a
+// barcodes .csv/.json. A .feather-only dataset (e.g. --barcodes custom.feather) has none we can read.
+// Returns null when supported, otherwise the reason.
+//
+def mutationTablesUnsupportedReason() {
+    def resolved = resolveBarcodes(params.barcodes, dbDir(), '--barcodes')
+    if (resolved.kind == 'fetch') {
+        return null // 'latest' / 'container': a Freyja dataset directory, which has lineage_mutations.json
+    }
+    def path = resolved.path
+    if (path.isFile()) {
+        return (path.name.endsWith('.csv') || path.name.endsWith('.json')) ? null : "${path.name} is a .feather barcodes file, which carries no mutation lists we can read"
+    }
+    def json = file("${path}/lineage_mutations.json")
+    def has_csv = path.listFiles()?.any { f -> f.name.endsWith('.csv') && f.name.contains('barcode') }
+    return (json.exists() && json.size() > 0) || has_csv ? null : "${path} has neither lineage_mutations.json nor a barcodes .csv"
 }

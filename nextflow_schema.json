@@ -10,7 +10,9 @@
             "type": "object",
             "fa_icon": "fas fa-terminal",
             "description": "Define where the pipeline should find input data and save output data.",
-            "required": ["outdir"],
+            "required": [
+                "outdir"
+            ],
             "properties": {
                 "input": {
                     "type": "string",
@@ -31,7 +33,13 @@
                 "mode": {
                     "type": "string",
                     "default": "full",
-                    "enum": ["full", "demix", "aggregate", "report", "update_db"],
+                    "enum": [
+                        "full",
+                        "demix",
+                        "aggregate",
+                        "report",
+                        "update_db"
+                    ],
                     "description": "Pipeline mode.",
                     "help_text": "`full`: FASTQ to aggregated Freyja results. `demix`: re-run `freyja demix` (e.g. with newer barcodes) on existing variants/depths files, then aggregate. `aggregate`: aggregate existing `.demix` files only. `report`: rebuild the HTML report of a previous run (`--results_dir`, written to a different `--outdir`). `update_db`: download the latest Freyja data into `--db_dir` and exit.",
                     "fa_icon": "fas fa-random"
@@ -80,7 +88,10 @@
                 "protocol": {
                     "type": "string",
                     "default": "amplicon",
-                    "enum": ["amplicon", "capture"],
+                    "enum": [
+                        "amplicon",
+                        "capture"
+                    ],
                     "description": "Library protocol. `amplicon` (default): tiled PCR amplicons, reads are primer-trimmed. `capture`: probe-capture libraries (e.g. Twist): no primer trimming, no amplicon-dropout analysis, PCR duplicates are marked.",
                     "help_text": "With `capture`, `--primer_scheme` and `--primer_bed` are ignored (with a warning). The protocol is recorded in run_info.json and shown in the report header.",
                     "fa_icon": "fas fa-flask"
@@ -94,7 +105,11 @@
                 "duplicates": {
                     "type": "string",
                     "default": "auto",
-                    "enum": ["auto", "mark", "none"],
+                    "enum": [
+                        "auto",
+                        "mark",
+                        "none"
+                    ],
                     "description": "PCR-duplicate handling after alignment. `mark`: flag duplicates (`samtools markdup`); Freyja's pileup then ignores them. `none`: leave them. `auto`: `mark` for `--protocol capture`, `none` for `amplicon`.",
                     "help_text": "Duplicates are flagged, never removed. Not used by modes without reads (`demix`, `aggregate`).",
                     "fa_icon": "fas fa-clone"
@@ -139,7 +154,7 @@
                         "qiagenv1",
                         "xgen"
                     ],
-                    "description": "Bundled amplicon primer scheme (assets/primer_schemes/). Default: `midnight` in mode `full`.",
+                    "description": "Bundled amplicon primer scheme (assets/primer_schemes/). Default: `qiagenv1` in mode `full`.",
                     "help_text": "Ignored if `--primer_bed` is given. The `swift` scheme implies `--ivar_offset 5`. In mode `demix` the scheme of the old results is unknown, so per-amplicon coverage is only computed when `--primer_scheme` or `--primer_bed` is given explicitly.",
                     "fa_icon": "fas fa-cut"
                 },
@@ -164,7 +179,9 @@
                     "description": "Freyja `--pathogen` name (set by conf/pathogens/*.config). Only SARS-CoV-2 is implemented.",
                     "fa_icon": "fas fa-virus",
                     "hidden": true,
-                    "enum": ["SARS-CoV-2"],
+                    "enum": [
+                        "SARS-CoV-2"
+                    ],
                     "errorMessage": "Only --pathogen SARS-CoV-2 is implemented and validated (reference, primers, Freyja dataset names are SARS-CoV-2 specific)."
                 }
             }
@@ -360,7 +377,11 @@
                 "freyja_plot_interval": {
                     "type": "string",
                     "default": "MS",
-                    "enum": ["MS", "W", "D"],
+                    "enum": [
+                        "MS",
+                        "W",
+                        "D"
+                    ],
                     "description": "Interval of the time-aware plot (`freyja plot --times`, drawn when samples have a `collection_date`): month (`MS`), week (`W`) or day (`D`).",
                     "fa_icon": "fas fa-calendar"
                 },
@@ -514,6 +535,252 @@
                 }
             }
         },
+        "qc_checks_options": {
+            "title": "QC checks",
+            "type": "object",
+            "fa_icon": "fas fa-clipboard-check",
+            "description": "Checks beyond coverage: is the primer scheme right, what do dropped amplicons hide, which mutations does the lineage mixture not explain.",
+            "properties": {
+                "primer_scheme_check": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Check that the primer scheme matches the reads (amplicon protocol with primer trimming, mode `full`).",
+                    "fa_icon": "fas fa-search",
+                    "help_text": "Counts mapped reads whose 5' end sits at a primer 5' end of each bundled scheme and compares the declared scheme with the others (enrichment over chance). Result `ok`, `mismatch` or `uninformative` in `qc_summary.tsv`; a mismatch is a WARN (`primer_scheme_mismatch`). Libraries whose reads are not primer-anchored (e.g. tagmentation) give `uninformative`."
+                },
+                "primer_check_min_enrichment": {
+                    "type": "number",
+                    "default": 5,
+                    "description": "Enrichment of read starts at primers (times chance) needed for the declared scheme to count as matching.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0
+                },
+                "primer_check_window": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "Window (bp) around a primer 5' end that counts as `at the primer`.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0
+                },
+                "qc_min_primer_trimmed_pct": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "WARN (`low_primer_trimming`) when the % of mapped reads that `ivar trim` primer-trimmed is below this. 0 disables.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "help_text": "Only meaningful for protocols whose reads start at primer sites; calibrate on your own good runs (a value around half the lowest good run)."
+                },
+                "dropout_impact": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Report which lineage-informative sites dropped amplicons hide (`summary/dropout_impact.tsv`). Needs an amplicon table (amplicon protocol).",
+                    "fa_icon": "fas fa-cut"
+                },
+                "dropout_min_abundance": {
+                    "type": "number",
+                    "default": 0.01,
+                    "description": "A lineage counts as detected at this abundance when assessing dropout impact.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "unexplained_mutations": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Find frequent mutations the demixed lineages do not predict (`summary/unexplained_mutations.tsv`; modes `full` and `demix`).",
+                    "fa_icon": "fas fa-question-circle",
+                    "help_text": "A hint of a novel or missing lineage, not a variant caller: observed frequency minus the frequency expected from the lineage mixture, with a binomial guard against depth noise."
+                },
+                "unexplained_min_freq": {
+                    "type": "number",
+                    "default": 0.05,
+                    "description": "Minimum observed frequency of the mutation.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "unexplained_min_excess": {
+                    "type": "number",
+                    "default": 0.05,
+                    "description": "Minimum observed minus expected frequency.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "unexplained_min_depth": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Minimum total depth at the position.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0
+                },
+                "unexplained_min_alt_depth": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Minimum number of reads supporting the mutation.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0
+                },
+                "unexplained_min_recurrence": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "The same mutation unexplained in at least this many samples is flagged `recurrent`.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 1
+                },
+                "unexplained_max_pvalue": {
+                    "type": "number",
+                    "default": 1.67e-06,
+                    "description": "Binomial guard against depth noise (Bonferroni-style over the genome); 1 disables it.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0,
+                    "maximum": 1
+                }
+            }
+        },
+        "surveillance_options": {
+            "title": "Surveillance outputs",
+            "type": "object",
+            "fa_icon": "fas fa-chart-line",
+            "description": "Time-series outputs from the collection dates (and optional viral load) in the samplesheet.",
+            "properties": {
+                "timeseries": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Write `summary/freyja_timeseries.tsv` (+ `_lineages.tsv`) when at least two distinct collection dates exist.",
+                    "fa_icon": "fas fa-calendar"
+                },
+                "timeseries_min_abundance": {
+                    "type": "number",
+                    "default": 0.0,
+                    "description": "Drop site-date lineage groups below this mean abundance.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "freyja_growth": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Estimate relative growth rates of lineages with `freyja relgrowthrate` (`summary/freyja_growth_rates.csv`).",
+                    "fa_icon": "fas fa-chart-line",
+                    "help_text": "Needs at least `--freyja_growth_min_dates` distinct dates spanning at least `--freyja_growth_min_span_days` days within the last `--freyja_growth_days` days; otherwise `summary/freyja_growth_rates.failed.txt` says why. A failure never fails the run."
+                },
+                "freyja_growth_days": {
+                    "type": "integer",
+                    "default": 56,
+                    "description": "Window (days back from the latest date) used for the fit.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 1
+                },
+                "freyja_growth_nboots": {
+                    "type": "integer",
+                    "default": 1000,
+                    "description": "Bootstrap replicates (the seed is fixed).",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 1
+                },
+                "freyja_growth_seed": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "Bootstrap seed.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0
+                },
+                "freyja_growth_serial_interval": {
+                    "type": "number",
+                    "default": 5.5,
+                    "description": "Serial interval (days): the advantage is `exp(serial_interval * r) - 1`.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0
+                },
+                "freyja_growth_grthresh": {
+                    "type": "number",
+                    "default": 0.001,
+                    "description": "Only lineages with a mean abundance above this over the window get a rate.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "freyja_growth_min_abundance": {
+                    "type": "number",
+                    "default": 0.01,
+                    "description": "Per-sample abundance below which a lineage is lumped into `Other`.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "freyja_growth_min_dates": {
+                    "type": "integer",
+                    "default": 4,
+                    "description": "Fewer distinct dates in the window than this: no growth rates (failure note).",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 2
+                },
+                "freyja_growth_min_span_days": {
+                    "type": "integer",
+                    "default": 14,
+                    "description": "The dates must span at least this many days.",
+                    "fa_icon": "fas fa-ruler",
+                    "minimum": 1
+                },
+                "freyja_growth_scale_by_viral_load": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Weight by `viral_load` (`freyja relgrowthrate --scale_by_viral_load`); samples without a load are dropped from the fit.",
+                    "fa_icon": "fas fa-weight"
+                },
+                "freyja_dash": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Build the interactive Freyja dashboard (`summary/freyja_dashboard.html`).",
+                    "fa_icon": "fas fa-tachometer-alt",
+                    "help_text": "Opt-in extra. The HTML embeds Plotly but loads Bootstrap styling and a logo from the internet when opened; the pipeline's own `report.html` stays offline."
+                },
+                "freyja_dash_title": {
+                    "type": "string",
+                    "default": "wasteline wastewater dashboard",
+                    "description": "Dashboard title (inserted as HTML).",
+                    "fa_icon": "fas fa-heading"
+                },
+                "freyja_dash_intro": {
+                    "type": "string",
+                    "default": "Lineage prevalence over time from wasteline.",
+                    "description": "Dashboard introduction (inserted as HTML).",
+                    "fa_icon": "fas fa-align-left"
+                }
+            }
+        },
+        "alignment_storage_options": {
+            "title": "Alignment and storage",
+            "type": "object",
+            "fa_icon": "fas fa-database",
+            "description": "Which aligner maps the reads and in which format the alignments are kept.",
+            "properties": {
+                "aligner": {
+                    "type": "string",
+                    "default": "bwa",
+                    "enum": [
+                        "bwa",
+                        "minibwa"
+                    ],
+                    "description": "Read aligner. `bwa` (bwa mem) is the default and validated choice; `minibwa` is experimental.",
+                    "help_text": "minibwa is a young successor of bwa-mem; its alignments are not identical to bwa mem's. Compare with `tests/compare_aligners.sh` before relying on it; see docs/aligner_evaluation.md.",
+                    "fa_icon": "fas fa-align-left"
+                },
+                "bam_format": {
+                    "type": "string",
+                    "default": "bam",
+                    "enum": [
+                        "bam",
+                        "cram"
+                    ],
+                    "description": "Format of the published alignments (needs `--save_bam`).",
+                    "help_text": "`cram` publishes a reference-based CRAM and its `.crai` instead of the BAM and `.bai` (about a third of the size). Reading a CRAM needs the same reference FASTA (`samtools view --reference ref.fa`). Freyja and all QC steps still use the BAM, which stays in the work directory.",
+                    "fa_icon": "fas fa-file-archive"
+                }
+            }
+        },
         "report_and_extras_options": {
             "title": "Report and opt-in extras",
             "type": "object",
@@ -562,7 +829,14 @@
                     "description": "Method used to save pipeline results to output directory.",
                     "help_text": "The Nextflow `publishDir` option specifies which intermediate files should be saved to the output directory. This option tells the pipeline what method should be used to move these files. See [Nextflow docs](https://www.nextflow.io/docs/latest/process.html#publishdir) for details.",
                     "fa_icon": "fas fa-copy",
-                    "enum": ["symlink", "rellink", "link", "copy", "copyNoFollow", "move"],
+                    "enum": [
+                        "symlink",
+                        "rellink",
+                        "link",
+                        "copy",
+                        "copyNoFollow",
+                        "move"
+                    ],
                     "hidden": true
                 },
                 "email_on_fail": {
@@ -606,7 +880,10 @@
                     "hidden": true
                 },
                 "help": {
-                    "type": ["boolean", "string"],
+                    "type": [
+                        "boolean",
+                        "string"
+                    ],
                     "description": "Display the help message."
                 },
                 "help_full": {
@@ -653,6 +930,15 @@
         },
         {
             "$ref": "#/$defs/consensus_options"
+        },
+        {
+            "$ref": "#/$defs/qc_checks_options"
+        },
+        {
+            "$ref": "#/$defs/surveillance_options"
+        },
+        {
+            "$ref": "#/$defs/alignment_storage_options"
         },
         {
             "$ref": "#/$defs/report_and_extras_options"

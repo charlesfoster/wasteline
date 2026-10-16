@@ -88,8 +88,8 @@ barcode_version, barcode_version_iso`) and a fourth status `missing`; `freyja_ag
 
 ## Plan items not implemented or only partly done
 
-- **Not implemented**: optional `--kraken2_db` screening, CRAM output, other pathogens beyond the structural groundwork
-  (F15), resolving historical barcode versions from the Freyja git history, the minibwa comparison, MultiQC output (F19,
+- **Not implemented**: optional `--kraken2_db` screening, other pathogens beyond the structural groundwork
+  (F15), resolving historical barcode versions from the Freyja git history, minibwa as the default aligner (it is an opt-in experiment, `--aligner minibwa`), MultiQC output (F19,
   removed from scope).
 - **Partial**: F13 (lock file misses the `FREYJA_DEMIX_COMPARE` alias; never used with Singularity), F15, D1 (CI and the
   bot never ran on GitHub), D4 (only Docker was executed; Singularity and conda are config-parsed), the `test_full` profile (placeholder).

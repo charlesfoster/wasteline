@@ -11,6 +11,20 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Added`
 
+- Quiet-error checks: a primer-scheme match check on the read 5' ends (`primer_scheme_check`, `primer_scheme_best`,
+  `primer_scheme_enrichment`, `primer_trimmed_pct` in `qc_summary.tsv`, now **27 columns**; WARN reason `primer_scheme_mismatch`,
+  optional `low_primer_trimming` via `--qc_min_primer_trimmed_pct`; `--primer_scheme_check`), `summary/dropout_impact[_summary].tsv`
+  (which dropped amplicons hide lineage-informative sites, `--dropout_impact`), and `summary/unexplained_mutations.tsv`
+  (frequent variants the lineage mixture does not predict, `--unexplained_*`). The ivar trim log is now written in full (nf-core module
+  patch).
+- Surveillance outputs: `summary/freyja_timeseries.tsv` and `freyja_timeseries_lineages.tsv` (all modes, >= 2 collection dates,
+  `--timeseries`), opt-in `--freyja_growth` (`freyja relgrowthrate`: `freyja_growth_rates.csv`, or a `.failed.txt` note, and
+  `freyja_growth_inputs.json`) and `--freyja_dash` (`freyja_dashboard.html`); optional numeric `viral_load` samplesheet column for
+  load-weighted tables and growth rates.
+- `--bam_format cram` (reference-based CRAM output), `--aligner minibwa` (experimental; `docs/aligner_evaluation.md`,
+  `tests/compare_aligners.sh`) and `bin/replay_run.py` (rebuilds the command of a recorded run from `run_info.json`).
+- Report: sections for the new tables (see `docs/report.md`), run flags `primer_scheme_mismatch`, `dropout_affects_lineages`,
+  `consensus_failed`, `consensus_warnings`.
 - Probe-capture libraries (e.g. Twist): `--protocol capture` (default `amplicon`) skips primer trimming and the amplicon-dropout
   analysis (no `amplicon_coverage.tsv`, `amplicons_total` / `amplicons_dropped` are `NA`, no `amplicon_dropout` QC reason, the report's
   amplicon section says "not applicable") and marks PCR duplicates (`--duplicates auto|mark|none`; `samtools markdup`, flagged never
@@ -71,6 +85,10 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Changed`
 
+- **The default primer scheme is now `qiagenv1`** (QIAseq Direct SARS-CoV-2) in mode `full`; the Snakemake pipeline defaulted to
+  `midnight`. Give `--primer_scheme` explicitly if you use another protocol (the test profiles do). The effective scheme is
+  recorded in `run_info.json`.
+- `consensus_stats.tsv` has a 7th column, `reason`; `consensus_status.json` has a `warnings` array.
 - Compared with the Snakemake pipeline: `freyja variants` keeps Freyja's default `--varthresh 0.0` instead of 0.25;
   sample IDs are never rewritten (`_` is no longer turned into `-`); demix failures are recorded instead of swallowed
   with `|| touch`; Freyja barcodes are a per-run, versioned, checksummed input instead of a mutable shared dataset;
@@ -81,7 +99,9 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Fixed`
 
-- Not applicable for the initial release.
+- Consensus genomes of samples with an ivar deletion: ivar prints deleted bases as `N` (`-NNNNNNNNN`), so VCF alleles built from
+  them did not match the reference and `bcftools consensus` aborted, giving an all-`N` consensus. Alleles are now built from the
+  reference; a variant that still mismatches is skipped (reported in `reason` / `warnings`) instead of failing the sample.
 
 ### `Dependencies`
 
@@ -101,5 +121,4 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
   and the GitHub workflows have not run yet.
 - `--mode demix --previous_results <dir>` lists a `db/` directory inside the results (as left by the `test` profiles) as a
   sample with status `missing` (`docs/troubleshooting.md`).
-- Not implemented from the plan: `--kraken2_db` (optional negative-control screening), other pathogens, CRAM output,
-  historical barcode versions, a minibwa comparison (`docs/development.md`, `docs/PLAN_STATUS.md`).
+- Not implemented from the plan: `--kraken2_db` (optional negative-control screening), other pathogens, historical barcode versions (`docs/development.md`, `docs/PLAN_STATUS.md`).

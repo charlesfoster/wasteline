@@ -57,6 +57,13 @@ params {
     skip_report                    : Boolean = false
     freyja_boot                    : Boolean = false
     annotate_variants              : Boolean = false
+    primer_scheme_check            : Boolean = true
+    dropout_impact                 : Boolean = true
+    unexplained_mutations          : Boolean = true
+    timeseries                     : Boolean = true
+    freyja_growth                  : Boolean = false
+    freyja_growth_scale_by_viral_load : Boolean = false
+    freyja_dash                    : Boolean = false
 
     // numbers arrive as Strings too (--consensus_min_depth 20): type them
     ivar_offset                     : Integer? = null
@@ -70,6 +77,25 @@ params {
     freyja_covcut                   : Integer = 10
     freyja_depthcutoff              : Integer = 0
     freyja_adapt                    : Float = 0.0
+    primer_check_min_enrichment     : Float = 5
+    primer_check_window             : Integer = 2
+    qc_min_primer_trimmed_pct       : Float = 0
+    dropout_min_abundance           : Float = 0.01
+    unexplained_min_freq            : Float = 0.05
+    unexplained_min_excess          : Float = 0.05
+    unexplained_min_depth           : Integer = 20
+    unexplained_min_alt_depth       : Integer = 10
+    unexplained_min_recurrence      : Integer = 2
+    unexplained_max_pvalue          : Float = 1.67e-6
+    timeseries_min_abundance        : Float = 0.0
+    freyja_growth_days              : Integer = 56
+    freyja_growth_nboots            : Integer = 1000
+    freyja_growth_seed              : Integer = 1
+    freyja_growth_serial_interval   : Float = 5.5
+    freyja_growth_grthresh          : Float = 0.001
+    freyja_growth_min_abundance     : Float = 0.01
+    freyja_growth_min_dates         : Integer = 4
+    freyja_growth_min_span_days     : Integer = 14
     freyja_boot_n                   : Integer = 100
     freyja_boot_seed                : Integer = 0
     freyja_plot_mincov              : Float = 60

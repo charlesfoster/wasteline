@@ -46,6 +46,10 @@ page before you cite them in a paper.
 
   > Li H. Aligning sequence reads, clone sequences and assembly contigs with BWA-MEM. arXiv:1303.3997 [q-bio.GN]. 2013.
 
+- [minibwa](https://github.com/lh3/minibwa) (read mapping, only with the experimental `--aligner minibwa`)
+
+  > Li H, Homer N. Fast genomic read alignment with minibwa. arXiv:2606.15357. 2026. <!-- verify citation -->
+
 - [SAMtools](https://pubmed.ncbi.nlm.nih.gov/19505943/) (sorting, filtering, indexing, flagstat; `mpileup` runs inside `freyja variants`)
 
   > Li H, Handsaker B, Wysoker A, Fennell T, Ruan J, Homer N, Marth G, Abecasis G, Durbin R; 1000 Genome Project Data Processing Subgroup. The Sequence Alignment/Map format and SAMtools. Bioinformatics. 2009 Aug 15;25(16):2078-9. doi: 10.1093/bioinformatics/btp352. PubMed PMID: 19505943.

@@ -53,6 +53,12 @@
                 "type": "string",
                 "errorMessage": "site must be a string",
                 "meta": ["site"]
+            },
+            "viral_load": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "errorMessage": "viral_load must be a positive number (e.g. gene copies per litre), or left blank",
+                "meta": ["viral_load"]
             }
         },
         "required": ["sample", "variants", "depths"]

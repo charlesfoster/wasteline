@@ -13,7 +13,8 @@ git clone https://github.com/charlesfoster/wasteline.git && cd wasteline   # or 
 # 1. Wiring check (stub run: no real analysis, placeholder outputs, ~1 min once images are cached; 113 tasks)
 nextflow run . -profile docker,test_stub -stub-run --outdir results_stub
 # 2. Real run on the synthetic reads (~1-2 min with the images cached; 112 tasks)
-nextflow run . -profile docker,test --barcodes tests/data/barcodes_test.csv --outdir results
+nextflow run . -profile docker,test --primer_scheme midnight --barcodes tests/data/barcodes_test.csv --outdir results
+# (the synthetic reads are Midnight amplicons; the pipeline default scheme is qiagenv1, so the scheme is given explicitly)
 # 3. Look at the results
 ls results/summary                       # tables, plots, consensus genomes, report.html (13 files)
 open results/summary/report.html         # macOS; use xdg-open on Linux, or double-click the file
@@ -40,15 +41,15 @@ The dataset (`tests/data/`, described in [test_data.md](test_data.md)) has seven
 `tests/data/truth.json`. With `--barcodes tests/data/barcodes_test.csv` (a 14-lineage subset of Freyja's barcodes) a real
 run gives, within the tolerance of 0.05:
 
-| Sample | Truth | Freyja result (from a real run) | `demix_status` | `qc_status` (reasons) |
-|---|---|---|---|---|
-| `MIX_A` | BA.2 0.70, AY.4 0.30 | BA.2 0.71, AY.4 0.29 | `ok` | PASS |
-| `MIX_B` | BA.1 0.50, XBB.1.5 0.30, KP.3 0.20 | BA.1 0.50, XBB.1.5 0.28, KP.3 0.20, BA.2 0.02 (small spurious call) | `ok` | PASS |
-| `PURE_C` | JN.1 1.00 | JN.1 1.00 | `ok` | PASS |
-| `Site_1_week_2` | BA.5 0.60, XBB.1.5 0.40 | BA.5 0.61, XBB.1.5 0.36, BA.2 0.03 (small spurious call) | `ok` | WARN (`amplicon_dropout`: 2 amplicons dropped by design) |
-| `LOWCOV_D` | BA.2 1.00 at about 0.6x depth | no result | `skipped_low_coverage` | FAIL (`low_coverage;amplicon_dropout`) |
-| `NEG_E` | negative control, 3 read pairs | no result | `skipped_low_coverage` | PASS |
-| `NEG_CONTAM` | negative control contaminated with BA.2 | demixed, but kept out of the aggregate and the plots | `ok` | FAIL (`ntc_reads`) |
+| Sample          | Truth                                   | Freyja result (from a real run)                                     | `demix_status`         | `qc_status` (reasons)                                    |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------- | ---------------------- | -------------------------------------------------------- |
+| `MIX_A`         | BA.2 0.70, AY.4 0.30                    | BA.2 0.71, AY.4 0.29                                                | `ok`                   | PASS                                                     |
+| `MIX_B`         | BA.1 0.50, XBB.1.5 0.30, KP.3 0.20      | BA.1 0.50, XBB.1.5 0.28, KP.3 0.20, BA.2 0.02 (small spurious call) | `ok`                   | PASS                                                     |
+| `PURE_C`        | JN.1 1.00                               | JN.1 1.00                                                           | `ok`                   | PASS                                                     |
+| `Site_1_week_2` | BA.5 0.60, XBB.1.5 0.40                 | BA.5 0.61, XBB.1.5 0.36, BA.2 0.03 (small spurious call)            | `ok`                   | WARN (`amplicon_dropout`: 2 amplicons dropped by design) |
+| `LOWCOV_D`      | BA.2 1.00 at about 0.6x depth           | no result                                                           | `skipped_low_coverage` | FAIL (`low_coverage;amplicon_dropout`)                   |
+| `NEG_E`         | negative control, 3 read pairs          | no result                                                           | `skipped_low_coverage` | PASS                                                     |
+| `NEG_CONTAM`    | negative control contaminated with BA.2 | demixed, but kept out of the aggregate and the plots                | `ok`                   | FAIL (`ntc_reads`)                                       |
 
 Things to notice:
 
@@ -69,14 +70,14 @@ Things to notice:
 
 Where to look:
 
-| File | What it is |
-|---|---|
-| `results/summary/report.html` | the self-contained report (works offline; open it in any browser) |
+| File                                                                                                                  | What it is                                                                                |
+| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `results/summary/report.html`                                                                                         | the self-contained report (works offline; open it in any browser)                         |
 | `results/summary/freyja_aggregated.tsv`, `freyja_aggregated_controls.tsv`, `freyja_plot.pdf`, `freyja_plot_times.pdf` | Freyja's aggregate table (samples), the table of demixed negative controls, and the plots |
-| `results/summary/qc_summary.tsv`, `demix_status.tsv`, `amplicon_coverage.tsv` | QC, per-sample demix outcome, per-amplicon coverage |
-| `results/summary/consensus_genomes.fasta`, `consensus_stats.tsv` | consensus genomes (none for negatives) and their N content |
-| `results/summary/barcode_version.json`, `results/pipeline_info/run_info.json` | which Freyja barcode version and which software produced the results |
-| `results/samples/<sample>/` | per-sample files: fastp, BAM, Freyja variants/depths/demix, consensus |
+| `results/summary/qc_summary.tsv`, `demix_status.tsv`, `amplicon_coverage.tsv`                                         | QC, per-sample demix outcome, per-amplicon coverage                                       |
+| `results/summary/consensus_genomes.fasta`, `consensus_stats.tsv`                                                      | consensus genomes (none for negatives) and their N content                                |
+| `results/summary/barcode_version.json`, `results/pipeline_info/run_info.json`                                         | which Freyja barcode version and which software produced the results                      |
+| `results/samples/<sample>/`                                                                                           | per-sample files: fastp, BAM, Freyja variants/depths/demix, consensus                     |
 
 Next: [usage.md](usage.md) to run it on your own data, [output.md](output.md) for every output file.
 
@@ -91,7 +92,7 @@ name,mutation
 S N501Y,S:N501Y
 S L452R,S:L452R
 EOF
-nextflow run . -profile docker,test --barcodes tests/data/barcodes_test.csv \
+nextflow run . -profile docker,test --primer_scheme midnight --barcodes tests/data/barcodes_test.csv \
     --compare_barcodes container --freyja_boot --annotate_variants --mutations_of_interest moi.csv \
     --outdir results_extras -resume
 ls results_extras/summary
@@ -99,12 +100,12 @@ ls results_extras/summary
 
 New files in `results_extras/summary/`:
 
-| File | From | What it shows |
-|---|---|---|
+| File                                                | From                           | What it shows                                                                                                                                                                                               |
+| --------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `barcode_compare.tsv`, `barcode_compare_status.tsv` | `--compare_barcodes container` | each sample demixed again with the Freyja container's dataset: e.g. `MIX_A` `BA.2` 0.712 (test subset) vs 0.692 (container dataset), `AY.4` 0.288 vs 0.176, plus `AY.1` 0.071 only in the container dataset |
-| `freyja_boot_summary.tsv` | `--freyja_boot` | 95% bootstrap intervals: `MIX_A` `BA.2` 0.712, 0.670 to 0.727 |
-| `annotated_variants.tsv` | `--annotate_variants` | amino-acid consequences of the applied variants (e.g. `MIX_A` `ORF1ab` `S135R`) |
-| `mutations_of_interest.tsv` | `--mutations_of_interest` | `MIX_A` `S:N501Y` alt frequency 0.788 (41 of 52 reads), `PURE_C` 1.0 |
+| `freyja_boot_summary.tsv`                           | `--freyja_boot`                | 95% bootstrap intervals: `MIX_A` `BA.2` 0.712, 0.670 to 0.727                                                                                                                                               |
+| `annotated_variants.tsv`                            | `--annotate_variants`          | amino-acid consequences of the applied variants (e.g. `MIX_A` `ORF1ab` `S135R`)                                                                                                                             |
+| `mutations_of_interest.tsv`                         | `--mutations_of_interest`      | `MIX_A` `S:N501Y` alt frequency 0.788 (41 of 52 reads), `PURE_C` 1.0                                                                                                                                        |
 
 The report gains a **Barcode comparison** panel and the interval tooltips; each option is explained in
 [usage.md](usage.md#comparing-barcode-versions---compare_barcodes).

@@ -2,7 +2,7 @@
 
 Reference for everything wasteline writes to `--outdir`. All examples below are trimmed from a real `--mode full` run
 on the synthetic dataset in `tests/data` (`--barcodes tests/data/barcodes_test.csv --primer_scheme midnight
---compare_barcodes container --freyja_boot --annotate_variants`, Freyja 2.0.5, Nextflow 26.04.6). The one exception is
+--compare_barcodes container --freyja_boot --annotate_variants`, Freyja 2.0.6, Nextflow 26.04.6; the surveillance tables come from the same data and the `tests/data_timeseries` series). The one exception is
 the `mutations_of_interest.tsv` example, which comes from an earlier real run on the same data with
 `--mutations_of_interest moi.csv` (the final run did not use that option). Paths are relative to `--outdir`. Parameter
 names link to [parameters.md](parameters.md); how to read the HTML report is in [report.md](report.md).
@@ -39,6 +39,13 @@ results/
 │   ├── freyja_aggregated_controls.tsv  the same table for the negative controls that demixed
 │   ├── freyja_plot.pdf              `freyja plot` stacked bars
 │   ├── freyja_plot_times.pdf        `freyja plot --times` (samples with a collection_date)
+│   ├── freyja_timeseries.tsv        site x date x lineage-group abundance (>= 2 collection dates)
+│   ├── freyja_timeseries_lineages.tsv  the same at the level of individual lineages
+│   ├── freyja_growth_rates.csv      only with --freyja_growth: relative growth rates (.failed.txt says why not; freyja_growth_inputs.json)
+│   ├── freyja_dashboard.html        only with --freyja_dash: Freyja's interactive dashboard
+│   ├── dropout_impact.tsv           dropped amplicons and the lineage-informative sites they hide
+│   ├── dropout_impact_summary.tsv   per-sample totals of the above
+│   ├── unexplained_mutations.tsv    frequent variants the lineage mixture does not predict (usually empty)
 │   ├── freyja_boot_summary.tsv      only with --freyja_boot: 95% bootstrap interval per lineage
 │   ├── barcode_compare.tsv          only with --compare_barcodes: abundance with barcode set A and B
 │   ├── barcode_compare_status.tsv   only with --compare_barcodes: outcome of the second demix per sample
@@ -52,11 +59,13 @@ results/
 │   ├── MIX_A/
 │   │   ├── fastp/        MIX_A.fastp.json  MIX_A.fastp.html  MIX_A.fastp.log
 │   │   ├── bam/          MIX_A.primertrimmed.bam  MIX_A.primertrimmed.bam.bai  MIX_A.ivar_trimmed.ivar.log
+│   │   │                 with --bam_format cram: MIX_A.primertrimmed.cram  MIX_A.primertrimmed.cram.crai (instead of the BAM)
 │   │   ├── freyja/       MIX_A.variants.tsv  MIX_A.depths  MIX_A.demix  MIX_A.demix_status.json  MIX_A.depth_stats.json
 │   │   │                 with --compare_barcodes: MIX_A.compare.demix  MIX_A.compare.demix_status.json  MIX_A.compare.depth_stats.json
 │   │   │                 with --freyja_boot: MIX_A.boot_summary.tsv  MIX_A.boot_lineages.csv  MIX_A.boot_summarized.csv  MIX_A.boot_status.json
 │   │   ├── coverage/     MIX_A.primertrimmed.flagstat  MIX_A.amplicon_coverage.tsv  MIX_A.qc_row.tsv
-│   │   ├── variants/     MIX_A.ivar.vcf  MIX_A.consensus_variants.vcf.gz(.tbi)  MIX_A.mask.bed
+│   │   │                 MIX_A.primer_scheme_check.tsv  MIX_A.primer_scheme_summary.tsv
+│   │   ├── variants/     MIX_A.ivar.vcf  MIX_A.consensus_variants.vcf.gz(.tbi)  MIX_A.mask.bed  MIX_A.unexplained_mutations.tsv
 │   │   │                 with --annotate_variants: MIX_A.annotated.tsv;  with --mutations_of_interest: MIX_A.mutations_of_interest.tsv
 │   │   └── consensus/    MIX_A.consensus.fa  MIX_A.consensus_stats.tsv  MIX_A.consensus_status.json  MIX_A.consensus.log
 │   ├── NEG_CONTAM/       (contaminated negative control, demixed ok: has .demix and boot files, but no variants/ or consensus/)
@@ -98,6 +107,11 @@ Downloaded Freyja data is **not** written to `--outdir`: it is stored in `--db_d
 | `summary/freyja_aggregated.tsv`, `freyja_plot.pdf`                                           |                yes                 |                                                              yes                                                              |                           yes                           |                                                          no                                                           |        no        | `--freyja_plot_*`, `--include_negatives_in_aggregate`                 |
 | `summary/freyja_plot_times.pdf`                                                              |       with collection dates        |                                                     with collection dates                                                     |                  with collection dates                  |                                                          no                                                           |        no        | `--freyja_plot_interval`, `--freyja_plot_windowsize`                  |
 | `summary/freyja_aggregated_controls.tsv`                                                     | if a negative control demixed `ok` |                                                             same                                                              |                          same                           |                                                          no                                                           |        no        | not written with `--include_negatives_in_aggregate`                   |
+| `summary/freyja_timeseries.tsv`, `freyja_timeseries_lineages.tsv`                            |     with >= 2 collection dates     |                                                             same                                                              |                          same                           |                                                          no                                                           |        no        | `--timeseries`, `--timeseries_min_abundance`                          |
+| `summary/freyja_growth_rates.csv` (or `.failed.txt`), `freyja_growth_inputs.json`            |       with `--freyja_growth`       |                                                             same                                                              |                          same                           |                                                          no                                                           |        no        | `--freyja_growth*`                                                    |
+| `summary/freyja_dashboard.html` (or `.failed.txt`)                                           |        with `--freyja_dash`        |                                                             same                                                              |                          same                           |                                                          no                                                           |        no        | `--freyja_dash*`                                                      |
+| `summary/dropout_impact.tsv`, `dropout_impact_summary.tsv`                                   |      yes (amplicon protocol)       |                                         only with `--primer_scheme` or `--primer_bed`                                         |                           no                            |                                                          no                                                           |        no        | `--dropout_impact`, `--dropout_min_abundance`                         |
+| `summary/unexplained_mutations.tsv`                                                          |                yes                 |                                                              yes                                                              |                           no                            |                                                          no                                                           |        no        | `--unexplained_mutations`, `--unexplained_*`                          |
 | `summary/freyja_boot_summary.tsv`                                                            |        with `--freyja_boot`        |       with `--freyja_boot` <!-- UNVERIFIED: demix mode with --freyja_boot not run; read from workflows/wasteline.nf -->       |                           no                            |                                                          no                                                           |        no        | `--freyja_boot`, `--freyja_boot_n`, `--freyja_boot_seed`              |
 | `summary/barcode_compare.tsv`, `barcode_compare_status.tsv`                                  |     with `--compare_barcodes`      |                                                   with `--compare_barcodes`                                                   |                           no                            |                                                          no                                                           |        no        | `--compare_barcodes`                                                  |
 | `summary/annotated_variants.tsv`                                                             |     with `--annotate_variants`     | with `--annotate_variants` <!-- UNVERIFIED: demix mode with --annotate_variants not run; read from workflows/wasteline.nf --> |                           no                            |                                                          no                                                           |        no        | `--annotate_variants` (needs consensus)                               |
@@ -145,8 +159,9 @@ Notes verified on real `demix` and `aggregate` runs of the output above:
 
 One row per sample, including negative controls, sorted by `sample`. Written in `full` and `demix` modes. Produced from
 the Freyja depths file (Q>=20 bases, one row per genome position), `samtools flagstat` (mode `full` only) and the
-fastp JSON (when known); the last five columns are filled in afterwards from the demix and consensus results (see the
-table). Real rows (trimmed to the first 18 columns):
+fastp JSON (when known); the last five of the original 23 columns are filled in afterwards from the demix and consensus results (see the
+table). The file has **27 columns**: the four primer columns at the end (`primer_trimmed_pct`, `primer_scheme_check`,
+`primer_scheme_best`, `primer_scheme_enrichment`) are described below. Real rows (trimmed to the first 18 columns):
 
 ```
 sample         sample_type collection_date site   raw_reads trimmed_reads mapped_reads mapped_pct mean_depth depth_sd median_depth pct_genome_ge_1x pct_genome_ge_10x pct_genome_ge_min_depth amplicons_total amplicons_dropped qc_status qc_reasons
@@ -167,42 +182,59 @@ NEG_E          PASS                                       skipped_low_coverage  
 Site_1_week_2  WARN       amplicon_dropout                ok                    NA                                             29903             6.94             custom
 ```
 
+and the four primer-scheme columns (mode `full`, amplicon protocol with primer trimming; `NA` otherwise):
+
+```
+sample         primer_trimmed_pct  primer_scheme_check  primer_scheme_best   primer_scheme_enrichment
+LOWCOV_D       22.69               NA                   NA                   43.0
+MIX_A          22.33               ok                   midnight/midnightv2  42.8
+NEG_CONTAM     22.79               ok                   midnight/midnightv2  43.3
+NEG_E          60.00               NA                   NA                   103.1
+Site_1_week_2  21.70               ok                   midnight/midnightv2  41.4
+```
+
 The merged table is written by the report builder (`BUILD_REPORT_DATA`, `--write-qc-tsv`), which is why it exists only
 when the report is built: with `--skip_report` the published `qc_summary.tsv` is the raw QC output and the last five
 columns stay `NA` <!-- UNVERIFIED: --skip_report not run; derived from conf/modules.config (QC_CONCAT publishes qc_summary.tsv only when skip_report is set) -->.
 
-| Column                                   | Meaning                                                                                                                                                                                            |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sample`                                 | Sample ID from the samplesheet.                                                                                                                                                                    |
-| `sample_type`                            | `sample` or `negative` (negative control / NTC).                                                                                                                                                   |
-| `collection_date`                        | ISO `YYYY-MM-DD` from the samplesheet, or `NA`.                                                                                                                                                    |
-| `site`                                   | Free-text site label from the samplesheet, or `NA`.                                                                                                                                                |
-| `raw_reads`, `trimmed_reads`             | Reads (not pairs: a pair counts 2) before and after fastp, from the fastp JSON. `NA` in `demix` mode without a fastp JSON.                                                                         |
-| `mapped_reads`                           | `samtools flagstat` "primary mapped" of the primer-trimmed BAM (a pair counts 2). `NA` in `demix` mode.                                                                                            |
-| `mapped_pct`                             | `mapped_reads / trimmed_reads * 100` (falls back to raw reads, then to the flagstat total).                                                                                                        |
-| `mean_depth`, `depth_sd`, `median_depth` | Mean, population SD and median of the per-position depth over **every** position of the depths file, zeros included.                                                                               |
-| `pct_genome_ge_1x`, `pct_genome_ge_10x`  | % of the genome with depth >= 1 and >= 10 (fixed thresholds).                                                                                                                                      |
-| `pct_genome_ge_min_depth`                | % of the genome with depth >= `--consensus_min_depth` (default 10), i.e. the part that will not be masked `N` in the consensus.                                                                    |
-| `amplicons_total`, `amplicons_dropped`   | Amplicons of the primer scheme, and how many have mean depth `< --amplicon_min_depth` (see `amplicon_coverage.tsv`). `NA` when no primer scheme is known (`demix` mode without `--primer_scheme`). |
-| `qc_status`                              | `PASS`, `WARN`, `FAIL`, or `NA` (a negative control with no usable data).                                                                                                                          |
-| `qc_reasons`                             | `;`-joined machine tokens, empty when PASS with no reason (see below).                                                                                                                             |
-| `demix_status`, `demix_reason`           | The sample's row of `demix_status.tsv` (`ok`, `skipped_low_coverage`, ...), with its reason; `demix_reason` is `NA` for `ok`.                                                                      |
-| `consensus_length`, `consensus_n_pct`    | From `consensus_stats.tsv`: length and % `N` of the consensus. `NA` for negative controls (they get no consensus), for a `failed` consensus and with `--skip_consensus`.                           |
-| `barcode_version`                        | Barcode dataset used for the sample's demix (as in `demix_status.tsv`; `custom` in the example).                                                                                                   |
+| Column                                   | Meaning                                                                                                                                                                                                                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`                                 | Sample ID from the samplesheet.                                                                                                                                                                                                                                       |
+| `sample_type`                            | `sample` or `negative` (negative control / NTC).                                                                                                                                                                                                                      |
+| `collection_date`                        | ISO `YYYY-MM-DD` from the samplesheet, or `NA`.                                                                                                                                                                                                                       |
+| `site`                                   | Free-text site label from the samplesheet, or `NA`.                                                                                                                                                                                                                   |
+| `raw_reads`, `trimmed_reads`             | Reads (not pairs: a pair counts 2) before and after fastp, from the fastp JSON. `NA` in `demix` mode without a fastp JSON.                                                                                                                                            |
+| `mapped_reads`                           | `samtools flagstat` "primary mapped" of the primer-trimmed BAM (a pair counts 2). `NA` in `demix` mode.                                                                                                                                                               |
+| `mapped_pct`                             | `mapped_reads / trimmed_reads * 100` (falls back to raw reads, then to the flagstat total).                                                                                                                                                                           |
+| `mean_depth`, `depth_sd`, `median_depth` | Mean, population SD and median of the per-position depth over **every** position of the depths file, zeros included.                                                                                                                                                  |
+| `pct_genome_ge_1x`, `pct_genome_ge_10x`  | % of the genome with depth >= 1 and >= 10 (fixed thresholds).                                                                                                                                                                                                         |
+| `pct_genome_ge_min_depth`                | % of the genome with depth >= `--consensus_min_depth` (default 10), i.e. the part that will not be masked `N` in the consensus.                                                                                                                                       |
+| `amplicons_total`, `amplicons_dropped`   | Amplicons of the primer scheme, and how many have mean depth `< --amplicon_min_depth` (see `amplicon_coverage.tsv`). `NA` when no primer scheme is known (`demix` mode without `--primer_scheme`).                                                                    |
+| `qc_status`                              | `PASS`, `WARN`, `FAIL`, or `NA` (a negative control with no usable data).                                                                                                                                                                                             |
+| `qc_reasons`                             | `;`-joined machine tokens, empty when PASS with no reason (see below).                                                                                                                                                                                                |
+| `demix_status`, `demix_reason`           | The sample's row of `demix_status.tsv` (`ok`, `skipped_low_coverage`, ...), with its reason; `demix_reason` is `NA` for `ok`.                                                                                                                                         |
+| `consensus_length`, `consensus_n_pct`    | From `consensus_stats.tsv`: length and % `N` of the consensus. `NA` for negative controls (they get no consensus), for a `failed` consensus and with `--skip_consensus`.                                                                                              |
+| `barcode_version`                        | Barcode dataset used for the sample's demix (as in `demix_status.tsv`; `custom` in the example).                                                                                                                                                                      |
+| `primer_trimmed_pct`                     | % of mapped reads from which `ivar trim` removed primer sequence (from the ivar log). `NA` without primer trimming. Informational unless `--qc_min_primer_trimmed_pct` is set.                                                                                        |
+| `primer_scheme_check`                    | `ok`, `mismatch`, `uninformative` or `NA`: does the declared primer scheme match where the reads start ([usage.md](usage.md#primer-scheme-check)). `uninformative` means the reads do not start at primers (for example tagmentation libraries) and is not a warning. |
+| `primer_scheme_best`                     | The scheme(s) that fit the reads best, joined by `/` (`midnight/midnightv2` have the same coordinates); `NA` when none stands out.                                                                                                                                    |
+| `primer_scheme_enrichment`               | Enrichment of read starts at the declared scheme's primers, as a multiple of chance (1 decimal).                                                                                                                                                                      |
 
 QC rules (thresholds are parameters; defaults shown):
 
-| Sample type | Status                   | Rule                                                                                                               | Token              |
-| ----------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------ |
-| sample      | FAIL                     | no mapped reads or all depths 0                                                                                    | `no_reads`         |
-| sample      | FAIL                     | depths unreadable or empty                                                                                         | `no_depths`        |
-| sample      | FAIL                     | % genome at `--qc_min_depth` (10x) below `--qc_fail_below_pct` (50)                                                | `low_coverage`     |
-| sample      | WARN                     | % genome at `--qc_min_depth` below `--qc_pass_min_pct` (80)                                                        | `low_coverage`     |
-| sample      | WARN (if otherwise PASS) | more than `--qc_max_dropped_amplicons` (1) amplicons dropped                                                       | `amplicon_dropout` |
-| sample      | PASS                     | otherwise                                                                                                          |                    |
-| negative    | FAIL                     | mapped reads above `--ntc_max_mapped_reads` (1000) or % genome at >= 1x above `--ntc_max_genome_coverage_pct` (10) | `ntc_reads`        |
-| negative    | PASS                     | otherwise (never `low_coverage`/`no_reads`)                                                                        |                    |
-| negative    | NA                       | no usable depths and no flagstat                                                                                   | `no_depths`        |
+| Sample type | Status                   | Rule                                                                                                               | Token                    |
+| ----------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| sample      | FAIL                     | no mapped reads or all depths 0                                                                                    | `no_reads`               |
+| sample      | FAIL                     | depths unreadable or empty                                                                                         | `no_depths`              |
+| sample      | FAIL                     | % genome at `--qc_min_depth` (10x) below `--qc_fail_below_pct` (50)                                                | `low_coverage`           |
+| sample      | WARN                     | % genome at `--qc_min_depth` below `--qc_pass_min_pct` (80)                                                        | `low_coverage`           |
+| sample      | WARN (if otherwise PASS) | more than `--qc_max_dropped_amplicons` (1) amplicons dropped                                                       | `amplicon_dropout`       |
+| sample      | WARN (if otherwise PASS) | the declared primer scheme does not match the reads (`primer_scheme_check` is `mismatch`)                          | `primer_scheme_mismatch` |
+| sample      | WARN (if otherwise PASS) | `primer_trimmed_pct` below `--qc_min_primer_trimmed_pct` (off by default)                                          | `low_primer_trimming`    |
+| sample      | PASS                     | otherwise                                                                                                          |                          |
+| negative    | FAIL                     | mapped reads above `--ntc_max_mapped_reads` (1000) or % genome at >= 1x above `--ntc_max_genome_coverage_pct` (10) | `ntc_reads`              |
+| negative    | PASS                     | otherwise (never `low_coverage`/`no_reads`)                                                                        |                          |
+| negative    | NA                       | no usable depths and no flagstat                                                                                   | `no_depths`              |
 
 `NEG_E` above (5 mapped reads) is a PASS; `NEG_CONTAM` (a contaminated control with 5998 mapped reads) is a FAIL with
 `ntc_reads`, which also raises a run-level error in the report. A negative control that is `PASS` here can still be
@@ -330,21 +362,22 @@ One consensus per non-negative sample (negative controls get none, so they have 
 both files.
 
 ```
-sample         length  n_count  n_pct   ambiguous_count  status
+sample         length  n_count  n_pct   ambiguous_count  status  reason
 LOWCOV_D       29903   29903    100.00  0                empty
 MIX_A          29903   413      1.38    59               ok
 PURE_C         29903   189      0.63    0                ok
 Site_1_week_2  29903   2076     6.94    27               ok
 ```
 
-| Column            | Meaning                                                                                                                            |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `sample`          | Sample ID (also the FASTA header).                                                                                                 |
-| `length`          | Sequence length (equals the reference length, 29903, as variants are SNVs; deletions are written as `-`).                          |
-| `n_count`         | Number of `N` and `-` characters.                                                                                                  |
-| `n_pct`           | `n_count` as % of the reference length.                                                                                            |
-| `ambiguous_count` | Number of other non-ACGT characters, i.e. IUPAC ambiguity codes (`R Y K M S W`...).                                                |
-| `status`          | `ok`, `empty`, or `failed` (see [consensus conventions](#consensus-fasta-conventions)). For `failed`, the numeric fields are `NA`. |
+| Column            | Meaning                                                                                                                                                                                                                                                               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`          | Sample ID (also the FASTA header).                                                                                                                                                                                                                                    |
+| `length`          | Sequence length (equals the reference length, 29903, as variants are SNVs; deletions are written as `-`).                                                                                                                                                             |
+| `n_count`         | Number of `N` and `-` characters.                                                                                                                                                                                                                                     |
+| `n_pct`           | `n_count` as % of the reference length.                                                                                                                                                                                                                               |
+| `ambiguous_count` | Number of other non-ACGT characters, i.e. IUPAC ambiguity codes (`R Y K M S W`...).                                                                                                                                                                                   |
+| `status`          | `ok`, `empty`, or `failed` (see [consensus conventions](#consensus-fasta-conventions)). For `failed`, the numeric fields are `NA`.                                                                                                                                    |
+| `reason`          | Last column. `NA` for a clean `ok`; otherwise a one-line text: why a sample is `empty` or `failed`, or (for an `ok` sample) which variants were not applied, for example `1 variant(s) not applied: skipped variant at NC_045512.2:22942 (overlaps another variant)`. |
 
 ### `summary/mutations_of_interest.tsv`
 
@@ -495,6 +528,107 @@ writes none). The same record is embedded in every `<s>.demix_status.json`.
 For a `latest` or `container` run `barcode_version` is the stamp (for example `09_17_2026-00-46`) and
 `barcode_version_iso` is `2026-09-17T00-46`. Field meanings: see [`freyja_data`](#the-freyja_data-block).
 
+### `summary/dropout_impact.tsv` and `summary/dropout_impact_summary.tsv`
+
+Which dropped amplicons matter for the lineages that were detected ([usage.md](usage.md#dropout-impact)). Written in `full`
+mode (amplicon protocol) and in `demix` mode with an explicit primer scheme; not in other modes, and skipped with one warning
+when the Freyja dataset has no readable mutation lists (a `.feather`-only custom `--barcodes`). `dropout_impact.tsv` has one row per
+**dropped** amplicon of each sample (the header is always written):
+
+```
+sample         amplicon      start  end    mean_depth  n_informative_sites  n_sites_in_detected_lineages  affects_detected_lineage  affected_lineages
+Site_1_week_2  nCoV-2019_7   6284   7401   4.66        5                    0                             false                     NA
+Site_1_week_2  nCoV-2019_22  21533  22612  5.22        28                   10                            true                      XBB.1.5:9,BA.2:3,BA.5:3
+```
+
+| Column                                             | Meaning                                                                                                                                               |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`, `amplicon`, `start`, `end`, `mean_depth` | As in `amplicon_coverage.tsv`.                                                                                                                        |
+| `n_informative_sites`                              | Single-nucleotide sites inside the amplicon that some, but not nearly all, lineages of the dataset carry (fixed mutations cannot separate lineages).  |
+| `n_sites_in_detected_lineages`                     | Of those, the number carried by lineages detected in the sample (abundance >= `--dropout_min_abundance`); `NA` for a sample without an aggregate row. |
+| `affects_detected_lineage`                         | `true` when a detected lineage carries at least one informative site in the amplicon.                                                                 |
+| `affected_lineages`                                | Up to five detected lineages with their site counts (`name:count`), most affected first; `NA` if none.                                                |
+
+`dropout_impact_summary.tsv` has one row per sample of the amplicon table (zeros when nothing dropped):
+
+```
+sample         n_dropped_amplicons  informative_sites_total  informative_sites_in_dropped  pct_informative_sites_lost  n_dropped_affecting_detected_lineages
+MIX_A          0                    244                      0                             0.00                        0
+NEG_E          29                   244                      244                           100.00                      NA
+Site_1_week_2  2                    244                      33                            13.52                       1
+```
+
+(The 244 informative sites are those of the small test barcode file; with a real Freyja dataset there are thousands.) Samples
+that were not demixed (skipped, negative controls) have `NA` for the lineage columns.
+
+### `summary/unexplained_mutations.tsv`
+
+Frequent single-nucleotide variants that the demixed lineage mixture does not predict
+([usage.md](usage.md#unexplained-mutations)), for all non-negative samples of modes `full` and `demix`. The header is always
+written; on the synthetic samples at the default thresholds the table is empty. The per-sample tables are in
+`samples/<s>/variants/<s>.unexplained_mutations.tsv` (without `n_samples` and `recurrent`, which are added when the tables are
+combined). A real row (a spiked variant in the synthetic `PURE_C` test fixture):
+
+```
+sample  position  ref  alt  observed_freq  expected_freq  excess  depth  alt_depth  gene  aa_change  effect       n_samples  recurrent  p_value
+PURE_C  22102     A    T    0.3            0              0.3     120    36         S     E180D      missense     1          false      2.39e-42
+PURE_C  28802     A    T    0.18           0              0.18    100    18         N     R177*      stop_gained  1          false      1.41e-17
+```
+
+| Column                                | Meaning                                                                                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `observed_freq`, `depth`, `alt_depth` | From the ivar variants (`ALT_FREQ`, `TOTAL_DP`, `ALT_DP`).                                                                                              |
+| `expected_freq`                       | What the demixed lineages predict: the sum over detected lineages of abundance times "carries the mutation".                                            |
+| `excess`                              | `observed_freq - expected_freq`.                                                                                                                        |
+| `gene`, `aa_change`, `effect`         | Annotation from the GFF3 (`NA` / `intergenic` outside coding sequence).                                                                                 |
+| `n_samples`, `recurrent`              | In how many samples the same position and alternate base are unexplained; `true` at `--unexplained_min_recurrence` samples or more.                     |
+| `p_value`                             | Binomial p-value of the alternate-read count against the expected frequency (or a small background rate), see [parameters.md](parameters.md#qc-checks). |
+
+### `summary/freyja_timeseries.tsv` and `summary/freyja_timeseries_lineages.tsv`
+
+Long tables of abundance by site, collection date and lineage group, from the aggregate and the samplesheet
+([usage.md](usage.md#time-series-growth-rates-and-the-dashboard)). Written in all modes when there are at least two distinct
+collection dates among the non-control samples. `freyja_timeseries.tsv` uses Freyja's summarized groups, the `_lineages` table
+the individual lineages. Real rows (the `tests/data_timeseries` series, aggregate mode, with viral loads):
+
+```
+site   collection_date  lineage_group  abundance  abundance_load_weighted  n_samples  mean_viral_load  total_viral_load
+SiteA  2026-01-05       BA.2           0.800633   0.800633                 1          175675.00        175675.00
+SiteA  2026-01-05       JN.1           0.105472   0.105472                 1          175675.00        175675.00
+SiteA  2026-01-12       BA.2           0.689777   0.701996                 2          576892.50        1153785.00
+SiteA  2026-01-12       XBB.1.5        0.199020   0.183810                 2          576892.50        1153785.00
+```
+
+`abundance` is the mean over the samples of that site and date (a group a sample lacks counts as 0);
+`abundance_load_weighted` weights each sample by its `viral_load` (`NA` when no sample has one); `n_samples` counts every
+contributing sample, `mean_viral_load`/`total_viral_load` only those with a load. Negative controls, undated samples, samples
+below `--freyja_plot_mincov` coverage and samples missing from the samplesheet are left out. The header is always written.
+
+### `summary/freyja_growth_rates.csv`, `freyja_growth_rates.failed.txt`, `freyja_growth_inputs.json`
+
+Only with `--freyja_growth`: Freyja's relative growth rates for the last `--freyja_growth_days` days. Exactly one of the CSV and
+the `.failed.txt` note is written (too few dates or too short a span, or a Freyja error; never a failed run). Real output
+(`tests/data_timeseries`, where XBB.1.5 rises and BA.2 declines):
+
+```
+Lineage,Estimated Advantage,Bootstrap 95% interval
+XBB.1.5,60.3%,"[44.57% , 50.42%]"
+BA.1,-4.8%,"[-30.00% , 5.73%]"
+BA.2,-35.1%,"[-50.50% , -36.83%]"
+JN.1,-1.0%,"[-2.64% , 1.87%]"
+```
+
+The advantage is per serial interval (`--freyja_growth_serial_interval`, 5.5 days) relative to the other lineages. Freyja's bootstrap
+interval does not always contain its point estimate (as above), so read the sign and rough size, not the digits.
+`freyja_growth_inputs.json` records what went into the fit (`n_samples`, `n_dates`, `n_dates_window`, `first_date`, `last_date`,
+`span_days`, `n_with_viral_load`, `window_days`).
+
+### `summary/freyja_dashboard.html`
+
+Only with `--freyja_dash`: Freyja's interactive dashboard (Plotly is embedded; the Bootstrap styling and a logo are fetched from the
+internet when the page is opened). If it cannot be built, `summary/freyja_dashboard.failed.txt` says why. The report names the
+file but does not embed it.
+
 ### `summary/samplesheet.csv`
 
 The samplesheet in effect, copied to the results so that a later `demix`/`aggregate`/`report` run on this directory
@@ -509,11 +643,12 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
 | File                                                                                  | Content                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fastp/<s>.fastp.json`, `.html`, `.log`                                               | fastp report and log. The JSON feeds `raw_reads`/`trimmed_reads`. Trimmed FASTQs (`<s>.fastp.fastq.gz`) are published only with `--save_trimmed_reads` <!-- UNVERIFIED: file name taken from the nf-core fastp module output pattern; not exercised in this run -->.                                                                                                                     |
-| `bam/<s>.primertrimmed.bam`, `.bai`                                                   | Reads aligned with `bwa mem` to the reference, mapped reads only, primers soft-clipped with `ivar trim`, sorted and indexed (`--save_bam`, default true). For a sample with no mapped reads (a clean control) `ivar trim` is skipped and the (empty) BAM is carried on.                                                                                                                  |
+| `bam/<s>.primertrimmed.bam`, `.bai`                                                   | Reads aligned with `bwa mem` (or minibwa with `--aligner minibwa`) to the reference, mapped reads only, primers soft-clipped with `ivar trim`, sorted and indexed (`--save_bam`, default true). For a sample with no mapped reads (a clean control) `ivar trim` is skipped and the (empty) BAM is carried on.                                                                            |
 | `bam/<s>.mapped.bam`, `.bai`                                                          | Only with `--protocol capture` or `--skip_primer_trimming`: the mapped reads as aligned (nothing trimmed), sorted and indexed. Not published when duplicates are marked (the marked BAM below replaces it).                                                                                                                                                                              |
 | `bam/<s>.<primertrimmed\|mapped>.markdup.bam`, `.bai`                                 | Only with duplicate marking (`--duplicates mark`, or `auto` with `--protocol capture`): the BAM Freyja worked on, PCR duplicates flagged (0x400), none removed. Published unless `--save_bam false`.                                                                                                                                                                                     |
 | `bam/<s>.markdup_stats.txt`                                                           | Only with duplicate marking: `samtools markdup -s` statistics (`DUPLICATE PAIR`, `EXAMINED`, ...).                                                                                                                                                                                                                                                                                       |
-| `bam/<s>.ivar_trimmed.ivar.log`                                                       | ivar trim log (often empty).                                                                                                                                                                                                                                                                                                                                                             |
+| `bam/<s>.primertrimmed.cram`, `.crai`                                                 | Only with `--bam_format cram`: a reference-based CRAM (much smaller) instead of the BAM; read it with `samtools view -T <reference.fa>`. Freyja and QC always use the BAM inside the run.                                                                                                                                                                                                |
+| `bam/<s>.ivar_trimmed.ivar.log`                                                       | ivar trim log (its summary: reads trimmed, with and without primers; BED warnings). `primer_trimmed_pct` in `qc_summary.tsv` is computed from it.                                                                                                                                                                                                                                        |
 | `freyja/<s>.variants.tsv`                                                             | `freyja variants` output (ivar TSV, 20 columns: `REGION POS REF ALT REF_DP REF_RV REF_QUAL ALT_DP ALT_RV ALT_QUAL ALT_FREQ TOTAL_DP PVAL PASS GFF_FEATURE REF_CODON REF_AA ALT_CODON ALT_AA POS_AA`). With the default `--freyja_varthresh 0.0` it lists **every** alternate allele seen, including 1-read noise; filter on `ALT_FREQ` yourself. Header-only for a sample without reads. |
 | `freyja/<s>.depths`                                                                   | Four tab-separated columns, no header: contig, 1-based position, reference base, depth (Q>=20 bases), one row per genome position. All coverage QC and the consensus mask are computed from it.                                                                                                                                                                                          |
 | `freyja/<s>.demix`                                                                    | Freyja demix result for the sample (key/value rows `summarized`, `lineages`, `abundances`, `resid`, `coverage`, `pathogen`; first line holds the label). Present only for status `ok`.                                                                                                                                                                                                   |
@@ -525,7 +660,9 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
 | `freyja/<s>.boot_status.json`                                                         | Only with `--freyja_boot`: `{sample, status, reason}`; `failed` with the reason when the bootstrap failed (never fatal).                                                                                                                                                                                                                                                                 |
 | `coverage/<s>.primertrimmed.flagstat`                                                 | `samtools flagstat` of the final BAM (mode `full`); named `<s>.mapped.flagstat` when nothing was primer-trimmed.                                                                                                                                                                                                                                                                         |
 | `coverage/<s>.amplicon_coverage.tsv`                                                  | The sample's rows of `amplicon_coverage.tsv`.                                                                                                                                                                                                                                                                                                                                            |
+| `coverage/<s>.primer_scheme_check.tsv`, `.primer_scheme_summary.tsv`                  | Mode `full`, amplicon protocol with trimming: the primer scheme check (one row per bundled scheme with hits, expected hits and enrichment; and the one-row verdict `ok`/`mismatch`/`uninformative`/`NA`).                                                                                                                                                                                |
 | `coverage/<s>.qc_row.tsv`                                                             | The sample's row of `qc_summary.tsv`.                                                                                                                                                                                                                                                                                                                                                    |
+| `variants/<s>.unexplained_mutations.tsv`                                              | The sample's unexplained mutations (see `summary/unexplained_mutations.tsv`); header only when there are none. Not for negative controls.                                                                                                                                                                                                                                                |
 | `variants/<s>.ivar.vcf`                                                               | The variants TSV converted to VCF (all alleles; `FILTER` is ivar's p-value filter).                                                                                                                                                                                                                                                                                                      |
 | `variants/<s>.consensus_variants.vcf.gz`, `.tbi`                                      | The calls that passed the consensus filters (depth, ALT quality, frequency) with genotype `1/1` (alternate) or `0/1` (ambiguous, becomes an IUPAC code). Not written for negative controls.                                                                                                                                                                                              |
 | `variants/<s>.mask.bed`                                                               | 0-based BED of positions masked `N` (depth below `--consensus_min_depth`, confident variant sites excepted).                                                                                                                                                                                                                                                                             |
@@ -533,7 +670,7 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
 | `variants/<s>.annotated.tsv`                                                          | Only with `--annotate_variants`: the sample's rows of `annotated_variants.tsv` (with header).                                                                                                                                                                                                                                                                                            |
 | `consensus/<s>.consensus.fa`                                                          | The consensus genome (header `><s>`, 60 columns).                                                                                                                                                                                                                                                                                                                                        |
 | `consensus/<s>.consensus_stats.tsv`                                                   | The sample's row of `consensus_stats.tsv`.                                                                                                                                                                                                                                                                                                                                               |
-| `consensus/<s>.consensus_status.json`                                                 | `{sample, status, reason}`, e.g. `{"status": "empty", "reason": "no position reaches the minimum consensus depth (no usable coverage)"}`.                                                                                                                                                                                                                                                |
+| `consensus/<s>.consensus_status.json`                                                 | `{sample, status, reason, warnings}`; `warnings` is an array (variants that were not applied, at most 20), e.g. `{"status": "empty", "reason": "no position reaches the minimum consensus depth (no usable coverage)", "warnings": []}`.                                                                                                                                                 |
 | `consensus/<s>.consensus.log`                                                         | `bcftools consensus` log (applied variants, skipped overlapping sites).                                                                                                                                                                                                                                                                                                                  |
 
 ## Consensus FASTA conventions
@@ -553,16 +690,22 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
   if ALT_FREQ >= `--indel_freq` (0.75) and are never written as IUPAC. Every called variant also needs total depth >=
   `--consensus_min_depth_variants` (10) and ALT_QUAL >= `--consensus_min_alt_qual` (20).
 - **`-` deletions.** A deletion that is applied is written as `-` characters (bcftools `--mark-del '-'`); `-` is counted
-  with `N` in `n_count`. The synthetic dataset contains no deletions (Freyja's barcodes have none), so no `-` occurs in
-  the example above.
+  with `N` in `n_count`. ivar prints the deleted bases of a deletion as `N` (`-NNNNNNNNN`), so the alleles of
+  indels are rebuilt from the reference (`--reference` of the converter) and only the _length_ of a printed deletion is used; the
+  end-to-end test applies the common 9-base deletion at 11288-11296 and checks that exactly those nine positions are `-`. The
+  synthetic dataset itself contains no deletions (the test barcodes carry only SNVs), so no `-` occurs in the example above.
 - **Thresholds are applied here, not in Freyja.** Because `--freyja_varthresh` is 0.0, the variants TSV holds everything;
   the consensus filters decide what is called.
 - **Status** (`consensus_stats.tsv`, `consensus_status.json`):
   - `ok`: a consensus was built. This includes a clean sample identical to the reference (header-only variants file).
   - `empty`: no usable depth (no position outside called variants reaches `--consensus_min_depth`, or an empty depths
     file). The FASTA record is all `N` at reference length (`LOWCOV_D`).
-  - `failed`: a consensus step errored (for example a reference-base mismatch). The record is all `N` where one could
-    be written. A missing status file is treated as `failed` by the report builder.
+  - `failed`: a consensus step errored. The record is all `N` where one could be written. `reason` (last column of
+    `consensus_stats.tsv`) says why. A missing status file is treated as `failed` by the report builder. A variant whose
+    reference allele does not match the reference is not a failure: that variant is left out, the consensus is built from the
+    rest (up to 10 such positions), and the sample is `ok` with the skipped variants in `reason` and in the `warnings` array of
+    `consensus_status.json`. The report raises the WARN flag `consensus_failed` for `failed` samples and an INFO flag
+    `consensus_warnings` for `ok` samples with skipped variants.
   - A consensus is never an empty file.
 
 A low `n_pct` (and `ok`) is what you want; `empty`/high `n_pct` samples should not be used for sequence-based work.

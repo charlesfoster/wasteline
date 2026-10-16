@@ -1,0 +1,19 @@
+Changes in component 'nf-core/ivar/trim'
+'modules/nf-core/ivar/trim/environment.yml' is unchanged
+'modules/nf-core/ivar/trim/meta.yml' is unchanged
+Changes in 'ivar/trim/main.nf':
+--- modules/nf-core/ivar/trim/main.nf
++++ modules/nf-core/ivar/trim/main.nf
+@@ -28,7 +28,7 @@
+         -i ${bam} \\
+         -b ${bed} \\
+         -p ${prefix} \\
+-        > ${prefix}.ivar.log
++        > ${prefix}.ivar.log 2>&1
+     """
+ 
+     stub:
+
+'modules/nf-core/ivar/trim/tests/main.nf.test.snap' is unchanged
+'modules/nf-core/ivar/trim/tests/main.nf.test' is unchanged
+************************************************************

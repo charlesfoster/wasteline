@@ -55,13 +55,21 @@ profiles).
   shown in the report tooltips).
 - **Never a silent failure.** A sample that is skipped (too little coverage) or fails to demix gets a row with a status and a
   reason; it does not abort the run or leave an empty file that looks like a result.
+- **Checks that catch quiet errors.** The declared primer scheme is tested against where the reads actually start
+  (`primer_scheme_check` in `qc_summary.tsv`), the report says which dropped amplicons hide lineage-informative sites
+  (`summary/dropout_impact.tsv`), and frequent variants the lineage mixture does not explain are listed
+  (`summary/unexplained_mutations.tsv`, a screening aid, not a variant caller).
 - **QC and negative controls.** Per-sample coverage QC (PASS/WARN/FAIL), per-amplicon coverage and dropout for nine bundled primer
   schemes (all use the bundled reference's contig name; or bring your own BED). Negative controls are demixed so contamination is visible
   (own table and report section, kept out of the aggregate by default) and raise a run-level flag when they have reads.
 - **Consensus genomes** with IUPAC ambiguity codes for mixed sites and `N` masking of low-depth positions; optional
   `--annotate_variants` lists the amino-acid consequences of the applied variants (`bcftools csq`).
-- **Optional** mutations-of-interest tracking, and a time-aware abundance plot and report panel when samples have collection
-  dates (also in `aggregate` and `demix` modes, from the samplesheet).
+- **Surveillance outputs.** With collection dates (and optionally a `viral_load` column) in the samplesheet: a time-aware plot,
+  long time-series tables per site (`summary/freyja_timeseries[_lineages].tsv`, plain and viral-load-weighted), and, opt-in,
+  Freyja relative growth rates (`--freyja_growth`) and the interactive Freyja dashboard (`--freyja_dash`); all modes, also from
+  existing `.demix` files.
+- **Optional** mutations-of-interest tracking; `--bam_format cram` for much smaller alignments; `--aligner minibwa` (experimental,
+  see [docs/aligner_evaluation.md](docs/aligner_evaluation.md)); `bin/replay_run.py` rebuilds the exact command of a recorded run.
 - **One offline HTML report**: run-level flags, QC table, lineage abundance bars and heatmap, coverage tracks, amplicon dropout,
   demix status, negative controls, barcode comparison, provenance. Readable with 100+ samples (see [docs/report.md](docs/report.md)).
 - Helper scripts to make and check samplesheets, including from the results of a previous (or legacy Snakemake) run.
@@ -71,7 +79,8 @@ profiles).
 ```
 FASTQ pairs (samplesheet)                       Freyja data: --barcodes latest | container | date | stamp | file
       |                                                   (FREYJA_DATA, resolved once per run)
-  FASTP -> BWA_MEM -> SAMTOOLS_VIEW (-F 4) -> IVAR_TRIM -> SAMTOOLS_SORT            |
+  FASTP -> BWA_MEM -> SAMTOOLS_VIEW (-F 4) -> [READ_STARTS -> PRIMER_SCHEME_CHECK]  |
+           (or MINIBWA_MEM)                     -> IVAR_TRIM -> SAMTOOLS_SORT       |
                                                   |                                 |
                                            FREYJA_VARIANTS  ->  variants.tsv + depths
                     +-------------------------+---------------------+             |
@@ -90,6 +99,9 @@ mode aggregate:  existing .demix files       ->  FREYJA_AGGREGATE_PLOT -> report
 mode report:     results of a finished run   ->  RENDER_REPORT
 mode update_db:  nothing                     ->  FREYJA_UPDATE (stores the dataset in --db_dir)
 
+after the demix: DROPOUT_IMPACT, UNEXPLAINED_MUTATIONS(_CONCAT), TIMESERIES_TABLE (all modes), and opt-in
+                 FREYJA_RELGROWTHRATE (--freyja_growth) and FREYJA_DASH (--freyja_dash)
+
 optional branches (full and demix): --compare_barcodes (second FREYJA_DEMIX + BARCODE_COMPARE), --freyja_boot (FREYJA_BOOT),
                                     --annotate_variants (ANNOTATE_VARIANTS), --mutations_of_interest (MUTATIONS_OF_INTEREST)
 ```
@@ -107,7 +119,7 @@ optional branches (full and demix): --compare_barcodes (second FREYJA_DEMIX + BA
    ```
 
    Illumina names `<id>_S<n>_L001_R1_001.fastq.gz` are expected (`--suffix` changes that). Files with `NEG_`/`NC_` in the name become
-   negative controls. The sheet has the columns `sample,fastq_1,fastq_2[,sample_type][,collection_date][,site]`.
+   negative controls. The sheet has the columns `sample,fastq_1,fastq_2[,sample_type][,collection_date][,site][,viral_load]`.
 
 3. Run:
 
@@ -118,6 +130,9 @@ optional branches (full and demix): --compare_barcodes (second FREYJA_DEMIX + BA
        --outdir results \
        --primer_scheme midnight
    ```
+
+   `--primer_scheme` names the scheme of your library; if you leave it out, `qiagenv1` (QIAseq Direct SARS-CoV-2) is used (the old
+   Snakemake pipeline defaulted to `midnight`).
 
 4. Open `results/summary/report.html` in a browser. The tables (`summary/demix_status.tsv`, `qc_summary.tsv`, `freyja_aggregated.tsv`,
    `consensus_genomes.fasta`) and the per-sample files are described in [docs/output.md](docs/output.md).

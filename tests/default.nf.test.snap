@@ -30,6 +30,9 @@
                 "CONSENSUS_STATS_CONCAT": {
                     "python": "3.12.12"
                 },
+                "DROPOUT_IMPACT": {
+                    "python": "3.12.12"
+                },
                 "FASTP": {
                     "fastp": "1.3.6"
                 },
@@ -60,11 +63,17 @@
                 "LOW_DEPTH_MASK": {
                     "python": "3.12.12"
                 },
+                "PRIMER_SCHEME_CHECK": {
+                    "python": "3.12.12"
+                },
                 "QC_CONCAT": {
                     "python": "3.12.12"
                 },
                 "QC_SAMPLE": {
                     "python": "3.12.12"
+                },
+                "READ_STARTS": {
+                    "samtools": 1.24
                 },
                 "SAMTOOLS_FLAGSTAT": {
                     "samtools": 1.24
@@ -74,6 +83,18 @@
                 },
                 "SAMTOOLS_VIEW": {
                     "samtools": 1.24
+                },
+                "TIMESERIES_TABLE": {
+                    "python": "3.12.12"
+                },
+                "TIMESERIES_TABLE_LINEAGES": {
+                    "python": "3.12.12"
+                },
+                "UNEXPLAINED_MUTATIONS": {
+                    "python": "3.12.12"
+                },
+                "UNEXPLAINED_MUTATIONS_CONCAT": {
+                    "python": "3.12.12"
                 },
                 "Workflow": {
                     "charlesfoster/wasteline": "v0.1.0dev"
@@ -96,6 +117,8 @@
                 "samples/LOWCOV_D/consensus/LOWCOV_D.consensus_status.json",
                 "samples/LOWCOV_D/coverage",
                 "samples/LOWCOV_D/coverage/LOWCOV_D.amplicon_coverage.tsv",
+                "samples/LOWCOV_D/coverage/LOWCOV_D.primer_scheme_check.tsv",
+                "samples/LOWCOV_D/coverage/LOWCOV_D.primer_scheme_summary.tsv",
                 "samples/LOWCOV_D/coverage/LOWCOV_D.primertrimmed.flagstat",
                 "samples/LOWCOV_D/coverage/LOWCOV_D.qc_row.tsv",
                 "samples/LOWCOV_D/fastp",
@@ -113,6 +136,7 @@
                 "samples/LOWCOV_D/variants/LOWCOV_D.consensus_variants.vcf.gz.tbi",
                 "samples/LOWCOV_D/variants/LOWCOV_D.ivar.vcf",
                 "samples/LOWCOV_D/variants/LOWCOV_D.mask.bed",
+                "samples/LOWCOV_D/variants/LOWCOV_D.unexplained_mutations.tsv",
                 "samples/MIX_A",
                 "samples/MIX_A/bam",
                 "samples/MIX_A/bam/MIX_A.ivar_trimmed.ivar.log",
@@ -125,6 +149,8 @@
                 "samples/MIX_A/consensus/MIX_A.consensus_status.json",
                 "samples/MIX_A/coverage",
                 "samples/MIX_A/coverage/MIX_A.amplicon_coverage.tsv",
+                "samples/MIX_A/coverage/MIX_A.primer_scheme_check.tsv",
+                "samples/MIX_A/coverage/MIX_A.primer_scheme_summary.tsv",
                 "samples/MIX_A/coverage/MIX_A.primertrimmed.flagstat",
                 "samples/MIX_A/coverage/MIX_A.qc_row.tsv",
                 "samples/MIX_A/fastp",
@@ -142,6 +168,7 @@
                 "samples/MIX_A/variants/MIX_A.consensus_variants.vcf.gz.tbi",
                 "samples/MIX_A/variants/MIX_A.ivar.vcf",
                 "samples/MIX_A/variants/MIX_A.mask.bed",
+                "samples/MIX_A/variants/MIX_A.unexplained_mutations.tsv",
                 "samples/MIX_B",
                 "samples/MIX_B/bam",
                 "samples/MIX_B/bam/MIX_B.ivar_trimmed.ivar.log",
@@ -154,6 +181,8 @@
                 "samples/MIX_B/consensus/MIX_B.consensus_status.json",
                 "samples/MIX_B/coverage",
                 "samples/MIX_B/coverage/MIX_B.amplicon_coverage.tsv",
+                "samples/MIX_B/coverage/MIX_B.primer_scheme_check.tsv",
+                "samples/MIX_B/coverage/MIX_B.primer_scheme_summary.tsv",
                 "samples/MIX_B/coverage/MIX_B.primertrimmed.flagstat",
                 "samples/MIX_B/coverage/MIX_B.qc_row.tsv",
                 "samples/MIX_B/fastp",
@@ -171,6 +200,7 @@
                 "samples/MIX_B/variants/MIX_B.consensus_variants.vcf.gz.tbi",
                 "samples/MIX_B/variants/MIX_B.ivar.vcf",
                 "samples/MIX_B/variants/MIX_B.mask.bed",
+                "samples/MIX_B/variants/MIX_B.unexplained_mutations.tsv",
                 "samples/NEG_CONTAM",
                 "samples/NEG_CONTAM/bam",
                 "samples/NEG_CONTAM/bam/NEG_CONTAM.ivar_trimmed.ivar.log",
@@ -178,6 +208,8 @@
                 "samples/NEG_CONTAM/bam/NEG_CONTAM.primertrimmed.bam.bai",
                 "samples/NEG_CONTAM/coverage",
                 "samples/NEG_CONTAM/coverage/NEG_CONTAM.amplicon_coverage.tsv",
+                "samples/NEG_CONTAM/coverage/NEG_CONTAM.primer_scheme_check.tsv",
+                "samples/NEG_CONTAM/coverage/NEG_CONTAM.primer_scheme_summary.tsv",
                 "samples/NEG_CONTAM/coverage/NEG_CONTAM.primertrimmed.flagstat",
                 "samples/NEG_CONTAM/coverage/NEG_CONTAM.qc_row.tsv",
                 "samples/NEG_CONTAM/fastp",
@@ -197,6 +229,8 @@
                 "samples/NEG_E/bam/NEG_E.primertrimmed.bam.bai",
                 "samples/NEG_E/coverage",
                 "samples/NEG_E/coverage/NEG_E.amplicon_coverage.tsv",
+                "samples/NEG_E/coverage/NEG_E.primer_scheme_check.tsv",
+                "samples/NEG_E/coverage/NEG_E.primer_scheme_summary.tsv",
                 "samples/NEG_E/coverage/NEG_E.primertrimmed.flagstat",
                 "samples/NEG_E/coverage/NEG_E.qc_row.tsv",
                 "samples/NEG_E/fastp",
@@ -221,6 +255,8 @@
                 "samples/PURE_C/consensus/PURE_C.consensus_status.json",
                 "samples/PURE_C/coverage",
                 "samples/PURE_C/coverage/PURE_C.amplicon_coverage.tsv",
+                "samples/PURE_C/coverage/PURE_C.primer_scheme_check.tsv",
+                "samples/PURE_C/coverage/PURE_C.primer_scheme_summary.tsv",
                 "samples/PURE_C/coverage/PURE_C.primertrimmed.flagstat",
                 "samples/PURE_C/coverage/PURE_C.qc_row.tsv",
                 "samples/PURE_C/fastp",
@@ -238,6 +274,7 @@
                 "samples/PURE_C/variants/PURE_C.consensus_variants.vcf.gz.tbi",
                 "samples/PURE_C/variants/PURE_C.ivar.vcf",
                 "samples/PURE_C/variants/PURE_C.mask.bed",
+                "samples/PURE_C/variants/PURE_C.unexplained_mutations.tsv",
                 "samples/Site_1_week_2",
                 "samples/Site_1_week_2/bam",
                 "samples/Site_1_week_2/bam/Site_1_week_2.ivar_trimmed.ivar.log",
@@ -250,6 +287,8 @@
                 "samples/Site_1_week_2/consensus/Site_1_week_2.consensus_status.json",
                 "samples/Site_1_week_2/coverage",
                 "samples/Site_1_week_2/coverage/Site_1_week_2.amplicon_coverage.tsv",
+                "samples/Site_1_week_2/coverage/Site_1_week_2.primer_scheme_check.tsv",
+                "samples/Site_1_week_2/coverage/Site_1_week_2.primer_scheme_summary.tsv",
                 "samples/Site_1_week_2/coverage/Site_1_week_2.primertrimmed.flagstat",
                 "samples/Site_1_week_2/coverage/Site_1_week_2.qc_row.tsv",
                 "samples/Site_1_week_2/fastp",
@@ -267,23 +306,29 @@
                 "samples/Site_1_week_2/variants/Site_1_week_2.consensus_variants.vcf.gz.tbi",
                 "samples/Site_1_week_2/variants/Site_1_week_2.ivar.vcf",
                 "samples/Site_1_week_2/variants/Site_1_week_2.mask.bed",
+                "samples/Site_1_week_2/variants/Site_1_week_2.unexplained_mutations.tsv",
                 "summary",
                 "summary/amplicon_coverage.tsv",
                 "summary/barcode_version.json",
                 "summary/consensus_genomes.fasta",
                 "summary/consensus_stats.tsv",
                 "summary/demix_status.tsv",
+                "summary/dropout_impact.tsv",
+                "summary/dropout_impact_summary.tsv",
                 "summary/freyja_aggregated.tsv",
                 "summary/freyja_aggregated_controls.tsv",
                 "summary/freyja_plot.pdf",
                 "summary/freyja_plot_times.pdf",
+                "summary/freyja_timeseries.tsv",
+                "summary/freyja_timeseries_lineages.tsv",
                 "summary/qc_summary.tsv",
                 "summary/report.html",
                 "summary/report_data.json",
-                "summary/samplesheet.csv"
+                "summary/samplesheet.csv",
+                "summary/unexplained_mutations.tsv"
             ]
         ],
-        "timestamp": "2026-10-16T02:33:40.575207",
+        "timestamp": "2026-10-16T18:38:08.278025",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"
