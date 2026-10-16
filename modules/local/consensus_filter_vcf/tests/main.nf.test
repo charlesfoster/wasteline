@@ -298,4 +298,91 @@ nextflow_process {
             )
         }
     }
+
+    test("multi-allelic SNV sites are merged into ONE record per position (synthetic) - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'MA_1' ], file("\$projectDir/tests/fixtures/consensus_multiallelic/synthetic_multiallelic.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                """
+            }
+        }
+
+        then {
+            def vcf = new java.util.zip.GZIPInputStream(new FileInputStream(process.out.vcf[0][1].toString())).text.readLines()
+            def recs = vcf.findAll { !it.startsWith('#') }.collect { it.split('\t') as List }
+            def byPos = recs.collectEntries { [(it[1] as int): it] }
+            def gt = { int pos -> byPos[pos][9].split(':')[0] }
+            assertAll(
+                { assert process.success },
+                { assert recs.size() == byPos.size() },                                  // one record per position
+                // not applied: 7000 (two ALTs at 0.2), 9300 (AF == 0.25), 10000 (DP 8)
+                { assert !byPos.containsKey(7000) && !byPos.containsKey(9300) && !byPos.containsKey(10000) },
+                // 22942 T>G 0.6849 + T>A 0.2941 -> one record, alleles G,A, genotype 1/2
+                { assert byPos[22942][3] == 'T' && byPos[22942][4] == 'G,A' && gt(22942) == '1/2' },
+                { assert byPos[22896][4] == 'G,C' && gt(22896) == '1/2' },
+                { assert byPos[23604][4] == 'G,A' && gt(23604) == '1/2' },
+                { assert byPos[4000][4] == 'C,G,T' && gt(4000) == '1/2/3' },             // three ALTs, reference 0
+                { assert byPos[5000][4] == 'A,G' && gt(5000) == '0/1/2' },               // reference + two ALTs
+                { assert byPos[6000][4] == 'A' && gt(6000) == '1/1' },                   // major ALT >= 0.75, minor ALT dropped
+                { assert byPos[6100][4] == 'A' && gt(6100) == '1/1' },
+                { assert gt(8000) == '1/1' && !byPos[8000][4].contains(',') },                  // the ALT_DP 4 allele is no member and the reference (0.2) is no contributor: the ALT alone
+                { assert gt(14000) == '1/1' && !byPos[14000][4].contains(',') },                // 0.58 / 0.24 / 0.18, reference absent: plain 0.58 ALT
+                { assert gt(8100) == '0/1' && !byPos[8100][4].contains(',') },
+                { assert gt(9000) == '0/1' && gt(9100) == '1/1' && gt(9200) == '0/1' && gt(9400) == '1/1' },
+                { assert gt(11000) == '0/1' && !byPos[11000][4].contains(',') },         // the ALT_QUAL 10 allele is no candidate
+                { assert new File(process.out.bed[0][1].toString()).readLines().size() == recs.size() }
+            )
+        }
+    }
+
+    test("multi-allelic sites with IUPAC off: only an allele >= consensus_freq is applied (synthetic) - real") {
+
+        tag "docker"
+        config "./ext_no_iupac.config"
+
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'MA_1' ], file("\$projectDir/tests/fixtures/consensus_multiallelic/synthetic_multiallelic.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                """
+            }
+        }
+
+        then {
+            def vcf = new java.util.zip.GZIPInputStream(new FileInputStream(process.out.vcf[0][1].toString())).text.readLines()
+            def recs = vcf.findAll { !it.startsWith('#') }.collect { it.split('\t') as List }
+            assertAll(
+                { assert process.success },
+                { assert recs.collect { it[1] as int } == [6000, 6100, 9100] },
+                { assert recs.every { it[9].startsWith('1/1:') && !it[4].contains(',') } }
+            )
+        }
+    }
 }

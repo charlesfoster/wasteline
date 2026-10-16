@@ -715,7 +715,7 @@ variant caller. Because `freyja_varthresh` is 0.0, the table holds every alterna
 | indel with frequency >= this is applied; below it ignored, **never** IUPAC                                                | `--indel_freq` (0.75)                                                    |
 | positions with depth below this (from the depths file, variant sites exempt) become `N`                                   | `--consensus_min_depth` (10)                                             |
 
-The defaults are listed in [parameters.md](parameters.md). `--consensus_iupac false` switches ambiguity codes off (the reference base is left instead). `--skip_consensus`
+The defaults are listed in [parameters.md](parameters.md). `--consensus_iupac false` switches ambiguity codes off (the reference base is left instead, unless one allele reaches `consensus_freq`). When several alternate alleles compete at one position, the site is decided as a whole (ivar reports one row per allele; the reference is the remainder, `1 - sum of the ALT frequencies`): a single allele at or above `consensus_freq` is written as a plain base; otherwise every allele (the reference included) above `consensus_iupac_min_af` (and, for an ALT, with at least `consensus_iupac_min_alt_reads` reads) joins one IUPAC code, e.g. G 0.68 + A 0.29 gives `R` (A/G), not `K` (G/T). `--skip_consensus`
 disables the whole consensus chain and its summaries. Deletions are written as `-`. `consensus_stats.tsv` gives
 `length, n_count, n_pct, ambiguous_count` and a `status`: `ok` (including a clean reference-identical sample), `empty` (no
 usable depth; an all-N sequence of reference length) or `failed`. A consensus is never an empty file, and a sample whose

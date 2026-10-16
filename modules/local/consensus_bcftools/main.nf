@@ -28,7 +28,9 @@ process CONSENSUS_BCFTOOLS {
     // exactly the records at that position are dropped from the VCF and bcftools is re-run (max 10 retries; each
     // retry removes the first offending position bcftools reports). The sample then ends with status ok and the
     // dropped variants listed in the status JSON `warnings` array (also in `reason`). Variants bcftools itself
-    // skips because they overlap another variant ("overlaps with another variant, skipping") are listed there too.
+    // skips because they overlap another variant ("overlaps with another variant, skipping") are listed there too:
+    // "skipped variant at <contig>:<pos> (inside a deleted region)" when the site lies inside an applied deletion (the
+    // deletion wins, expected), otherwise "(overlaps another variant)".
     // Any other failure, or more than 10 offending positions, gives status failed + all-N as before.
     def args = task.ext.args ?: ''
     prefix = task.ext.prefix ?: "${meta.id}"
@@ -101,8 +103,30 @@ process CONSENSUS_BCFTOOLS {
             echo "retry \$attempt: dropped the variant(s) at \$chrom:\$pos (REF does not match the reference)" >> ${prefix}.consensus.log
             echo "skipped variant at \$chrom:\$pos (REF mismatch)" >> warnings.txt
         done
-        # variants bcftools itself skipped (overlapping records)
-        grep -o 'The site [^ ]* overlaps with another variant' ${prefix}.consensus.log | awk '!seen[\$3]++ { print "skipped variant at " \$3 " (overlaps another variant)" }' >> warnings.txt || true
+        # variants bcftools itself skipped (overlapping records). A site inside the span of a deletion that was applied
+        # is an expected note (the deletion wins), any other overlap keeps the generic wording.
+        {
+            bcftools query -f '%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\n' "\$cur_vcf" | awk -F'\\t' 'length(\$4) > length(\$5)'
+            echo "END_OF_DELETIONS"
+            grep -o 'The site [^ ]* overlaps with another variant' ${prefix}.consensus.log || true
+        } | awk -F'\\t' '
+            /^END_OF_DELETIONS\$/ { listing = 1; next }
+            !listing { nd++; dc[nd] = \$1; ds[nd] = \$2; de[nd] = \$3; next }
+            {
+                site = \$0; sub(/^The site /, "", site); sub(/ overlaps with another variant\$/, "", site)
+                if (!(site in skipped)) { skipped[site] = 1; order[++ns] = site }
+            }
+            END {
+                for (k = 1; k <= ns; k++) {
+                    site = order[k]
+                    p = site; sub(/^.*:/, "", p); c = site; sub(/:[^:]*\$/, "", c)
+                    inside = 0
+                    # inside an applied deletion (one that was not skipped itself)
+                    for (i = 1; i <= nd; i++)
+                        if (dc[i] == c && p + 0 > ds[i] + 0 && p + 0 <= de[i] + 0 && !((c ":" ds[i]) in skipped)) inside = 1
+                    print "skipped variant at " site (inside ? " (inside a deleted region)" : " (overlaps another variant)")
+                }
+            }' >> warnings.txt
 
         if [ "\$consensus_ok" -eq 1 ]; then
             awk -v id='${meta.id}' '/^>/ { print ">" id; next } { print }' ${prefix}.consensus.raw.fa > ${prefix}.consensus.fa

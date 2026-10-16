@@ -294,3 +294,16 @@ def test_bcftools_consensus_accepts_the_vcf_and_marks_the_deletion(tmp_path, ref
     assert len(s) == 29903
     assert s[11287:11296] == "-" * 9 and s[11286] == "G" and s[11296] == seq[11296]
     assert s[29900:] == "---"
+
+
+def test_competing_snv_alts_at_one_position_stay_separate_records(tmp_path, ref, seq):
+    # the converter keeps one record per ALT (frequencies intact); CONSENSUS_FILTER_VCF merges them
+    # (tests/python/test_consensus_multiallelic.py)
+    assert seq[22941] == "T"
+    recs = convert(
+        tmp_path,
+        [tsv_row(22942, "T", "G", af=0.6849, dp=238), tsv_row(22942, "T", "A", af=0.2941, dp=238)],
+        ref,
+    )
+    assert [r[1:5] for r in recs] == [["22942", ".", "T", "G"], ["22942", ".", "T", "A"]]
+    assert [r[9].rstrip().split(":")[-1] for r in recs] == ["0.6849", "0.2941"]

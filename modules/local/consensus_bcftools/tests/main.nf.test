@@ -443,7 +443,7 @@ nextflow_process {
         }
     }
 
-    test("SNV inside a deleted span: bcftools skips it, listed in warnings, status ok - real") {
+    test("SNV inside a deleted span: bcftools skips it, listed in warnings as an expected note, status ok - real") {
 
         tag "docker"
         setup {
@@ -495,7 +495,7 @@ nextflow_process {
                 { assert process.success },
                 { assert fa[0] == '>OVL_1' },
                 { assert status.status == 'ok' },
-                { assert status.warnings == ['skipped variant at NC_045512.2:11296 (overlaps another variant)'] },
+                { assert status.warnings == ['skipped variant at NC_045512.2:11296 (inside a deleted region)'] },
                 { assert status.reason.contains('1 variant(s) not applied') },
                 { assert cons.size() == 29903 },
                 { assert cons.substring(11286, 11296) == 'G' + '-' * 9 },                 // the deletion is applied
@@ -692,6 +692,69 @@ nextflow_process {
                 { assert cons.substring(11999, 12003) == ref.substring(11999, 12003) }, // deletion at AF .5: not applied
                 { assert cons.size() == 29903 },
                 { assert !cons.contains('N') }
+            )
+        }
+    }
+
+    test("multi-allelic sites: one IUPAC code for the whole mixture, no overlap warnings (synthetic) - real") {
+
+        tag "docker"
+        setup {
+            run("IVAR_VARIANTS_TO_VCF") {
+                script "../../ivar_variants_to_vcf/main.nf"
+                process {
+                    """
+                    input[0] = [ [ id:'MA_1' ], file("\$projectDir/tests/fixtures/consensus_multiallelic/synthetic_multiallelic.variants.tsv") ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+            run("CONSENSUS_FILTER_VCF") {
+                script "../../consensus_filter_vcf/main.nf"
+                process {
+                    """
+                    input[0] = IVAR_VARIANTS_TO_VCF.out.vcf
+                    """
+                }
+            }
+            run("LOW_DEPTH_MASK") {
+                script "../../low_depth_mask/main.nf"
+                process {
+                    """
+                    def depths = new File("\${launchDir}/const.depths")
+                    depths.text = (1..29903).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
+                    input[0] = CONSENSUS_FILTER_VCF.out.bed.map { meta, bed -> [ meta, file(depths.toString()), bed ] }
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed)
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def seqOf = { String path -> new File(path).readLines().findAll { !it.startsWith('>') }.join('') }
+            def ref = new File("${projectDir}/assets/references/NC_045512.fasta").readLines().findAll { !it.startsWith('>') }.join('')
+            def fa = new File(process.out.fasta[0][1].toString()).readLines()
+            def cons = fa.findAll { !it.startsWith('>') }.join('')
+            def status = new groovy.json.JsonSlurper().parse(new File(process.out.status[0][1].toString()))
+            def expected = [22942: 'R', 22896: 'S', 23604: 'R', 4000: 'B', 5000: 'V', 6000: 'A', 6100: 'A', 7000: 'C',
+                            8000: 'A', 8100: 'W', 9000: 'M', 9100: 'A', 9200: 'W', 9300: 'G', 9400: 'C', 10000: 'T', 11000: 'M', 14000: 'A']
+            assertAll(
+                { assert process.success },
+                { assert status == [sample: 'MA_1', status: 'ok', reason: '', warnings: []] },   // no 'overlaps another variant' any more
+                { assert !new File(process.out.log[0][1].toString()).text.contains('overlaps') },
+                { assert expected.every { pos, base -> cons[pos - 1] == base } },
+                { assert cons[22941] == 'R' && ref[22941] == 'T' },                      // T>G 0.6849 + T>A 0.2941: A/G, was K (G/T)
+                { assert cons.size() == 29903 },
+                { assert (0..<cons.size()).findAll { cons[it] != ref[it] }.every { expected.containsKey(it + 1) } }
             )
         }
     }

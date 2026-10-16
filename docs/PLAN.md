@@ -126,7 +126,19 @@ nf-schema validated (`assets/schema_input.json` etc.). IDs match `^[A-Za-z0-9._-
     old pipeline) are masked N. Because `freyja_varthresh` defaults to 0.0 the TSV holds every ALT; thresholds are applied
     here, not in Freyja. Status: `ok` (including a clean reference-identical sample with a header-only variants file),
     `empty` (no usable depth: no position outside called variants reaches `consensus_min_depth`, or empty depths file; output
-    all-N of reference length), `failed` (e.g. REF mismatch; all-N). Never an empty file. A missing `consensus_status.json`
+    all-N of reference length), `failed` (e.g. REF mismatch; all-N).
+    **Multi-allelic SNV sites (added after real-data testing).** SNVs are decided per position, not per record: ivar writes one
+    row per ALT but `bcftools consensus` applies one record per position, so `CONSENSUS_FILTER_VCF` merges the SNV rows of a
+    position into one record. With f_i the ALT frequencies and f_ref = max(0, 1 - sum f_i): one ALT with f >= `consensus_freq`
+    -> that allele; otherwise (IUPAC on) the set S of alleles with f > `consensus_iupac_min_af` (an ALT also needs ALT_DP >=
+    `consensus_iupac_min_alt_reads`; the reference counts with f_ref) -> if |S| >= 2 one record with a polyploid genotype
+    listing all members, written as one IUPAC code by `bcftools consensus -H I` (T>G 0.68 + T>A 0.29 gives `R`, not `K`);
+    if S is a single ALT below `consensus_freq`, the site is ALT/reference (`0/1`) when it has one candidate row (as before)
+    and the plain ALT (`1/1`) when several rows compete and the reference is not a contributor (f_ref <= `iupac_min_af`).
+    Indels are never merged and never IUPAC. A SNV inside an applied deletion is skipped (the deletion wins) and noted in the
+    status JSON `warnings` as `(inside a deleted region)`. Also: indel REF/ALT alleles are built from the reference, never from
+    ivar's printed bases (ivar prints deleted bases as N); a REF mismatch skips only that record (status ok + warnings).
+ Never an empty file. A missing `consensus_status.json`
     is treated as `failed` by the report builder. `--skip_consensus` disables. Concatenated to
     `summary/consensus_genomes.fasta`, stats to `summary/consensus_stats.tsv`.
 12. Opt-in extras: `--annotate_variants` (F16; `bcftools csq` port of `amino_acid_consequences`, run on the consensus-filter VCF),
