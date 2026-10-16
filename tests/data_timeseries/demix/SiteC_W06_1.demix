@@ -1,0 +1,7 @@
+	SiteC_W06_1.variants.tsv
+summarized	[('Omicron', 0.48107179), ('XBB.1.5* [Omicron (XBB.1.5.X)]', 0.41433352), ('BA.2.86* (BA.2.86.X)', 0.1045947)]
+lineages	BA.2 XBB.1.5 JN.1 BA.1
+abundances	0.46814025 0.41433352 0.10459470 0.01293154
+resid	2.694314
+coverage	97.9231
+pathogen	SARS-CoV-2

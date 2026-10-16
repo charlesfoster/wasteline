@@ -1,0 +1,17 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    "S_1.primertrimmed.cram",
+                    "S_1.primertrimmed.cram.crai"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-16T14:00:14.626413",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

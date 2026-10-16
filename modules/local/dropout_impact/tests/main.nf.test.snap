@@ -1,0 +1,32 @@
+{
+    "tiny dataset directory with lineage_mutations.json - real": {
+        "content": [
+            [
+                "dropout_impact.tsv:md5,058c28eb6417bd699034678889a4df3e"
+            ],
+            [
+                "dropout_impact_summary.tsv:md5,659c10a0e1faf9593b83f645be2d2d36"
+            ]
+        ],
+        "timestamp": "2026-10-16T09:49:32.266482",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    },
+    "stub": {
+        "content": [
+            [
+                "dropout_impact.tsv:md5,d461a8a673138bd678534ba4759210da"
+            ],
+            [
+                "dropout_impact_summary.tsv:md5,a8e9f6cc7f37f8fda1fb113d940a1e29"
+            ]
+        ],
+        "timestamp": "2026-10-16T09:49:27.178761",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

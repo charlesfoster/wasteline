@@ -50,7 +50,13 @@ QC_COLUMNS = (
     "consensus_length",
     "consensus_n_pct",
     "barcode_version",
+    # appended later (older qc_summary.tsv files lack them: they load as null)
+    "primer_trimmed_pct",
+    "primer_scheme_check",
+    "primer_scheme_best",
+    "primer_scheme_enrichment",
 )
+PRIMER_SCHEME_CHECKS = ("ok", "mismatch", "uninformative")
 INT_COLUMNS = {
     "raw_reads",
     "trimmed_reads",
@@ -68,6 +74,8 @@ FLOAT_COLUMNS = {
     "pct_genome_ge_10x",
     "pct_genome_ge_min_depth",
     "consensus_n_pct",
+    "primer_trimmed_pct",
+    "primer_scheme_enrichment",
 }
 QC_STATUSES = ("PASS", "WARN", "FAIL")
 DEMIX_STATUSES = ("ok", "failed", "skipped_low_coverage", "missing")
@@ -106,7 +114,43 @@ SUMMARY_PARAMS = (
     "freyja_boot",
     "annotate_variants",
     "skip_consensus",
+    "qc_min_primer_trimmed_pct",
+    "dropout_impact",
+    "dropout_min_abundance",
+    "unexplained_mutations",
+    "unexplained_min_freq",
+    "unexplained_min_excess",
+    "unexplained_min_depth",
+    "unexplained_min_alt_depth",
+    "unexplained_min_recurrence",
+    "unexplained_max_pvalue",
+    "timeseries",
+    "timeseries_min_abundance",
+    "freyja_growth",
+    "freyja_growth_days",
+    "freyja_growth_nboots",
+    "freyja_growth_seed",
+    "freyja_growth_serial_interval",
+    "freyja_growth_grthresh",
+    "freyja_growth_min_abundance",
+    "freyja_growth_min_dates",
+    "freyja_growth_min_span_days",
+    "freyja_growth_scale_by_viral_load",
+    "freyja_dash",
 )
+# Thresholds that only appear in report_data.thresholds when the run recorded them
+OPTIONAL_THRESHOLDS = (
+    "qc_min_primer_trimmed_pct",
+    "dropout_min_abundance",
+    "unexplained_min_freq",
+    "unexplained_min_excess",
+    "unexplained_min_depth",
+    "unexplained_min_alt_depth",
+    "unexplained_min_recurrence",
+    "unexplained_max_pvalue",
+)
+MAX_TIMESERIES_LINEAGES = 30  # full-lineage time series keep the 30 most abundant lineages
+MAX_GROWTH_TEXT = 1000
 GIT_KEYS = ("git_commit", "git_sha", "commit_id", "commit", "git_revision", "revision")
 
 
@@ -194,6 +238,8 @@ def load_qc(path, problems):
         status = (record["qc_status"] or "").upper()
         record["qc_status"] = status if status in QC_STATUSES else None
         record["sample_type"] = (record["sample_type"] or "sample").lower()
+        check = (record["primer_scheme_check"] or "").lower()
+        record["primer_scheme_check"] = check if check in PRIMER_SCHEME_CHECKS else None
         reasons = record["qc_reasons"]
         record["qc_reasons"] = (
             [r.strip() for r in reasons.split(";") if r.strip()] if reasons else []
@@ -414,6 +460,7 @@ def load_consensus(path, problems):
                     "n_pct": round_or_none(to_float(row.get("n_pct")), 3),
                     "ambiguous_count": to_int(row.get("ambiguous_count")),
                     "status": clean_str(row.get("status")),
+                    "reason": clean_str(row.get("reason")),  # 7th column; older tables lack it
                 }
             )
         except ValueError as err:
@@ -500,6 +547,228 @@ def load_barcode_compare(path, label_a, problems):
         )
     rows.sort(key=lambda r: (-abs(r["delta"]), r["sample"], r["lineage"]))
     return {"label_a": label_a or "A", "label_b": label_b or "B", "rows": rows}
+
+
+# ---------------------------------------------------------------------------------------------
+# Dropout impact, unexplained mutations, time series, growth rates
+# ---------------------------------------------------------------------------------------------
+def _parse_affected(text):
+    """`XBB.1.5:9,BA.2:3` -> [{lineage, n_sites}] (NA -> [])."""
+    if is_na(text):
+        return []
+    out = []
+    for part in str(text).split(","):
+        name, sep, count = part.strip().rpartition(":")
+        if not sep or not name:
+            continue
+        try:
+            out.append({"lineage": name, "n_sites": int(count)})
+        except ValueError:
+            continue
+    return out
+
+
+def load_dropout_impact(impact_path, summary_path, problems):
+    """dropout_impact.tsv (+ summary) -> {sample: {summary, amplicons}} or None when neither exists."""
+    if impact_path is None and summary_path is None:
+        return None
+    out = {}
+    if summary_path is not None:
+        for number, row in enumerate(read_tsv(summary_path), start=2):
+            sample = clean_str(row.get("sample"))
+            if sample is None:
+                continue
+            try:
+                out[sample] = {
+                    "summary": {
+                        "n_dropped_amplicons": to_int(row.get("n_dropped_amplicons")),
+                        "informative_sites_total": to_int(row.get("informative_sites_total")),
+                        "informative_sites_in_dropped": to_int(
+                            row.get("informative_sites_in_dropped")
+                        ),
+                        "pct_informative_sites_lost": round_or_none(
+                            to_float(row.get("pct_informative_sites_lost")), 2
+                        ),
+                        "n_dropped_affecting_detected_lineages": to_int(
+                            row.get("n_dropped_affecting_detected_lineages")
+                        ),
+                    },
+                    "amplicons": [],
+                }
+            except ValueError as err:
+                problems.add("dropout_impact_summary.tsv", f"line {number}: {err}")
+    if impact_path is not None:
+        for number, row in enumerate(read_tsv(impact_path), start=2):
+            sample = clean_str(row.get("sample"))
+            if sample is None:
+                continue
+            try:
+                amplicon = {
+                    "amplicon": clean_str(row.get("amplicon")),
+                    "start": to_int(row.get("start")),
+                    "end": to_int(row.get("end")),
+                    "mean_depth": round_or_none(to_float(row.get("mean_depth")), 2),
+                    "n_informative_sites": to_int(row.get("n_informative_sites")),
+                    "n_sites_in_detected_lineages": to_int(row.get("n_sites_in_detected_lineages")),
+                    "affects_detected_lineage": to_bool(row.get("affects_detected_lineage")),
+                    "affected_lineages": _parse_affected(row.get("affected_lineages")),
+                }
+            except ValueError as err:
+                problems.add("dropout_impact.tsv", f"line {number}: {err}")
+                continue
+            out.setdefault(sample, {"summary": None, "amplicons": []})["amplicons"].append(amplicon)
+    for entry in out.values():
+        entry["amplicons"].sort(key=lambda a: a["start"] if a["start"] is not None else 0)
+    return dict(sorted(out.items()))
+
+
+def load_unexplained(path, problems):
+    """unexplained_mutations.tsv (concat table; a per-sample table also loads) -> list of rows."""
+    rows = []
+    for number, row in enumerate(read_tsv(path), start=2):
+        sample = clean_str(row.get("sample"))
+        if sample is None:
+            continue
+        try:
+            rows.append(
+                {
+                    "sample": sample,
+                    "position": to_int(row.get("position")),
+                    "ref": clean_str(row.get("ref")),
+                    "alt": clean_str(row.get("alt")),
+                    "observed_freq": round_or_none(to_float(row.get("observed_freq")), 6),
+                    "expected_freq": round_or_none(to_float(row.get("expected_freq")), 6),
+                    "excess": round_or_none(to_float(row.get("excess")), 6),
+                    "depth": to_int(row.get("depth")),
+                    "alt_depth": to_int(row.get("alt_depth")),
+                    "gene": clean_str(row.get("gene")),
+                    "aa_change": clean_str(row.get("aa_change")),
+                    "effect": clean_str(row.get("effect")),
+                    "n_samples": to_int(row.get("n_samples")),
+                    "recurrent": to_bool(row.get("recurrent")),
+                    "p_value": to_float(row.get("p_value")),
+                }
+            )
+        except ValueError as err:
+            problems.add("unexplained_mutations.tsv", f"line {number}: {err}")
+    return rows
+
+
+def load_timeseries(summarized_path, lineages_path, problems):
+    """freyja_timeseries.tsv (+ the _lineages variant) -> the `timeseries` object, or None."""
+    if summarized_path is None and lineages_path is None:
+        return None
+
+    def rows_of(path):
+        out = []
+        if path is None:
+            return out
+        for number, row in enumerate(read_tsv(path), start=2):
+            group = clean_str(row.get("lineage_group"))
+            when = clean_str(row.get("collection_date"))
+            if group is None or when is None:
+                continue
+            try:
+                out.append(
+                    {
+                        "site": clean_str(row.get("site")),
+                        "collection_date": when[:10],
+                        "lineage_group": group,
+                        "abundance": round_or_none(to_float(row.get("abundance")), 5),
+                        "abundance_load_weighted": round_or_none(
+                            to_float(row.get("abundance_load_weighted")), 5
+                        ),
+                        "n_samples": to_int(row.get("n_samples")),
+                        "mean_viral_load": round_or_none(to_float(row.get("mean_viral_load")), 2),
+                        "total_viral_load": round_or_none(to_float(row.get("total_viral_load")), 2),
+                    }
+                )
+            except ValueError as err:
+                problems.add("freyja_timeseries.tsv", f"line {number}: {err}")
+        return out
+
+    summarized = rows_of(summarized_path)
+    lineages = rows_of(lineages_path)
+    truncated = None
+    totals = Counter()
+    for r in lineages:
+        totals[r["lineage_group"]] += r["abundance"] or 0.0
+    if len(totals) > MAX_TIMESERIES_LINEAGES:
+        keep = {name for name, _ in totals.most_common(MAX_TIMESERIES_LINEAGES)}
+        truncated = len(totals)
+        lineages = [r for r in lineages if r["lineage_group"] in keep]
+    allrows = summarized + lineages
+    return {
+        "enabled": True,
+        "has_viral_load": any(r["abundance_load_weighted"] is not None for r in allrows),
+        "min_coverage": None,
+        "sites": sorted({r["site"] for r in allrows if r["site"] is not None}),
+        "dates": sorted({r["collection_date"] for r in allrows}),
+        "summarized": summarized,
+        "lineages": lineages,
+        "lineages_total_groups": truncated,
+    }
+
+
+_PCT = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+
+
+def load_growth_rates(csv_path, failed_path, inputs_path, problems):
+    """Freyja's relgrowthrate table (+ failure note, + inputs json) -> the `growth_rates` object."""
+    if csv_path is None and failed_path is None:
+        return None
+    reason = None
+    if failed_path is not None:
+        text = " ".join(Path(failed_path).read_text(encoding="utf-8", errors="replace").split())
+        reason = text[:MAX_GROWTH_TEXT] or "no growth rates were produced (no reason recorded)"
+    rows = []
+    if csv_path is not None:
+        with open(csv_path, newline="", encoding="utf-8-sig") as handle:
+            reader = csv.reader(handle)
+            header = next(reader, None) or []
+            low = [h.strip().lower() for h in header]
+
+            def col(word, default):
+                for i, name in enumerate(low):
+                    if word in name:
+                        return i
+                return default
+
+            i_lin, i_adv, i_int = col("lineage", 0), col("advantage", 1), col("interval", 2)
+            for number, row in enumerate(reader, start=2):
+                if not row or not any(c.strip() for c in row):
+                    continue
+                lineage = clean_str(row[i_lin]) if i_lin < len(row) else None
+                if lineage is None:
+                    continue
+                adv = None
+                if i_adv < len(row):
+                    found = _PCT.search(row[i_adv])
+                    adv = float(found.group()) if found else None
+                    if adv is None and not is_na(row[i_adv]):
+                        problems.add("freyja_growth_rates.csv", f"line {number}: {row[i_adv]!r}")
+                rows.append(
+                    {
+                        "lineage": lineage,
+                        "advantage_pct": adv,
+                        "interval_text": clean_str(row[i_int]) if i_int < len(row) else None,
+                    }
+                )
+    inputs = None
+    if inputs_path is not None:
+        try:
+            loaded = json.loads(Path(inputs_path).read_text(encoding="utf-8"))
+            inputs = loaded if isinstance(loaded, dict) and loaded else None
+        except (OSError, ValueError):
+            inputs = None
+    status = "ok" if csv_path is not None else "failed"
+    return {
+        "status": status,
+        "reason": reason if status == "failed" else None,
+        "inputs": inputs,
+        "params": {},
+        "rows": rows,
+    }
 
 
 # ---------------------------------------------------------------------------------------------
@@ -668,13 +937,18 @@ def num_param(params, key, default=None):
 
 def build_thresholds(run_info):
     params = run_info.get("params") if isinstance(run_info.get("params"), dict) else {}
-    return {
+    thresholds = {
         "amplicon_min_depth": num_param(params, "amplicon_min_depth", 10),
         "consensus_min_depth": num_param(params, "consensus_min_depth", 10),
         "ntc_max_mapped_reads": num_param(params, "ntc_max_mapped_reads"),
         "ntc_max_genome_coverage_pct": num_param(params, "ntc_max_genome_coverage_pct"),
         "min_genome_coverage_for_demix": num_param(params, "min_genome_coverage_for_demix"),
     }
+    for key in OPTIONAL_THRESHOLDS:  # only the ones this run recorded
+        value = num_param(params, key)
+        if value is not None:
+            thresholds[key] = value
+    return thresholds
 
 
 def build_time_series(samples, demix, top_n=6):
@@ -916,6 +1190,86 @@ def build_run_flags(ctx):
                 "Every non-control sample failed QC or has no usable lineage result.",
             )
 
+    # Consensus genomes: failed (all-N) and built-with-warnings
+    consensus_rows = ctx.get("consensus") or []
+    failed_cons = sorted(r["sample"] for r in consensus_rows if r["status"] == "failed")
+    if failed_cons:
+        flag(
+            "warn",
+            "consensus_failed",
+            f"consensus genome failed for {len(failed_cons)} sample(s): {_ids(failed_cons)}; "
+            "the consensus is all-N: see the consensus table for the reason.",
+            failed_cons,
+        )
+    warned_cons = sorted(
+        r["sample"] for r in consensus_rows if r["status"] == "ok" and r.get("reason")
+    )
+    if warned_cons:
+        flag(
+            "info",
+            "consensus_warnings",
+            f"consensus built with warnings for {len(warned_cons)} sample(s): {_ids(warned_cons)}; "
+            "see the consensus table.",
+            warned_cons,
+        )
+
+    # Primer scheme check (qc_summary.tsv primer_scheme_check): reads line up with another scheme
+    mismatched = [s for s in real if s.get("primer_scheme_check") == "mismatch"]
+    if mismatched:
+        declared = dig(ctx["provenance"] or {}, "params.primer_scheme")
+        declared_text = f"the declared scheme {declared}" if declared else "the declared scheme"
+        by_best = defaultdict(list)
+        for s in mismatched:
+            by_best[s.get("primer_scheme_best") or "another scheme"].append(s["sample"])
+        ids = [s["sample"] for s in mismatched]
+        if len(by_best) == 1:
+            ((best, _),) = by_best.items()
+            message = (
+                f"{len(ids)} sample(s) ({_ids(ids)}): reads line up much better with {best} "
+                f"than with {declared_text}: check --primer_scheme."
+            )
+        else:
+            detail = "; ".join(f"{b}: {_ids(v)}" for b, v in sorted(by_best.items()))
+            message = (
+                f"{len(ids)} sample(s): reads line up much better with a different scheme than "
+                f"with {declared_text} ({detail}): check --primer_scheme."
+            )
+        flag("warn", "primer_scheme_mismatch", message, ids)
+
+    # Amplicon dropout that hides lineage-informative sites of the detected lineages
+    affected = sorted(
+        sid
+        for sid, entry in (ctx.get("dropout") or {}).items()
+        if any(a["affects_detected_lineage"] for a in entry["amplicons"])
+    )
+    if affected:
+        flag(
+            "warn",
+            "dropout_affects_lineages",
+            f"Amplicon dropout hides lineage-informative sites for detected lineages in "
+            f"{len(affected)} sample(s): {_ids(affected)}; abundance estimates may be biased.",
+            affected,
+        )
+
+    # Mutations unexplained by the demixed lineages that recur across samples
+    recurrent = [r for r in (ctx.get("unexplained") or []) if r["recurrent"]]
+    if recurrent:
+        keys = {(r["position"], r["alt"]) for r in recurrent}
+        first = recurrent[0]
+        label = (
+            f"{first['gene']}:{first['aa_change']}"
+            if first["gene"] and first["aa_change"]
+            else f"{first['position']}{first['ref'] or ''}>{first['alt'] or ''}"
+        )
+        n_first = first["n_samples"] if first["n_samples"] is not None else "several"
+        flag(
+            "info",
+            "unexplained_mutations",
+            f"{len(keys)} mutation(s) unexplained by the demixed lineages recur in several samples "
+            f"(first: {label} in {n_first} samples); possible novel lineage.",
+            {r["sample"] for r in recurrent},
+        )
+
     for source, messages in ctx["problems"].items():
         shown = "; ".join(messages[:3]) + ("; ..." if len(messages) > 3 else "")
         flag(
@@ -954,6 +1308,11 @@ def build(
     samplesheet=None,
     boot=None,
     compare_status=None,
+    dropout_impact=None,
+    unexplained=None,
+    timeseries=None,
+    growth=None,
+    dashboard=None,
     mode=None,
     now=None,
     problems=None,
@@ -1077,8 +1436,54 @@ def build(
                 rec["consensus_length"] = row["length"]
             if row["n_pct"] is not None:
                 rec["consensus_n_pct"] = row["n_pct"]
+            rec["consensus_status"] = row.get("status")
+            rec["consensus_reason"] = row.get("reason")
 
     sample_list = sorted(samples.values(), key=lambda r: r["sample"])
+
+    # Optional analyses (each absent unless its input was given)
+    params = run_info.get("params") if isinstance(run_info.get("params"), dict) else {}
+    dropout_out = None
+    if dropout_impact is not None:
+        dropout_out = {sid: v for sid, v in dropout_impact.items() if sid in known}
+        stray = sorted(set(dropout_impact) - known)
+        if stray:
+            notes.append(
+                f"dropout impact: ignored data for sample(s) not in the sample table: {_ids(stray)}."
+            )
+        for rec in sample_list:
+            entry = dropout_out.get(rec["sample"])
+            summ = entry["summary"] if entry else None
+            rec["dropout_pct_informative_lost"] = (
+                summ["pct_informative_sites_lost"] if summ else None
+            )
+            n_affecting = summ["n_dropped_affecting_detected_lineages"] if summ else None
+            if (
+                n_affecting is None
+                and entry
+                and any(a["affects_detected_lineage"] for a in entry["amplicons"])
+            ):
+                n_affecting = 1
+            rec["dropout_affects_lineages"] = None if n_affecting is None else n_affecting > 0
+    unexplained_rows = None
+    if unexplained is not None:
+        unexplained_rows = [r for r in unexplained if r["sample"] in known]
+        counts = Counter(r["sample"] for r in unexplained_rows)
+        for rec in sample_list:
+            has_demix = demix[rec["sample"]]["status"] == "ok"
+            rec["n_unexplained"] = counts.get(rec["sample"], 0) if has_demix else None
+    timeseries_out = None
+    if timeseries is not None:
+        timeseries_out = dict(timeseries)
+        timeseries_out["min_coverage"] = num_param(params, "freyja_plot_mincov")
+    growth_out = None
+    if growth is not None:
+        growth_out = dict(growth)
+        growth_out["params"] = {
+            key: params[f"freyja_growth_{key}"]
+            for key in ("days", "nboots", "serial_interval", "seed", "scale_by_viral_load")
+            if f"freyja_growth_{key}" in params
+        }
     negative_controls = []
     for rec in sample_list:
         sid = rec["sample"]
@@ -1138,9 +1543,15 @@ def build(
         "barcode_comparison": bool(comparison and comparison["rows"]),
         "negative_controls": bool(negative_controls),
         "boot_intervals": bool(boot),
+        "dropout_impact": bool(dropout_out),
+        "unexplained_mutations": unexplained_rows is not None,
+        "timeseries": bool(timeseries_out),
+        "growth_rates": growth_out is not None,
     }
     time_series = build_time_series(sample_list, demix)
-    available["time_series"] = time_series is not None
+    available["time_series"] = time_series is not None or bool(
+        timeseries_out and len(timeseries_out["dates"]) >= 2
+    )
 
     flags = build_run_flags(
         {
@@ -1151,6 +1562,9 @@ def build(
             "available": available,
             "problems": problems.items,
             "notes": notes,
+            "dropout": dropout_out,
+            "unexplained": unexplained_rows,
+            "consensus": cons_out,
         }
     )
     failed_compare = sorted(
@@ -1187,6 +1601,11 @@ def build(
         "barcode_comparison": comparison if available["barcode_comparison"] else None,
         "negative_controls": negative_controls,
         "time_series": time_series,
+        "timeseries": timeseries_out,
+        "growth_rates": growth_out,
+        "dashboard": {"file": dashboard} if dashboard else None,
+        "dropout_impact": dropout_out,
+        "unexplained_mutations": unexplained_rows,
     }
 
 
@@ -1229,6 +1648,35 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--compare-status", help="barcode_compare_status.tsv: sample, status, reason"
+    )
+    parser.add_argument(
+        "--dropout-impact", help="dropout_impact.tsv: one row per dropped amplicon (DROPOUT_IMPACT)"
+    )
+    parser.add_argument(
+        "--dropout-summary", help="dropout_impact_summary.tsv: one row per sample (DROPOUT_IMPACT)"
+    )
+    parser.add_argument(
+        "--unexplained",
+        help="unexplained_mutations.tsv: the concatenated table (UNEXPLAINED_MUTATIONS_CONCAT)",
+    )
+    parser.add_argument(
+        "--timeseries",
+        help="freyja_timeseries.tsv: site, collection_date, lineage_group, abundance, ...",
+    )
+    parser.add_argument(
+        "--timeseries-lineages", help="freyja_timeseries_lineages.tsv (same columns, full lineages)"
+    )
+    parser.add_argument(
+        "--growth-rates", help="freyja_growth_rates.csv (Freyja relgrowthrate table)"
+    )
+    parser.add_argument(
+        "--growth-failed",
+        help="freyja_growth_rates.failed.txt: why growth rates could not be computed",
+    )
+    parser.add_argument("--growth-inputs", help="freyja_growth_inputs.json")
+    parser.add_argument(
+        "--dashboard-name",
+        help="file name of the optional Freyja dashboard (shown as text only; never linked)",
     )
     parser.add_argument("--mode", help="override the mode recorded in run_info.json")
     parser.add_argument("--out", required=True, help="report_data.json")
@@ -1325,6 +1773,20 @@ def main(argv=None):
         inputs["boot"] = load_boot(path, problems) if path else None
         path = optional_file(args.compare_status)
         inputs["compare_status"] = load_compare_status(path, problems) if path else None
+        impact, summary = optional_file(args.dropout_impact), optional_file(args.dropout_summary)
+        inputs["dropout_impact"] = load_dropout_impact(impact, summary, problems)
+        path = optional_file(args.unexplained)
+        inputs["unexplained"] = load_unexplained(path, problems) if path else None
+        inputs["timeseries"] = load_timeseries(
+            optional_file(args.timeseries), optional_file(args.timeseries_lineages), problems
+        )
+        inputs["growth"] = load_growth_rates(
+            optional_file(args.growth_rates),
+            optional_file(args.growth_failed),
+            optional_file(args.growth_inputs),
+            problems,
+        )
+        inputs["dashboard"] = (args.dashboard_name or "").strip() or None
     except (OSError, UnicodeDecodeError, csv.Error) as err:
         print(f"build_report_data.py: {err}", file=sys.stderr)
         return 2

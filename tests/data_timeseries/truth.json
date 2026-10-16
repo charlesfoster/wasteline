@@ -1,0 +1,266 @@
+{
+  "excluded_samples": {
+    "LOWCOV_1": "coverage 42.5 < 60",
+    "NEG_1": "negative control",
+    "NODATE_1": "no collection date"
+  },
+  "expected_site_date_abundance": [
+    {
+      "abundance": {
+        "BA.2": 0.801813,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.098187
+      },
+      "collection_date": "2026-01-05",
+      "day": 0,
+      "site": "SiteA"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.721965,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.178035
+      },
+      "collection_date": "2026-01-12",
+      "day": 7,
+      "site": "SiteA"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.601369,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.298631
+      },
+      "collection_date": "2026-01-19",
+      "day": 14,
+      "site": "SiteA"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.45,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.45
+      },
+      "collection_date": "2026-01-26",
+      "day": 21,
+      "site": "SiteA"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.298631,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.601369
+      },
+      "collection_date": "2026-02-02",
+      "day": 28,
+      "site": "SiteA"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.178035,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.721965
+      },
+      "collection_date": "2026-02-09",
+      "day": 35,
+      "site": "SiteA"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.098187,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.801813
+      },
+      "collection_date": "2026-02-16",
+      "day": 42,
+      "site": "SiteA"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.051592,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.848408
+      },
+      "collection_date": "2026-02-23",
+      "day": 49,
+      "site": "SiteA"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.848408,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.051592
+      },
+      "collection_date": "2026-01-05",
+      "day": 0,
+      "site": "SiteB"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.801813,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.098187
+      },
+      "collection_date": "2026-01-12",
+      "day": 7,
+      "site": "SiteB"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.721965,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.178035
+      },
+      "collection_date": "2026-01-19",
+      "day": 14,
+      "site": "SiteB"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.601369,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.298631
+      },
+      "collection_date": "2026-01-26",
+      "day": 21,
+      "site": "SiteB"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.45,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.45
+      },
+      "collection_date": "2026-02-02",
+      "day": 28,
+      "site": "SiteB"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.298631,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.601369
+      },
+      "collection_date": "2026-02-09",
+      "day": 35,
+      "site": "SiteB"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.178035,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.721965
+      },
+      "collection_date": "2026-02-16",
+      "day": 42,
+      "site": "SiteB"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.098187,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.801813
+      },
+      "collection_date": "2026-02-23",
+      "day": 49,
+      "site": "SiteB"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.873619,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.026381
+      },
+      "collection_date": "2026-01-05",
+      "day": 0,
+      "site": "SiteC"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.848408,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.051592
+      },
+      "collection_date": "2026-01-12",
+      "day": 7,
+      "site": "SiteC"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.801813,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.098187
+      },
+      "collection_date": "2026-01-19",
+      "day": 14,
+      "site": "SiteC"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.721965,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.178035
+      },
+      "collection_date": "2026-01-26",
+      "day": 21,
+      "site": "SiteC"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.601369,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.298631
+      },
+      "collection_date": "2026-02-02",
+      "day": 28,
+      "site": "SiteC"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.45,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.45
+      },
+      "collection_date": "2026-02-09",
+      "day": 35,
+      "site": "SiteC"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.298631,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.601369
+      },
+      "collection_date": "2026-02-16",
+      "day": 42,
+      "site": "SiteC"
+    },
+    {
+      "abundance": {
+        "BA.2": 0.178035,
+        "JN.1": 0.1,
+        "XBB.1.5": 0.721965
+      },
+      "collection_date": "2026-02-23",
+      "day": 49,
+      "site": "SiteC"
+    }
+  ],
+  "first_date": "2026-01-05",
+  "lineage_declining": "BA.2",
+  "lineage_noise": "BA.1",
+  "lineage_rising": "XBB.1.5",
+  "lineage_stable": "JN.1",
+  "logit_noise_sd": 0.25,
+  "model": "share of B among A+B = logistic(r * (day - t0_site)); A = (1 - c) * (1 - share), B = (1 - c) * share, C = c; day counted from first_date",
+  "n_dates": 8,
+  "seed": 42,
+  "site_midpoint_day": {
+    "SiteA": 21,
+    "SiteB": 28,
+    "SiteC": 35
+  },
+  "stable_share": 0.1,
+  "true_logodds_growth_per_day": 0.1,
+  "true_relative_growth_serial_interval_5_5": 0.733253
+}

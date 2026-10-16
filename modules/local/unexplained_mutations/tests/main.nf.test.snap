@@ -1,0 +1,19 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.unexplained_mutations.tsv:md5,9b6a1a40197a0b7bd116324dddea5b7e"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-16T09:57:38.715047",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

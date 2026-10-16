@@ -25,6 +25,30 @@ BAR_UNITS = 1000.0
 MIN_SEG_UNITS = 2.0  # segments narrower than this are merged into "Other" for drawing
 MAX_BC_ROWS = 100
 MAX_BC_SAMPLES = 50
+VISIBLE_ROWS = 100  # rows of a long table shown before "show all"
+MAX_TABLE_ROWS = 500  # hard cap on rendered rows of a long table (the TSV has them all)
+TS_TOP_GROUPS = 6
+TS_MAX_DOTS_DATES = 30  # more dates than this: lines only, no per-point markers
+REASON_TITLES = {
+    "low_primer_trimming": (
+        "Very few reads had primer sequence trimmed (below your --qc_min_primer_trimmed_pct). "
+        "Heuristic: it can mean the wrong primer scheme was used."
+    ),
+    "primer_scheme_mismatch": (
+        "Read starts line up much better with another primer scheme than with the declared one."
+    ),
+}
+PRIMER_TRIM_TITLE = (
+    "Share of mapped reads from which ivar trimmed primers; informational "
+    "(it does not separate right from wrong schemes)"
+)
+PRIMER_CHECK_TITLES = {
+    "ok": "Read starts line up with the declared primer scheme",
+    "uninformative": (
+        "Read starts do not line up with any primer scheme (e.g. tagmentation libraries): "
+        "no scheme check possible"
+    ),
+}
 DEFAULT_TEMPLATE = (
     Path(__file__).resolve().parent.parent / "assets" / "templates" / "report.html.j2"
 )
@@ -70,6 +94,16 @@ def normalise(data):
     out["negative_controls"] = [
         c for c in _as_list(data.get("negative_controls")) if isinstance(c, dict)
     ]
+    out["timeseries"] = _as_dict(data.get("timeseries")) or None
+    out["growth_rates"] = _as_dict(data.get("growth_rates")) or None
+    out["dashboard"] = _as_dict(data.get("dashboard")) or None
+    out["dropout_impact"] = _as_dict(data.get("dropout_impact")) or None
+    unexplained = data.get("unexplained_mutations")
+    out["unexplained_mutations"] = (
+        [r for r in unexplained if isinstance(r, dict) and r.get("sample") is not None]
+        if isinstance(unexplained, list)
+        else None
+    )
     return out
 
 
@@ -111,6 +145,12 @@ def short(value, length=26):
 
 def dash(value):
     return "–" if value in (None, "") else value
+
+
+def sci(value, digits=2):
+    """p-values and other tiny numbers: 2.39e-42."""
+    value = _num(value)
+    return "–" if value is None else f"{value:.{digits}e}"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -557,6 +597,381 @@ def barcode_view(data):
     }
 
 
+def _sample_flags(samples):
+    return {
+        r["sample"]: (r["sample_type"] == "negative", r.get("qc_status") or "NA") for r in samples
+    }
+
+
+def _capped(rows):
+    """Split rows into the shown ones (the first VISIBLE_ROWS are visible, the rest start folded)."""
+    return {
+        "rows": rows[:MAX_TABLE_ROWS],
+        "n": len(rows),
+        "n_shown": min(len(rows), MAX_TABLE_ROWS),
+        "n_visible": min(len(rows), VISIBLE_ROWS),
+        "truncated": len(rows) > MAX_TABLE_ROWS,
+    }
+
+
+def qc_extra_view(data):
+    """Primer-trimming / primer-scheme columns of the QC table (hidden when no sample has a value)."""
+    samples = data["samples"]
+    has_trim = any(_num(r.get("primer_trimmed_pct")) is not None for r in samples)
+    has_check = any(r.get("primer_scheme_check") for r in samples)
+    declared = data["params_summary"].get("primer_scheme") or _as_dict(
+        data["provenance"].get("params")
+    ).get("primer_scheme")
+    for rec in samples:
+        check = rec.get("primer_scheme_check")
+        best = rec.get("primer_scheme_best")
+        enrichment = _num(rec.get("primer_scheme_enrichment"))
+        if check == "mismatch":
+            title = f"best match: {best or 'another scheme'}"
+            if declared:
+                title += f" (declared: {declared})"
+        else:
+            title = PRIMER_CHECK_TITLES.get(check, "")
+        if check and enrichment is not None:
+            title += f"; declared-scheme read-start enrichment {enrichment:.1f}"
+        rec["_pcheck_title"] = title
+        rec["_rtip"] = any(r in REASON_TITLES for r in rec["qc_reasons"])
+    return {
+        "trim": has_trim,
+        "check": has_check,
+        "reason_titles": REASON_TITLES,
+        "trim_title": PRIMER_TRIM_TITLE,
+    }
+
+
+def dropout_view(data):
+    impact = data["dropout_impact"]
+    if not impact:
+        return None
+    flags = _sample_flags(data["samples"])
+    rows, summary = [], []
+    n_affected = 0
+    for sample, entry in sorted(impact.items()):
+        entry = _as_dict(entry)
+        ntc, qc = flags.get(sample, (False, "NA"))
+        s = _as_dict(entry.get("summary"))
+        amps = [a for a in _as_list(entry.get("amplicons")) if isinstance(a, dict)]
+        affecting = [a for a in amps if a.get("affects_detected_lineage")]
+        n_affecting = s.get("n_dropped_affecting_detected_lineages")
+        no_estimate = bool(amps) and all(
+            a.get("n_sites_in_detected_lineages") is None for a in amps
+        )
+        if affecting:
+            n_affected += 1
+        n_dropped = s.get("n_dropped_amplicons")
+        if n_dropped is None:
+            n_dropped = len(amps)
+        summary.append(
+            {
+                "sample": sample,
+                "ntc": ntc,
+                "qc": qc,
+                "n_dropped": n_dropped,
+                "total": s.get("informative_sites_total"),
+                "lost": s.get("informative_sites_in_dropped"),
+                "pct": s.get("pct_informative_sites_lost"),
+                "n_affecting": n_affecting if n_affecting is not None else len(affecting),
+                "no_estimate": no_estimate,
+                "affects": bool(affecting),
+            }
+        )
+        for a in amps:
+            rows.append(
+                {
+                    "sample": sample,
+                    "ntc": ntc,
+                    "qc": qc,
+                    "amplicon": a.get("amplicon"),
+                    "start": a.get("start"),
+                    "end": a.get("end"),
+                    "mean_depth": a.get("mean_depth"),
+                    "n_inf": a.get("n_informative_sites"),
+                    "n_det": a.get("n_sites_in_detected_lineages"),
+                    "affects": bool(a.get("affects_detected_lineage")),
+                    "no_estimate": a.get("n_sites_in_detected_lineages") is None,
+                    "lineages": [
+                        l for l in _as_list(a.get("affected_lineages")) if isinstance(l, dict)
+                    ],
+                }
+            )
+    rows.sort(key=lambda r: (not r["affects"], r["sample"], r["start"] or 0))
+    with_dropout = [x for x in summary if (x["n_dropped"] or 0) > 0]
+    with_dropout.sort(key=lambda x: (-(x["pct"] if x["pct"] is not None else -1), x["sample"]))
+    return {
+        "table": _capped(rows),
+        "summary": with_dropout,
+        "n_samples": len(summary),
+        "n_without": len(summary) - len(with_dropout),
+        "n_affected": n_affected,
+        "min_abundance": _num(data["thresholds"].get("dropout_min_abundance")),
+    }
+
+
+def unexplained_view(data):
+    rows = data["unexplained_mutations"]
+    if rows is None:
+        return None
+    flags = _sample_flags(data["samples"])
+    out = []
+    for r in rows:
+        ntc, qc = flags.get(r["sample"], (False, "NA"))
+        label = f"{r['gene']}:{r['aa_change']}" if r.get("gene") and r.get("aa_change") else None
+        out.append(dict(r, ntc=ntc, qc=qc, label=label))
+    t = data["thresholds"]
+    keys = (
+        ("unexplained_min_depth", "depth", "{:g}x"),
+        ("unexplained_min_alt_depth", "alt reads", "{:g}"),
+        ("unexplained_min_freq", "observed", "{:.0%}"),
+        ("unexplained_min_excess", "excess", "{:.0%}"),
+        ("unexplained_max_pvalue", "p-value", "{:.2e}"),
+    )
+    thresholds = []
+    for key, name, fmt in keys:
+        value = _num(t.get(key))
+        if value is not None:
+            thresholds.append(
+                f"{name} \u2265 {fmt.format(value)}"
+                if name != "p-value"
+                else f"p-value \u2264 {fmt.format(value)}"
+            )
+    n_recurrent = len({(r["position"], r["alt"]) for r in out if r.get("recurrent")})
+    return {
+        "table": _capped(out),
+        "n_recurrent": n_recurrent,
+        "n_samples": len({r["sample"] for r in out}),
+        "thresholds": thresholds,
+        "min_recurrence": _num(t.get("unexplained_min_recurrence")),
+    }
+
+
+def growth_view(data):
+    growth = data["growth_rates"]
+    dash_info = data["dashboard"]
+    if not growth and not dash_info:
+        return None
+    growth = growth or {}
+    rows = [r for r in _as_list(growth.get("rows")) if isinstance(r, dict) and r.get("lineage")]
+    rows.sort(
+        key=lambda r: -(r["advantage_pct"] if _num(r.get("advantage_pct")) is not None else -1e9)
+    )
+    return {
+        "status": growth.get("status"),
+        "reason": growth.get("reason"),
+        "rows": rows,
+        "inputs": _as_dict(growth.get("inputs")),
+        "params": _as_dict(growth.get("params")),
+        "dashboard": _as_dict(dash_info).get("file"),
+    }
+
+
+def _ts_group_classes(groups, palette):
+    used = {palette[g] for g in groups if g in palette}
+    free = iter(i for i in range(N_COLORS) if i not in used)
+    cls = {}
+    for g in groups:
+        if g in palette:
+            cls[g] = f"c{palette[g]}"
+        else:
+            nxt = next(free, None)
+            cls[g] = f"c{nxt}" if nxt is not None else "co"
+    return cls
+
+
+def timeseries_view(data, palettes):
+    """Time-series panels from the freyja_timeseries tables: per (level, weighting) one view with
+    one panel per site plus a pooled panel; the page toggles between them."""
+    ts = data["timeseries"]
+    if not ts:
+        return None
+    all_dates = sorted({str(d)[:10] for d in _as_list(ts.get("dates"))})
+    try:
+        ordinals = {d: date.fromisoformat(d).toordinal() for d in all_dates}
+    except ValueError:
+        return None
+    if len(ordinals) < 2:
+        return None
+    lo, hi = min(ordinals.values()), max(ordinals.values())
+    left, right, top, bottom, width, height = 38.0, 10.0, 8.0, 24.0, 420.0, 190.0
+    sites = sorted(
+        {
+            r.get("site")
+            for lvl in ("summarized", "lineages")
+            for r in _as_list(ts.get(lvl))
+            if isinstance(r, dict)
+        },
+        key=lambda x: (x is None, x or ""),
+    )
+    has_load = bool(ts.get("has_viral_load"))
+    views = []
+    levels_present = {}
+    for level, label, palette in (
+        ("summarized", "summ", palettes["summarized"]),
+        ("lineages", "full", palettes["lineages"]),
+    ):
+        rows = [
+            r for r in _as_list(ts.get(level)) if isinstance(r, dict) and r.get("collection_date")
+        ]
+        levels_present[label] = bool(rows)
+        if not rows:
+            continue
+        totals = Counter()
+        for r in rows:
+            totals[r["lineage_group"]] += _num(r.get("abundance")) or 0.0
+        groups = [g for g, _ in totals.most_common() if g != "Other"][:TS_TOP_GROUPS]
+        cls = _ts_group_classes(groups, palette)
+        # site -> date -> {group: row}
+        cell = {}
+        for r in rows:
+            cell.setdefault(r.get("site"), {}).setdefault(str(r["collection_date"])[:10], {})[
+                r["lineage_group"]
+            ] = r
+        for weight in ("unw", "w") if has_load else ("unw",):
+            key = "abundance_load_weighted" if weight == "w" else "abundance"
+            per_site = {}
+            for site, by_date in cell.items():
+                pts = {}
+                for d, grp in by_date.items():
+                    n = max((_num(x.get("n_samples")) or 0) for x in grp.values())
+                    load = [x for x in grp.values() if _num(x.get("total_viral_load"))]
+                    vals = {}
+                    ok = True
+                    for g in groups:
+                        row = grp.get(g)
+                        v = _num(row.get(key)) if row else 0.0
+                        if v is None:
+                            ok = False
+                            break
+                        vals[g] = v
+                    pts[d] = {
+                        "n": int(n),
+                        "vals": vals if ok else None,
+                        "load": max((_num(x.get("mean_viral_load")) or 0) for x in grp.values())
+                        if load
+                        else None,
+                        "total": max((_num(x.get("total_viral_load")) or 0) for x in grp.values())
+                        if load
+                        else None,
+                    }
+                per_site[site] = pts
+            panels_data = [
+                (site, per_site[site])
+                for site in sorted(per_site, key=lambda x: (x is None, x or ""))
+            ]
+            pooled = None
+            if len(per_site) > 1:
+                pooled = {}
+                for d in sorted({d for pts in per_site.values() for d in pts}):
+                    parts = [pts[d] for pts in per_site.values() if d in pts and pts[d]["vals"]]
+                    if not parts:
+                        continue
+                    if weight == "w":
+                        w = [p["total"] or 0.0 for p in parts]
+                    else:
+                        w = [float(p["n"] or 1) for p in parts]
+                    if sum(w) <= 0:
+                        continue
+                    pooled[d] = {
+                        "n": sum(p["n"] for p in parts),
+                        "vals": {
+                            g: sum(wi * p["vals"][g] for wi, p in zip(w, parts, strict=True))
+                            / sum(w)
+                            for g in groups
+                        },
+                        "load": None,
+                        "total": None,
+                    }
+            vmax = max(
+                [0.1]
+                + [
+                    v
+                    for _, pts in panels_data
+                    for p in pts.values()
+                    if p["vals"]
+                    for v in p["vals"].values()
+                ]
+                + [v for p in (pooled or {}).values() for v in p["vals"].values()]
+            )
+            ymax = 1.0 if vmax > 0.5 else (math.ceil(vmax * 10) / 10)
+
+            def xpos(day, lo=lo, hi=hi):
+                return left + (day - lo) / (hi - lo) * (width - left - right)
+
+            def ypos(value, ymax=ymax):
+                return top + (1 - min(value / ymax, 1.0)) * (height - top - bottom)
+
+            def panel(
+                site_key, title, pts, groups=groups, cls=cls, weight=weight, xpos=xpos, ypos=ypos
+            ):
+                lines = []
+                dates = sorted(d for d, p in pts.items() if p["vals"])
+                for g in groups:
+                    dots = []
+                    for d in dates:
+                        v = pts[d]["vals"][g]
+                        load = pts[d]["load"]
+                        extra = f"; mean viral load {fmt_int(load)}" if load else ""
+                        dots.append(
+                            {
+                                "x": round(xpos(ordinals[d]), 1),
+                                "y": round(ypos(v), 1),
+                                "title": f"{g} on {d}: {v * 100:.1f}% (n={pts[d]['n']}{extra})",
+                            }
+                        )
+                    show_dots = len(dates) <= TS_MAX_DOTS_DATES
+                    lines.append(
+                        {
+                            "group": g,
+                            "cls": cls[g],
+                            "points": " ".join(f"{p['x']},{p['y']}" for p in dots),
+                            "dots": dots if show_dots else dots[-1:],
+                        }
+                    )
+                return {"key": site_key, "title": title, "lines": lines}
+
+            panels = [
+                panel(site if site is not None else "", site or "(no site)", pts)
+                for site, pts in panels_data
+            ]
+            if pooled is not None:
+                panels.insert(0, panel("__all__", "All sites (pooled)", pooled))
+            views.append(
+                {
+                    "level": label,
+                    "weight": weight,
+                    "id": f"tsv-{label}-{weight}",
+                    "panels": panels,
+                    "legend": [{"name": g, "cls": cls[g]} for g in groups],
+                    "yticks": [
+                        {"y": round(ypos(v), 1), "label": f"{v * 100:.0f}%"}
+                        for v in (0, ymax / 2, ymax)
+                    ],
+                }
+            )
+    if not views:
+        return None
+    return {
+        "views": views,
+        "sites": [{"key": s if s is not None else "", "name": s or "(no site)"} for s in sites],
+        "has_pooled": len(sites) > 1,
+        "has_load": has_load,
+        "has_lineages": levels_present.get("full", False),
+        "width": int(width),
+        "height": int(height),
+        "x0": left,
+        "x1": width - right,
+        "first": all_dates[0],
+        "last": all_dates[-1],
+        "n_dates": len(ordinals),
+        "min_coverage": _num(ts.get("min_coverage")),
+        "lineages_total_groups": ts.get("lineages_total_groups"),
+    }
+
+
 def build_context(data):
     data = normalise(data)
     samples = data["samples"]
@@ -608,6 +1023,13 @@ def build_context(data):
         "flag_counts": Counter(f.get("level") for f in data["run_flags"]),
         "summ": summ,
         "full": full,
+        "qc_extra": qc_extra_view(data),
+        "dx": dropout_view(data),
+        "ue": unexplained_view(data),
+        "ts_new": timeseries_view(
+            data, {"summarized": summ["palette"], "lineages": full["palette"]}
+        ),
+        "growth": growth_view(data),
         "coverage": coverage_view(data),
         "amp": amplicon_view(data),
         "ts": time_series_view(data, summ["palette"]),
@@ -615,6 +1037,8 @@ def build_context(data):
         "bc": barcode_view(data),
         "controls": data["negative_controls"],
         "consensus": [r for r in data["consensus"] if isinstance(r, dict)],
+        "cons_reason": any(r.get("reason") for r in data["consensus"] if isinstance(r, dict)),
+        "extras": False,
         "mode": data["mode"],
         "mode_note": f"not available in mode '{data['mode']}'",
         "provenance_json": json.dumps(
@@ -627,6 +1051,16 @@ def build_context(data):
             _as_dict(data["provenance"].get("params")), indent=2, sort_keys=True, default=str
         ),
     }
+    qc_extra = context["qc_extra"]
+    context["extras"] = bool(
+        context["dx"]
+        or context["ue"] is not None
+        or context["ts_new"]
+        or context["growth"]
+        or qc_extra["trim"]
+        or qc_extra["check"]
+        or any(r.get("_rtip") for r in samples)
+    )
     return context
 
 
@@ -645,6 +1079,7 @@ def make_environment(template_path):
         pct=fmt_pct,
         frac=fmt_frac,
         sortval=sortval,
+        sci=sci,
         short=short,
         dash=dash,
     )

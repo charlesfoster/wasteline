@@ -1,0 +1,19 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.read_starts.tsv:md5,1f5bb232c232b2d55fcdde8737aa026c"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-16T13:21:23.349453",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

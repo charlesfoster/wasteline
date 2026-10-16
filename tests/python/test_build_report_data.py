@@ -162,7 +162,15 @@ def test_full_run(tmp_path):
     assert {"qc_fail", "demix_skipped", "qc_warn"} <= flag_codes(data)
     assert data["run_flags"][0]["level"] == "error"
     assert all(set(f) >= {"level", "code", "message"} for f in data["run_flags"])
-    extras = {"negative_controls", "boot_intervals"}  # only on when the feature produced data
+    # only on when the feature produced data
+    extras = {
+        "negative_controls",
+        "boot_intervals",
+        "dropout_impact",
+        "unexplained_mutations",
+        "timeseries",
+        "growth_rates",
+    }
     assert all(v for k, v in data["available"].items() if k not in extras)
 
 
@@ -594,7 +602,13 @@ def test_summary_params_are_real_pipeline_params():
         (Path(brd.__file__).resolve().parents[1] / "nextflow_schema.json").read_text()
     )
     known = {name for group in schema["$defs"].values() for name in group["properties"]}
-    assert set(brd.SUMMARY_PARAMS) <= known, sorted(set(brd.SUMMARY_PARAMS) - known)
+    # Params of the dropout-impact / unexplained / time-series / primer-trimming analyses are named in
+    # docs/wiring/*.md and are added to the schema when those analyses are wired into the pipeline;
+    # remove them from this list as they land (the test then checks them like the others).
+    pending = set()  # every analysis param is in the schema now
+    assert set(brd.SUMMARY_PARAMS) <= known | pending, sorted(
+        set(brd.SUMMARY_PARAMS) - known - pending
+    )
     assert {"freyja_boot", "annotate_variants"} <= set(brd.SUMMARY_PARAMS)
 
 
@@ -652,3 +666,493 @@ def test_header_carries_the_library_protocol(tmp_path):
     old = _loaded(tmp_path, "old.json", '{"mode": "full"}')
     assert brd.main(["--run-info", str(old), "--out", str(out)]) == 0
     assert json.loads(out.read_text())["header"]["protocol"] is None  # older runs: nothing recorded
+
+
+# =============================================================================================
+# Primer scheme / trimming columns, dropout impact, unexplained mutations, time series, growth
+# =============================================================================================
+G = FIX / "g_new_analyses"
+G_OPTIONS = {
+    "--qc": "qc_summary.tsv",
+    "--aggregated": "freyja_aggregated.tsv",
+    "--samplesheet": "samplesheet.csv",
+    "--dropout-impact": "dropout_impact.tsv",
+    "--dropout-summary": "dropout_impact_summary.tsv",
+    "--unexplained": "unexplained_mutations.tsv",
+    "--timeseries": "freyja_timeseries.tsv",
+    "--timeseries-lineages": "freyja_timeseries_lineages.tsv",
+    "--growth-rates": "freyja_growth_rates.csv",
+    "--growth-inputs": "freyja_growth_inputs.json",
+}
+
+
+UE_HEADER = (
+    "sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth"
+    "\tgene\taa_change\teffect\tn_samples\trecurrent\tp_value"
+)
+
+
+def build_g(tmp_path, drop=(), extra=None, run_info=None):
+    args = ["--run-info", str(run_info or G / "run_info.json")]
+    for option, name in G_OPTIONS.items():
+        if option not in drop:
+            args += [option, str(G / name)]
+    args += list(extra or []) + ["--out", str(tmp_path / "g.json")]
+    assert brd.main(args) == 0
+    return json.loads((tmp_path / "g.json").read_text())
+
+
+def test_primer_columns_typed_and_old_qc_tables_still_load(tmp_path):
+    data = build_g(tmp_path)
+    s = {x["sample"]: x for x in data["samples"]}
+    assert s["SiteA_W03_1"]["primer_scheme_check"] == "mismatch"
+    assert s["SiteA_W03_1"]["primer_scheme_best"] == "articv4.1"
+    assert s["SiteA_W03_1"]["primer_trimmed_pct"] == 8.74
+    assert s["SiteA_W03_1"]["primer_scheme_enrichment"] == 1.3
+    assert s["SiteA_W03_1"]["qc_reasons"] == ["primer_scheme_mismatch"]
+    assert s["SiteA_W01_1"]["primer_scheme_check"] == "ok"
+    assert s["NEG_1"]["primer_trimmed_pct"] is None and s["NEG_1"]["primer_scheme_best"] is None
+    # an older table without the four columns: present as nulls, no problem flag
+    old = FIX / "a_full" / "qc_summary.tsv"
+    out = tmp_path / "old.json"
+    assert (
+        brd.main(["--run-info", str(G / "run_info.json"), "--qc", str(old), "--out", str(out)]) == 0
+    )
+    old_data = json.loads(out.read_text())
+    first = old_data["samples"][0]
+    assert first["primer_trimmed_pct"] is None and first["primer_scheme_check"] is None
+    assert "input_problems" not in flag_codes(old_data)
+    assert "primer_scheme_mismatch" not in flag_codes(old_data)
+
+
+def test_primer_scheme_check_garbage_becomes_null(tmp_path):
+    qc = tmp_path / "qc.tsv"
+    qc.write_text(
+        "sample\tqc_status\tprimer_scheme_check\tprimer_scheme_best\nA\tPASS\tMAYBE\tNA\nB\tPASS\tOK\tNA\n"
+    )
+    out = tmp_path / "r.json"
+    assert (
+        brd.main(["--run-info", str(G / "run_info.json"), "--qc", str(qc), "--out", str(out)]) == 0
+    )
+    got = {s["sample"]: s["primer_scheme_check"] for s in json.loads(out.read_text())["samples"]}
+    assert got == {"A": None, "B": "ok"}
+
+
+def test_primer_scheme_mismatch_flag(tmp_path):
+    data = build_g(tmp_path)
+    (flag,) = [f for f in data["run_flags"] if f["code"] == "primer_scheme_mismatch"]
+    assert flag["level"] == "warn" and flag["samples"] == ["SiteA_W03_1", "SiteB_W02_1"]
+    assert "articv4.1" in flag["message"] and "declared scheme midnight" in flag["message"]
+    assert "check --primer_scheme" in flag["message"]
+    assert "uninformative" not in flag["message"]  # uninformative is never a mismatch
+
+
+def test_primer_scheme_mismatch_flag_without_declared_scheme_and_with_two_best(tmp_path):
+    info = json.loads((G / "run_info.json").read_text())
+    del info["params"]["primer_scheme"]
+    ri = tmp_path / "ri.json"
+    ri.write_text(json.dumps(info))
+    qc = tmp_path / "qc.tsv"
+    qc.write_text(
+        "sample\tqc_status\tprimer_scheme_check\tprimer_scheme_best\n"
+        "A\tWARN\tmismatch\tarticv4.1\nB\tWARN\tmismatch\tswift\nC\tPASS\tok\tNA\n"
+    )
+    out = tmp_path / "r.json"
+    assert brd.main(["--run-info", str(ri), "--qc", str(qc), "--out", str(out)]) == 0
+    (flag,) = [
+        f for f in json.loads(out.read_text())["run_flags"] if f["code"] == "primer_scheme_mismatch"
+    ]
+    assert "the declared scheme" in flag["message"] and "articv4.1: A" in flag["message"]
+    assert "swift: B" in flag["message"]
+
+
+def test_new_params_and_thresholds_only_when_recorded(tmp_path):
+    data = build_g(tmp_path)
+    assert data["params_summary"]["unexplained_min_recurrence"] == 2
+    assert data["params_summary"]["freyja_growth_serial_interval"] == 5.5
+    assert data["thresholds"]["unexplained_max_pvalue"] == pytest.approx(1.67e-6)
+    assert data["thresholds"]["dropout_min_abundance"] == 0.01
+    # a run that recorded none of them: no new threshold keys at all
+    plain = run_builder("a_full", tmp_path / "plain.json")
+    assert not any(k.startswith(("unexplained", "dropout", "qc_min")) for k in plain["thresholds"])
+    assert not any(
+        k.startswith(("unexplained", "dropout", "freyja_growth")) for k in plain["params_summary"]
+    )
+
+
+def test_default_build_has_no_new_sections(tmp_path):
+    data = run_builder("a_full", tmp_path / "r.json")
+    for key in (
+        "dropout_impact",
+        "unexplained_mutations",
+        "timeseries",
+        "growth_rates",
+        "dashboard",
+    ):
+        assert data[key] is None, key
+    for key in ("dropout_impact", "unexplained_mutations", "timeseries", "growth_rates"):
+        assert data["available"][key] is False, key
+    assert "dropout_pct_informative_lost" not in data["samples"][0]
+    assert "n_unexplained" not in data["samples"][0]
+
+
+# --------------------------------------------------------------------------- dropout impact
+def test_dropout_impact_structure(tmp_path):
+    data = build_g(tmp_path)
+    impact = data["dropout_impact"]
+    assert data["available"]["dropout_impact"] is True
+    assert len(impact) == 32  # every sample of the summary appears
+    a = impact["SiteA_W03_1"]
+    assert a["summary"] == {
+        "n_dropped_amplicons": 2,
+        "informative_sites_total": 8006,
+        "informative_sites_in_dropped": 850,
+        "pct_informative_sites_lost": 10.62,
+        "n_dropped_affecting_detected_lineages": 1,
+    }
+    assert [x["amplicon"] for x in a["amplicons"]] == ["nCoV-2019_7", "nCoV-2019_22"]  # by start
+    hit = a["amplicons"][1]
+    assert hit["affects_detected_lineage"] is True and hit["start"] == 21533 and hit["end"] == 22612
+    assert hit["n_sites_in_detected_lineages"] == 10 and hit["mean_depth"] == 3.1
+    assert hit["affected_lineages"] == [
+        {"lineage": "XBB.1.5", "n_sites": 9},
+        {"lineage": "BA.2", "n_sites": 3},
+        {"lineage": "BA.5", "n_sites": 3},
+    ]
+    assert a["amplicons"][0]["affected_lineages"] == []  # NA
+    # NA = sample without a lineage estimate
+    low = impact["LOWCOV_1"]
+    assert low["amplicons"][0]["n_sites_in_detected_lineages"] is None
+    assert low["summary"]["n_dropped_affecting_detected_lineages"] is None
+    assert impact["SiteA_W01_1"]["amplicons"] == []
+    assert impact["SiteA_W01_1"]["summary"]["pct_informative_sites_lost"] == 0.0
+
+
+def test_dropout_flag_and_per_sample_fields(tmp_path):
+    data = build_g(tmp_path)
+    (flag,) = [f for f in data["run_flags"] if f["code"] == "dropout_affects_lineages"]
+    assert flag["level"] == "warn" and flag["samples"] == ["SiteA_W03_1", "SiteB_W05_1"]
+    assert "2 sample(s)" in flag["message"] and "may be biased" in flag["message"]
+    s = {x["sample"]: x for x in data["samples"]}
+    assert s["SiteA_W03_1"]["dropout_affects_lineages"] is True
+    assert s["SiteA_W03_1"]["dropout_pct_informative_lost"] == 10.62
+    assert s["SiteB_W02_1"]["dropout_affects_lineages"] is False
+    assert s["LOWCOV_1"]["dropout_affects_lineages"] is None  # no lineage estimate
+    assert s["SiteC_W01_1"]["dropout_affects_lineages"] is False
+
+
+def test_dropout_impact_without_summary_and_without_effect(tmp_path):
+    data = build_g(tmp_path, drop=("--dropout-summary",))
+    assert data["dropout_impact"]["SiteA_W03_1"]["summary"] is None
+    assert data["samples"][0]["dropout_affects_lineages"] in (None, True, False)
+    # header-only impact + all-zero summary: no flag, still available
+    imp = tmp_path / "imp.tsv"
+    imp.write_text(
+        "sample\tamplicon\tstart\tend\tmean_depth\tn_informative_sites\t"
+        "n_sites_in_detected_lineages\taffects_detected_lineage\taffected_lineages\n"
+    )
+    summ = tmp_path / "summ.tsv"
+    summ.write_text(
+        "sample\tn_dropped_amplicons\tinformative_sites_total\tinformative_sites_in_dropped\t"
+        "pct_informative_sites_lost\tn_dropped_affecting_detected_lineages\n"
+        "SiteA_W01_1\t0\t8006\t0\t0.00\t0\n"
+    )
+    out = tmp_path / "r.json"
+    args = ["--run-info", str(G / "run_info.json"), "--qc", str(G / "qc_summary.tsv"),
+            "--dropout-impact", str(imp), "--dropout-summary", str(summ), "--out", str(out)]  # fmt: skip
+    assert brd.main(args) == 0
+    data = json.loads(out.read_text())
+    assert data["available"]["dropout_impact"] is True
+    assert "dropout_affects_lineages" not in flag_codes(data)
+
+
+def test_dropout_rows_for_unknown_samples_are_ignored_with_a_note(tmp_path):
+    imp = tmp_path / "imp.tsv"
+    imp.write_text(
+        "sample\tamplicon\tstart\tend\tmean_depth\tn_informative_sites\t"
+        "n_sites_in_detected_lineages\taffects_detected_lineage\taffected_lineages\n"
+        "GHOST\ta_1\t1\t100\t0.0\t3\t1\ttrue\tBA.2:1\n"
+    )
+    out = tmp_path / "r.json"
+    assert brd.main(["--run-info", str(G / "run_info.json"), "--qc", str(G / "qc_summary.tsv"),
+                     "--dropout-impact", str(imp), "--out", str(out)]) == 0  # fmt: skip
+    data = json.loads(out.read_text())
+    assert "GHOST" not in data["dropout_impact"]
+    assert "dropout_affects_lineages" not in flag_codes(data)
+    assert any("GHOST" in f["message"] for f in data["run_flags"] if f["code"] == "input_note")
+
+
+def test_real_dropout_fixture_parses():
+    base = ROOT / "tests" / "fixtures" / "dropout_impact"
+    out = brd.load_dropout_impact(
+        base / "expected_dropout_impact.tsv",
+        base / "expected_dropout_impact_summary.tsv",
+        brd.Problems(),
+    )
+    assert {"S1", "S2", "S3", "S4"} <= set(out)
+    assert out["S1"]["amplicons"][0]["affected_lineages"] == [
+        {"lineage": "A", "n_sites": 2},
+        {"lineage": "B", "n_sites": 2},
+    ]
+    assert out["S3"]["summary"]["n_dropped_affecting_detected_lineages"] is None
+    assert out["S3"]["amplicons"][0]["n_sites_in_detected_lineages"] is None
+    assert out["S4"]["amplicons"][0]["affects_detected_lineage"] is False
+
+
+# --------------------------------------------------------------------------- unexplained mutations
+def test_unexplained_rows_and_flag(tmp_path):
+    data = build_g(tmp_path)
+    rows = data["unexplained_mutations"]
+    assert data["available"]["unexplained_mutations"] is True
+    assert len(rows) == 5 and rows[0]["sample"] == "SiteC_W05_1"  # file order kept
+    first = rows[0]
+    assert first["position"] == 22102 and first["alt"] == "T" and first["aa_change"] == "E180D"
+    assert first["observed_freq"] == 0.3 and first["expected_freq"] == 0.0 and first["depth"] == 520
+    assert first["recurrent"] is True and first["n_samples"] == 3
+    assert first["p_value"] == pytest.approx(2.39e-42) and isinstance(first["p_value"], float)
+    assert (
+        rows[3]["recurrent"] is False and rows[4]["gene"] is None and rows[4]["aa_change"] is None
+    )
+    (flag,) = [f for f in data["run_flags"] if f["code"] == "unexplained_mutations"]
+    assert flag["level"] == "info" and flag["samples"] == [
+        "SiteA_W04_1",
+        "SiteB_W03_1",
+        "SiteC_W05_1",
+    ]
+    assert "S:E180D in 3 samples" in flag["message"] and "1 mutation(s)" in flag["message"]
+    s = {x["sample"]: x for x in data["samples"]}
+    assert s["SiteC_W05_1"]["n_unexplained"] == 1 and s["SiteA_W01_1"]["n_unexplained"] == 0
+    assert data["thresholds"]["unexplained_min_depth"] == 20
+
+
+def test_unexplained_empty_table_and_no_recurrence(tmp_path):
+    header = UE_HEADER
+    empty = tmp_path / "ue.tsv"
+    empty.write_text(header + "\n")
+    data = build_g(tmp_path, drop=("--unexplained",), extra=["--unexplained", str(empty)])
+    assert (
+        data["unexplained_mutations"] == [] and data["available"]["unexplained_mutations"] is True
+    )
+    assert "unexplained_mutations" not in flag_codes(data)
+    single = tmp_path / "ue1.tsv"
+    single.write_text(
+        header
+        + "\nSiteA_W01_1\t28802\tA\tT\t0.2\t0\t0.2\t300\t60\tN\tR177*\tstop_gained\t1\tfalse\t3.4e-21\n"
+    )
+    data = build_g(tmp_path, drop=("--unexplained",), extra=["--unexplained", str(single)])
+    assert len(data["unexplained_mutations"]) == 1 and "unexplained_mutations" not in flag_codes(
+        data
+    )
+
+
+def test_unexplained_accepts_the_per_sample_table():
+    base = ROOT / "tests" / "fixtures" / "unexplained" / "concat"
+    rows = brd.load_unexplained(base / "S_TWO.unexplained_mutations.tsv", brd.Problems())
+    assert [r["position"] for r in rows] == [22102, 23063]
+    assert rows[0]["n_samples"] is None and rows[0]["recurrent"] is False
+    assert rows[1]["aa_change"] == "N501Y" and rows[1]["expected_freq"] == 0.7
+    assert brd.load_unexplained(base / "S_SKIPPED.unexplained_mutations.tsv", brd.Problems()) == []
+
+
+def test_unexplained_bad_values_are_reported_not_fatal(tmp_path):
+    ue = tmp_path / "ue.tsv"
+    ue.write_text("sample\tposition\tobserved_freq\nA\tabc\t0.2\nB\t5\t0.3\n")
+    problems = brd.Problems()
+    rows = brd.load_unexplained(ue, problems)
+    assert [r["sample"] for r in rows] == ["B"] and "unexplained_mutations.tsv" in problems.items
+
+
+# --------------------------------------------------------------------------- time series
+def test_timeseries_table_loads_real_timeseries_output():
+    problems = brd.Problems()
+    ts = brd.load_timeseries(
+        G / "freyja_timeseries.tsv", G / "freyja_timeseries_lineages.tsv", problems
+    )
+    assert not problems.items
+    assert ts["enabled"] is True and ts["has_viral_load"] is True
+    assert ts["sites"] == ["SiteA", "SiteB", "SiteC"] and len(ts["dates"]) == 8
+    row = ts["summarized"][0]
+    assert row == {
+        "site": "SiteA", "collection_date": "2026-01-05", "lineage_group": "Omicron",
+        "abundance": 0.80063, "abundance_load_weighted": 0.80063, "n_samples": 1,
+        "mean_viral_load": 175675.0, "total_viral_load": 175675.0,
+    }  # fmt: skip
+    assert len(ts["summarized"]) == 72 and len(ts["lineages"]) == 85
+    assert ts["lineages_total_groups"] is None
+
+
+def test_timeseries_in_report_data_and_available(tmp_path):
+    data = build_g(tmp_path)
+    ts = data["timeseries"]
+    assert data["available"]["timeseries"] is True and data["available"]["time_series"] is True
+    assert ts["min_coverage"] == 60 and ts["has_viral_load"] is True
+    # today's derived panel is still computed (fallback / unchanged)
+    assert data["time_series"]["n_dates"] >= 2
+
+
+def test_timeseries_without_viral_load_and_with_nas(tmp_path):
+    tsv = tmp_path / "ts.tsv"
+    tsv.write_text(
+        "site\tcollection_date\tlineage_group\tabundance\tabundance_load_weighted\tn_samples\tmean_viral_load\ttotal_viral_load\n"
+        "NA\t2026-01-05\tDelta\t0.5\tNA\t2\tNA\tNA\nNA\t2026-01-12\tDelta\t0.7\tNA\t1\tNA\tNA\n"
+    )
+    ts = brd.load_timeseries(tsv, None, brd.Problems())
+    assert (
+        ts["has_viral_load"] is False and ts["sites"] == [] and ts["summarized"][0]["site"] is None
+    )
+    assert ts["summarized"][0]["abundance_load_weighted"] is None and ts["lineages"] == []
+
+
+def test_timeseries_lineage_table_is_capped(tmp_path):
+    lines = [
+        "site\tcollection_date\tlineage_group\tabundance\tabundance_load_weighted\tn_samples\tmean_viral_load\ttotal_viral_load"
+    ]
+    for d in ("2026-01-05", "2026-01-12"):
+        lines += [f"A\t{d}\tL{i}\t{(100 - i) / 1000}\tNA\t1\tNA\tNA" for i in range(80)]
+    tsv = tmp_path / "tl.tsv"
+    tsv.write_text("\n".join(lines) + "\n")
+    ts = brd.load_timeseries(None, tsv, brd.Problems())
+    assert ts["lineages_total_groups"] == 80
+    assert len({r["lineage_group"] for r in ts["lineages"]}) == brd.MAX_TIMESERIES_LINEAGES
+    assert ts["lineages"][0]["lineage_group"] == "L0"
+
+
+# --------------------------------------------------------------------------- growth rates
+def test_growth_rates_real_format(tmp_path):
+    data = build_g(tmp_path)
+    growth = data["growth_rates"]
+    assert data["available"]["growth_rates"] is True and growth["status"] == "ok"
+    rows = {r["lineage"]: r for r in growth["rows"]}
+    assert rows["XBB.1.5"] == {
+        "lineage": "XBB.1.5",
+        "advantage_pct": 60.3,
+        "interval_text": "[44.74% , 49.89%]",
+    }
+    assert (
+        rows["BA.2"]["advantage_pct"] == -35.1
+        and rows["BA.2"]["interval_text"] == "[-31.42% , -27.98%]"
+    )
+    assert growth["inputs"]["n_samples"] == 30 and growth["inputs"]["n_dates"] == 8
+    assert growth["params"] == {
+        "days": 56,
+        "nboots": 1000,
+        "seed": 1,
+        "serial_interval": 5.5,
+        "scale_by_viral_load": False,
+    }
+    assert growth["reason"] is None
+
+
+def test_growth_failed_text_is_kept(tmp_path):
+    failed = tmp_path / "freyja_growth_rates.failed.txt"
+    failed.write_text(
+        "freyja relgrowthrate produced no growth-rate table: insufficient data: 3 distinct collection "
+        "date(s) spanning 14 day(s) within the last 56 days; need at least 4 dates spanning at least 14 days\n"
+    )
+    data = build_g(
+        tmp_path, drop=("--growth-rates", "--growth-inputs"), extra=["--growth-failed", str(failed)]
+    )
+    growth = data["growth_rates"]
+    assert growth["status"] == "failed" and growth["rows"] == []
+    assert "insufficient data: 3 distinct collection date(s)" in growth["reason"]
+    assert data["available"]["growth_rates"] is True
+
+
+def test_growth_absent_and_dashboard_name(tmp_path):
+    data = build_g(
+        tmp_path,
+        drop=("--growth-rates", "--growth-inputs"),
+        extra=["--dashboard-name", "freyja_dashboard.html"],
+    )
+    assert data["growth_rates"] is None and data["dashboard"] == {"file": "freyja_dashboard.html"}
+    assert build_g(tmp_path)["dashboard"] is None
+
+
+def test_growth_csv_variants(tmp_path):
+    csv_path = tmp_path / "g.csv"
+    csv_path.write_text(
+        'Lineage,Estimated Advantage,Bootstrap 95% interval\nA,+73.3%,"[1% , 2%]"\nB,nan,\nC,,\n'
+    )
+    problems = brd.Problems()
+    growth = brd.load_growth_rates(csv_path, None, None, problems)
+    rows = {r["lineage"]: r["advantage_pct"] for r in growth["rows"]}
+    assert rows == {"A": 73.3, "B": None, "C": None}
+    # a failure note alongside a table: the table wins
+    note = tmp_path / "f.txt"
+    note.write_text("something\n")
+    both = brd.load_growth_rates(csv_path, note, None, problems)
+    assert both["status"] == "ok" and both["reason"] is None
+
+
+def test_new_cli_options_ignore_no_file_placeholders(tmp_path):
+    (tmp_path / "NO_FILE").write_text("")
+    out = tmp_path / "r.json"
+    args = [
+        "--run-info",
+        str(G / "run_info.json"),
+        "--qc",
+        str(G / "qc_summary.tsv"),
+        "--out",
+        str(out),
+    ]
+    for option in ("--dropout-impact", "--dropout-summary", "--unexplained", "--timeseries",
+                   "--timeseries-lineages", "--growth-rates", "--growth-failed", "--growth-inputs"):  # fmt: skip
+        args += [option, str(tmp_path / "NO_FILE")]
+    args += ["--dashboard-name", ""]
+    assert brd.main(args) == 0
+    data = json.loads(out.read_text())
+    for key in (
+        "dropout_impact",
+        "unexplained_mutations",
+        "timeseries",
+        "growth_rates",
+        "dashboard",
+    ):
+        assert data[key] is None
+
+
+# --------------------------------------------------------------------------- consensus reason / flags
+def test_consensus_reason_column_flags_and_samples(tmp_path):
+    data = build_g(tmp_path, extra=["--consensus", str(G / "consensus_stats.tsv")])
+    rows = {r["sample"]: r for r in data["consensus"]}
+    assert rows["LOWCOV_1"]["status"] == "failed"
+    assert rows["LOWCOV_1"]["reason"].startswith(
+        "bcftools consensus failed: The fasta sequence does not match"
+    )
+    assert (
+        rows["SiteA_W03_1"]["reason"]
+        == "skipped variant at NC_045512.2:22942 (overlaps another variant)"
+    )
+    assert rows["SiteA_W01_1"]["reason"] is None and rows["NEG_1"]["reason"] is None
+    s = {x["sample"]: x for x in data["samples"]}
+    assert (
+        s["LOWCOV_1"]["consensus_status"] == "failed"
+        and "11287" in s["LOWCOV_1"]["consensus_reason"]
+    )
+    assert (
+        s["SiteA_W01_1"]["consensus_reason"] is None
+        and s["SiteA_W01_1"]["consensus_status"] == "ok"
+    )
+    (failed,) = [f for f in data["run_flags"] if f["code"] == "consensus_failed"]
+    assert failed["level"] == "warn" and failed["samples"] == ["LOWCOV_1"]
+    assert failed["message"].startswith("consensus genome failed for 1 sample(s): LOWCOV_1;")
+    assert "all-N: see the consensus table for the reason" in failed["message"]
+    (warned,) = [f for f in data["run_flags"] if f["code"] == "consensus_warnings"]
+    assert warned["level"] == "info" and warned["samples"] == ["SiteA_W03_1"]
+    assert warned["message"].startswith(
+        "consensus built with warnings for 1 sample(s): SiteA_W03_1"
+    )
+
+
+def test_old_six_column_consensus_table_still_loads(tmp_path):
+    data = build_g(tmp_path, extra=["--consensus", str(G / "consensus_stats_6col.tsv")])
+    assert all(r["reason"] is None for r in data["consensus"])
+    assert len(data["consensus"]) == 5
+    codes = flag_codes(data)
+    assert "consensus_warnings" not in codes and "input_problems" not in codes
+    assert "consensus_failed" in codes  # status failed still flagged, just without a reason
+
+
+def test_no_consensus_flags_for_a_clean_consensus(tmp_path):
+    data = run_builder("a_full", tmp_path / "r.json")
+    assert not {"consensus_failed", "consensus_warnings"} & flag_codes(data)

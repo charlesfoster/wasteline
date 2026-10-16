@@ -1,0 +1,6 @@
+sample	length	n_count	n_pct	ambiguous_count	status
+LOWCOV_1	29903	29903	100.00	0	failed
+NEG_1	29903	29903	100.00	0	empty
+SiteA_W01_1	29903	12	0.04	0	ok
+SiteA_W03_1	29903	30	0.10	1	ok
+SiteB_W02_1	29903	8	0.03	0	ok

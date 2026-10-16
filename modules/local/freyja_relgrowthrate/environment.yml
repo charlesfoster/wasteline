@@ -1,0 +1,8 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/nf-core/modules/master/modules/environment-schema.json
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # Keep in sync with the container tag in main.nf (bin/bump_freyja.py edits both)
+  - bioconda::freyja=2.0.6

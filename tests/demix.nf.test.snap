@@ -44,12 +44,18 @@
                 "QC_SAMPLE": {
                     "python": "3.12.12"
                 },
+                "UNEXPLAINED_MUTATIONS": {
+                    "python": "3.12.12"
+                },
+                "UNEXPLAINED_MUTATIONS_CONCAT": {
+                    "python": "3.12.12"
+                },
                 "Workflow": {
                     "charlesfoster/wasteline": "v0.1.0dev"
                 }
             }
         ],
-        "timestamp": "2026-10-16T02:33:57.915693",
+        "timestamp": "2026-10-16T18:38:31.823792",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

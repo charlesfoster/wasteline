@@ -15,8 +15,8 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.qc_row.tsv") ]
-                input[1] = [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.amplicon_coverage.tsv") ]
+                input[0] = [ file("\$projectDir/tests/fixtures/qc/concat/S_A.qc_row.tsv") ]
+                input[1] = [ file("\$projectDir/tests/fixtures/qc/concat/S_A.amplicon_coverage.tsv") ]
                 """
             }
         }
@@ -35,7 +35,7 @@ nextflow_process {
         when {
             process {
                 """
-                def d = "\$projectDir/tests/fixtures/modules_phase3/concat"
+                def d = "\$projectDir/tests/fixtures/qc/concat"
                 // deliberately out of order
                 input[0] = [ file("\$d/S_B.qc_row.tsv"), file("\$d/S_A.qc_row.tsv") ]
                 input[1] = [ file("\$d/S_B.amplicon_coverage.tsv"), file("\$d/S_A.amplicon_coverage.tsv") ]
@@ -65,8 +65,8 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.qc_row.tsv")
-                input[1] = file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.amplicon_coverage.tsv")
+                input[0] = file("\$projectDir/tests/fixtures/qc/concat/S_A.qc_row.tsv")
+                input[1] = file("\$projectDir/tests/fixtures/qc/concat/S_A.amplicon_coverage.tsv")
                 """
             }
         }
@@ -76,6 +76,25 @@ nextflow_process {
                 { assert process.success },
                 { assert new File(process.out.qc_summary[0].toString()).readLines().size() == 2 },
                 { assert new File(process.out.amplicon_coverage[0].toString()).readLines().size() == 3 }
+            )
+        }
+    }
+
+    test("a row from before primer_trimmed_pct (23 columns) is rejected loudly - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                input[0] = [ file("\$projectDir/tests/fixtures/qc/concat/S_A.qc_row.tsv"), file("\$projectDir/tests/fixtures/modules_phase3/concat/S_B.qc_row.tsv") ]
+                input[1] = []
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.failed }
             )
         }
     }

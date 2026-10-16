@@ -45,6 +45,7 @@ nextflow_process {
                     def tsv = new File("\${launchDir}/PURE_C.variants.tsv")
                     tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.variants.tsv.gz")).bytes
                     input[0] = [ [ id:'PURE_C' ], file(tsv.toString()) ]
+                    input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
                     """
                 }
             }

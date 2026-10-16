@@ -233,3 +233,24 @@ def test_cli_requires_mode(tmp_path):
     with pytest.raises(SystemExit) as exc:
         cs.main([str(tmp_path / "x.csv")])
     assert exc.value.code == 2
+
+
+def test_viral_load_blank_or_positive_number(tmp_path):
+    hdr = FULL_HDR.strip() + ",viral_load\n"
+    p = sheet(
+        tmp_path,
+        hdr + "A,a_1.fastq.gz,a_2.fastq.gz,sample,2024-01-31,X,12500\n"
+        "B,b_1.fastq.gz,b_2.fastq.gz,sample,2024-02-07,X,\n"
+        "C,c_1.fastq.gz,c_2.fastq.gz,sample,2024-02-14,X,1.2e5\n",
+    )
+    r = cs.validate(p, "full")
+    assert r["ok"], r["errors"]
+    assert r["warnings"] == []  # viral_load is a known column in every mode
+
+
+@pytest.mark.parametrize("bad", ["abc", "0", "-5", "nan", "inf"])
+def test_viral_load_invalid(tmp_path, bad):
+    hdr = FULL_HDR.strip() + ",viral_load\n"
+    p = sheet(tmp_path, hdr + f"A,a_1.fastq.gz,a_2.fastq.gz,sample,2024-01-31,X,{bad}\n")
+    r = cs.validate(p, "full")
+    assert not r["ok"] and "viral_load" in errs(r)

@@ -1,0 +1,15 @@
+{
+    "stub": {
+        "content": [
+            [
+                "freyja_dashboard.html"
+            ],
+            0
+        ],
+        "timestamp": "2026-10-16T09:54:51.931522",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

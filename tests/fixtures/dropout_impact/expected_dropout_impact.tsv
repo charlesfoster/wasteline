@@ -1,0 +1,8 @@
+sample	amplicon	start	end	mean_depth	n_informative_sites	n_sites_in_detected_lineages	affects_detected_lineage	affected_lineages
+S1	tiny_2	150	400	3.10	4	3	true	A:2,B:2
+S1	tiny_4	601	1000	0.80	2	1	true	B:1
+S3	tiny_3	401	600	2.50	1	NA	false	NA
+S4	tiny_4	601	1000	0.00	2	0	false	NA
+S5	tiny_1	1	200	5.00	2	0	false	NA
+S5	tiny_2	150	400	1.25	4	1	true	D:1
+S7	tiny_3	401	600	0.00	1	1	true	C:1

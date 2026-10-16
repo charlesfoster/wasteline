@@ -1,0 +1,35 @@
+nextflow_workflow {
+
+    name "MINIBWA_MEM mapping"
+    script "./mapping.nf"
+    workflow "MAPPING"
+    tag "modules"
+    tag "modules_local"
+    tag "minibwa_mem"
+    tag "docker"
+
+    // The synthetic MIX_A reads come from the SARS-CoV-2 reference: nearly all must map, mostly as proper
+    // pairs, and the BAM must be coordinate-sorted (the pipeline's next step, samtools view -F 4 + index, relies on it)
+    test("reads map, BAM is coordinate-sorted - real") {
+
+        when {
+            workflow {
+                """
+                input[0] = channel.of([ [ id:'MIX_A' ], [ file("\$projectDir/tests/data/fastq/MIX_A_R1.fastq.gz"), file("\$projectDir/tests/data/fastq/MIX_A_R2.fastq.gz") ] ])
+                input[1] = channel.of([ [ id:'NC_045512' ], file("\$projectDir/assets/references/NC_045512.fasta") ])
+                """
+            }
+        }
+
+        then {
+            def stats = file(workflow.out.inspect[0][1].toString()).readLines().collectEntries { line -> [ (line.split(' ')[0]): line.split(' ')[1] ] }
+            assertAll(
+                { assert workflow.success },
+                { assert stats.sort_order == 'coordinate' },
+                { assert (stats.total as int) > 1000 },
+                { assert (stats.mapped as int) >= 0.95 * (stats.total as int) },
+                { assert (stats.proper_pairs as int) >= 0.9 * (stats.total as int) }
+            )
+        }
+    }
+}

@@ -1,0 +1,1 @@
+{"n_samples": 30, "n_dates": 8, "n_dates_window": 8, "window_span_days": 49, "n_with_viral_load": 26, "first_date": "2026-01-05", "last_date": "2026-02-23", "span_days": 49, "viral_load_column": true}

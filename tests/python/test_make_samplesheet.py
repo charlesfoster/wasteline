@@ -455,3 +455,52 @@ def test_a_db_dir_inside_the_results_is_not_a_sample(tmp_path, capsys):
         assert skipped.read_text().splitlines() == [
             "sample\treason\tsample_type\tcollection_date\tsite"
         ]
+
+
+def test_viral_load_from_metadata_is_written_only_when_present(tmp_path, capsys):
+    meta = tmp_path / "m.csv"
+    meta.write_text("sample,site,viral_load\nSite_1_week_2,P1,1.5e5\nSite-A.1,P1,\n")
+    out = tmp_path / "s.csv"
+    rc, _, err = run([FIX / "fastq_illumina", "--metadata", meta, "-o", out], capsys)
+    assert rc == 0, err
+    rows = read(out)
+    assert list(rows[0])[-1] == "viral_load"
+    rec = by_sample(rows)
+    assert rec["Site_1_week_2"]["viral_load"] == "1.5e5"
+    assert rec["Site-A.1"]["viral_load"] == ""
+    # no sample has a viral load: the column is not written
+    meta.write_text("sample,site\nSite_1_week_2,P1\n")
+    rc, _, err = run([FIX / "fastq_illumina", "--metadata", meta, "-o", out], capsys)
+    assert rc == 0, err
+    assert "viral_load" not in read(out)[0]
+
+
+def test_viral_load_must_be_a_positive_number(tmp_path, capsys):
+    out = tmp_path / "s.csv"
+    for bad in ("abc", "-3", "0", "nan", "inf"):
+        meta = tmp_path / "m.csv"
+        meta.write_text(f"sample,viral_load\nSite_1_week_2,{bad}\n")
+        rc, _, err = run([FIX / "fastq_illumina", "--metadata", meta, "-o", out], capsys)
+        assert rc == 1 and "viral_load" in err, bad
+
+
+def test_viral_load_is_carried_over_from_a_results_samplesheet(tmp_path, capsys):
+    root = tmp_path / "old"
+    for sample in ("Good", "Other"):
+        d = root / "samples" / sample / "freyja"
+        d.mkdir(parents=True)
+        (d / f"{sample}.demix").write_text("x" * 40)
+        (d / f"{sample}.depths").write_text("ref\t1\tA\t5\n")
+        (d / f"{sample}.freyja_variants.tsv").write_text("REGION\tPOS\n")
+    (root / "summary").mkdir()
+    (root / "summary" / "samplesheet.csv").write_text(
+        "sample,fastq_1,fastq_2,sample_type,collection_date,site,viral_load\n"
+        "Good,a,b,sample,2026-01-05,S1,2500\n"
+        "Other,a,b,sample,2026-01-12,S1,-1\n"
+    )
+    out = tmp_path / "a.csv"
+    rc, _, err = run(["--from-results", root, "--mode", "aggregate", "-o", out], capsys)
+    assert rc == 0, err
+    rec = by_sample(read(out))
+    assert rec["Good"]["viral_load"] == "2500"
+    assert rec["Other"]["viral_load"] == ""  # invalid values are not carried over

@@ -1,0 +1,14 @@
+{
+    "stub": {
+        "content": [
+            [
+                "site\tcollection_date\tlineage_group\tabundance\tabundance_load_weighted\tn_samples\tmean_viral_load\ttotal_viral_load"
+            ]
+        ],
+        "timestamp": "2026-10-16T09:54:39.739371",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

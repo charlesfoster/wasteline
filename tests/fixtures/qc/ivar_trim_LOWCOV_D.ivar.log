@@ -1,0 +1,67 @@
+Found 58 primers in BED file
+Reading from LOWCOV_D.mapped.bam
+Minimum Read Length based on 120 reads: 75
+-------
+Results: 
+Primer Name	Read Count
+nCoV-2019_1_F	0
+nCoV-2019_1_R	0
+nCoV-2019_2_F	0
+nCoV-2019_2_R	0
+nCoV-2019_3_F	2
+nCoV-2019_3_R	1
+nCoV-2019_4_F	2
+nCoV-2019_4_R	0
+nCoV-2019_5_F	0
+nCoV-2019_5_R	0
+nCoV-2019_6_F	1
+nCoV-2019_6_R	1
+nCoV-2019_7_F	0
+nCoV-2019_7_R	2
+nCoV-2019_8_F	0
+nCoV-2019_8_R	0
+nCoV-2019_9_F	0
+nCoV-2019_9_R	1
+nCoV-2019_10_F	1
+nCoV-2019_10_R	1
+nCoV-2019_11_F	0
+nCoV-2019_11_R	1
+nCoV-2019_12_F	0
+nCoV-2019_12_R	0
+nCoV-2019_13_F	0
+nCoV-2019_13_R	1
+nCoV-2019_14_F	0
+nCoV-2019_14_R	0
+nCoV-2019_15_F	0
+nCoV-2019_15_R	1
+nCoV-2019_16_F	0
+nCoV-2019_16_R	0
+nCoV-2019_17_F	2
+nCoV-2019_17_R	0
+nCoV-2019_18_F	0
+nCoV-2019_18_R	0
+nCoV-2019_19_F	1
+nCoV-2019_19_R	0
+nCoV-2019_20_F	0
+nCoV-2019_20_R	0
+nCoV-2019_21_F	0
+nCoV-2019_21_R	0
+nCoV-2019_22_F	0
+nCoV-2019_22_R	0
+nCoV-2019_23_F	0
+nCoV-2019_23_R	0
+nCoV-2019_24_F	1
+nCoV-2019_24_R	0
+nCoV-2019_25_F	2
+nCoV-2019_25_R	3
+nCoV-2019_26_F	0
+nCoV-2019_26_R	1
+nCoV-2019_27_F	1
+nCoV-2019_27_R	0
+nCoV-2019_28_F	1
+nCoV-2019_28_R	0
+nCoV-2019_29_F	0
+nCoV-2019_29_R	0
+Trimmed primers from 22.69% (27) of reads.
+0% (0) of reads were quality trimmed below the minimum length of 75 bp and were not written to file.
+77.31% (92) of reads started outside of primer regions. Since the -e flag was given, these reads were written to file.

@@ -15,6 +15,10 @@ process BUILD_REPORT_DATA {
     // (sample_type, collection_date, site for modes without a QC table), freyja boot intervals and the
     // status of the second-barcode demix
     tuple path(controls_aggregated), path(samplesheet), path(boot_summary), path(compare_status)
+    // optional analysis tables, [] when absent: dropout impact (+ per-sample summary), unexplained mutations, time series
+    // (summarized + lineages level), Freyja growth rates (+ why there are none, + what went into the fit) and the
+    // name of the dashboard file ('' when none; it is linked, not embedded)
+    tuple path(dropout_impact), path(dropout_summary), path(unexplained), path(timeseries), path(timeseries_lineages, stageAs: "lineages/*"), path(growth_rates), path(growth_failed), path(growth_inputs), val(dashboard_name)
 
     output:
     path "report_data.json", emit: json
@@ -38,6 +42,15 @@ process BUILD_REPORT_DATA {
     def sheet_arg = samplesheet ? "--samplesheet ${samplesheet}" : ''
     def boot_arg = boot_summary ? "--boot ${boot_summary}" : ''
     def compare_status_arg = compare_status ? "--compare-status ${compare_status}" : ''
+    def dropout_arg = dropout_impact ? "--dropout-impact ${dropout_impact}" : ''
+    def dropout_summary_arg = dropout_summary ? "--dropout-summary ${dropout_summary}" : ''
+    def unexplained_arg = unexplained ? "--unexplained ${unexplained}" : ''
+    def timeseries_arg = timeseries ? "--timeseries ${timeseries}" : ''
+    def timeseries_lineages_arg = timeseries_lineages ? "--timeseries-lineages ${timeseries_lineages}" : ''
+    def growth_arg = growth_rates ? "--growth-rates ${growth_rates}" : ''
+    def growth_failed_arg = growth_failed ? "--growth-failed ${growth_failed}" : ''
+    def growth_inputs_arg = growth_inputs ? "--growth-inputs ${growth_inputs}" : ''
+    def dashboard_arg = dashboard_name ? "--dashboard-name '${dashboard_name}'" : ''
     def merged_arg = qc_summary ? "--write-qc-tsv qc_summary.merged.tsv" : ''
     """
     build_report_data.py \\
@@ -54,6 +67,15 @@ process BUILD_REPORT_DATA {
         ${sheet_arg} \\
         ${boot_arg} \\
         ${compare_status_arg} \\
+        ${dropout_arg} \\
+        ${dropout_summary_arg} \\
+        ${unexplained_arg} \\
+        ${timeseries_arg} \\
+        ${timeseries_lineages_arg} \\
+        ${growth_arg} \\
+        ${growth_failed_arg} \\
+        ${growth_inputs_arg} \\
+        ${dashboard_arg} \\
         ${merged_arg} \\
         ${args} \\
         --out report_data.json

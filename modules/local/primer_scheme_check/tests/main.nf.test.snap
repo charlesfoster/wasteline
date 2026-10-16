@@ -1,0 +1,27 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.primer_scheme_check.tsv:md5,2c83246c8e7bd43b84b838c9a7205248"
+                ]
+            ],
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.primer_scheme_summary.tsv:md5,700be04d92856798c3689048c0156666"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-16T13:21:02.967665",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

@@ -53,9 +53,16 @@ def test_column_order_matches_contract():
         "sample, sample_type, collection_date, site, raw_reads, trimmed_reads, mapped_reads, mapped_pct, mean_depth, "
         "depth_sd, median_depth, pct_genome_ge_1x, pct_genome_ge_10x, pct_genome_ge_min_depth, amplicons_total, "
         "amplicons_dropped, qc_status, qc_reasons, demix_status, demix_reason, consensus_length, consensus_n_pct, "
-        "barcode_version"
+        "barcode_version, primer_trimmed_pct, primer_scheme_check, primer_scheme_best, primer_scheme_enrichment"
     )
     assert ", ".join(qc.COLUMNS) == contract
+    # appended in this order: every older column keeps its place
+    assert qc.COLUMNS[23:] == [
+        "primer_trimmed_pct",
+        "primer_scheme_check",
+        "primer_scheme_best",
+        "primer_scheme_enrichment",
+    ]
 
 
 def test_depth_statistics(tmp_path):
@@ -93,6 +100,10 @@ def test_optional_inputs_are_na(tmp_path):
         "mapped_pct",
         "amplicons_total",
         "amplicons_dropped",
+        "primer_trimmed_pct",
+        "primer_scheme_check",
+        "primer_scheme_best",
+        "primer_scheme_enrichment",
     ):
         assert row[col] == "NA"
     for col in (
@@ -340,6 +351,330 @@ def test_negative_without_any_data_is_na(tmp_path):
     assert (row["qc_status"], row["qc_reasons"]) == ("NA", "no_depths")
 
 
+# ---- primer_trimmed_pct / low_primer_trimming ------------------------------------------------------------
+
+
+def trim_stats(tmp_path, pct, sample="S", status="ok"):
+    path = tmp_path / "trim.tsv"
+    path.write_text(
+        "sample\treads_total\tprimer_trimmed_reads\tprimer_trimmed_pct\tno_primer_reads\tno_primer_pct\t"
+        "quality_trimmed_reads\tquality_trimmed_pct\tstatus\n"
+        f"{sample}\t100\t20\t{pct}\t80\t80.00\t0\t0.00\t{status}\n"
+    )
+    return str(path)
+
+
+def test_primer_trimmed_pct_is_reported(tmp_path):
+    row = run(tmp_path, depth_profile(), "--ivar-trim-stats", trim_stats(tmp_path, "21.97"))
+    assert row["primer_trimmed_pct"] == "21.97"
+    assert row["qc_status"] == "PASS"
+    assert row["qc_reasons"] == ""
+
+
+def test_primer_trimmed_pct_real_log_through_stats_script(tmp_path):
+    import ivar_trim_stats
+
+    out = tmp_path / "stats.tsv"
+    ivar_trim_stats.main(
+        ["--sample", "S", "--log", str(FIX / "ivar_trim_PURE_C.ivar.log"), "-o", str(out)]
+    )
+    row = run(tmp_path, depth_profile(), "--ivar-trim-stats", str(out))
+    assert row["primer_trimmed_pct"] == "21.97"
+
+
+def test_low_primer_trimming_rule_is_off_by_default(tmp_path):
+    row = run(tmp_path, depth_profile(), "--ivar-trim-stats", trim_stats(tmp_path, "0.50"))
+    assert row["primer_trimmed_pct"] == "0.50"
+    assert (row["qc_status"], row["qc_reasons"]) == ("PASS", "")
+
+
+def test_low_primer_trimming_warns_below_threshold(tmp_path):
+    row = run(
+        tmp_path,
+        depth_profile(),
+        "--ivar-trim-stats",
+        trim_stats(tmp_path, "4.99"),
+        "--min-primer-trimmed-pct",
+        "5",
+    )
+    assert (row["qc_status"], row["qc_reasons"]) == ("WARN", "low_primer_trimming")
+
+
+def test_low_primer_trimming_boundary_is_not_a_warning(tmp_path):
+    row = run(
+        tmp_path,
+        depth_profile(),
+        "--ivar-trim-stats",
+        trim_stats(tmp_path, "5.00"),
+        "--min-primer-trimmed-pct",
+        "5",
+    )
+    assert (row["qc_status"], row["qc_reasons"]) == ("PASS", "")
+
+
+def test_low_primer_trimming_zero_percent_warns(tmp_path):
+    row = run(
+        tmp_path,
+        depth_profile(),
+        "--ivar-trim-stats",
+        trim_stats(tmp_path, "0.00"),
+        "--min-primer-trimmed-pct",
+        "5",
+    )
+    assert row["qc_reasons"] == "low_primer_trimming"
+
+
+@pytest.mark.parametrize("value", ["NA", "nan", "", "abc"])
+def test_low_primer_trimming_ignores_unavailable_value(tmp_path, value):
+    row = run(
+        tmp_path,
+        depth_profile(),
+        "--ivar-trim-stats",
+        trim_stats(tmp_path, value),
+        "--min-primer-trimmed-pct",
+        "5",
+    )
+    assert row["primer_trimmed_pct"] == "NA"
+    assert (row["qc_status"], row["qc_reasons"]) == ("PASS", "")
+
+
+def test_low_primer_trimming_combines_with_other_reasons(tmp_path):
+    extra = ("--ivar-trim-stats", trim_stats(tmp_path, "1.00"), "--min-primer-trimmed-pct", "5")
+    warn = run(tmp_path, depth_profile(ge10=70), *extra)  # low_coverage WARN + low_primer_trimming
+    assert (warn["qc_status"], warn["qc_reasons"]) == ("WARN", "low_coverage;low_primer_trimming")
+    both = run(
+        tmp_path,
+        depth_profile(ge10=70),
+        *extra,
+        "--max-dropped",
+        "1",
+        "--amplicons",
+        amplicon_file(tmp_path, 5),
+    )
+    assert both["qc_reasons"] == "low_coverage;amplicon_dropout;low_primer_trimming"
+
+
+def test_low_primer_trimming_never_downgrades_a_fail(tmp_path):
+    extra = ("--ivar-trim-stats", trim_stats(tmp_path, "1.00"), "--min-primer-trimmed-pct", "5")
+    row = run(tmp_path, depth_profile(ge10=30), *extra)
+    assert row["qc_status"] == "FAIL"
+    assert row["qc_reasons"] == "low_coverage;low_primer_trimming"
+
+
+def test_low_primer_trimming_alone_never_fails(tmp_path):
+    row = run(
+        tmp_path,
+        depth_profile(),
+        "--ivar-trim-stats",
+        trim_stats(tmp_path, "0.00"),
+        "--min-primer-trimmed-pct",
+        "100",
+    )
+    assert row["qc_status"] == "WARN"
+
+
+def test_low_primer_trimming_not_applied_to_negatives(tmp_path):
+    row = run(
+        tmp_path,
+        [0] * 100,
+        "--ivar-trim-stats",
+        trim_stats(tmp_path, "0.00"),
+        "--min-primer-trimmed-pct",
+        "5",
+        sample_type="negative",
+    )
+    assert (row["qc_status"], row["qc_reasons"]) == ("PASS", "")
+    assert row["primer_trimmed_pct"] == "0.00"  # still reported
+
+
+def test_low_primer_trimming_kept_beside_no_depths(tmp_path):
+    out = tmp_path / "row.tsv"
+    argv = [
+        "--sample",
+        "S",
+        "--depths",
+        str(tmp_path / "missing"),
+        "--ivar-trim-stats",
+        trim_stats(tmp_path, "1.00"),
+        "--min-primer-trimmed-pct",
+        "5",
+        "-o",
+        str(out),
+    ]
+    assert qc.main(argv) == 0
+    row = dict(zip(qc.COLUMNS, out.read_text().splitlines()[1].split("\t")))
+    assert (row["qc_status"], row["qc_reasons"]) == ("FAIL", "no_depths;low_primer_trimming")
+
+
+def test_stats_row_is_chosen_by_sample(tmp_path):
+    path = tmp_path / "trim.tsv"
+    path.write_text("sample\tprimer_trimmed_pct\nOTHER\t90.00\nS\t12.50\n")
+    row = run(tmp_path, depth_profile(), "--ivar-trim-stats", str(path))
+    assert row["primer_trimmed_pct"] == "12.50"
+
+
+@pytest.mark.parametrize(
+    "content", ["", "sample\tprimer_trimmed_pct\n", "sample\tstatus\nS\tok\n", "garbage"]
+)
+def test_bad_ivar_trim_stats_do_not_crash(tmp_path, content):
+    path = tmp_path / "trim.tsv"
+    path.write_text(content)
+    row = run(
+        tmp_path,
+        depth_profile(),
+        "--ivar-trim-stats",
+        str(path),
+        "--min-primer-trimmed-pct",
+        "5",
+    )
+    assert row["primer_trimmed_pct"] == "NA"
+    assert row["qc_reasons"] == ""
+
+
+def test_missing_ivar_trim_stats_file_does_not_crash(tmp_path):
+    row = run(tmp_path, depth_profile(), "--ivar-trim-stats", str(tmp_path / "nope.tsv"))
+    assert row["primer_trimmed_pct"] == "NA"
+
+
+# ---- primer_scheme_* columns / primer_scheme_mismatch ---------------------------------------------------
+
+SUMMARY_HEADER = "sample\tdeclared_scheme\tdeclared_enrichment\tbest_scheme\tbest_enrichment\tscheme_check\treason\n"
+
+
+def scheme_summary(tmp_path, check, declared="1.1", best="midnight/midnightv2", sample="S"):
+    path = tmp_path / "scheme.tsv"
+    path.write_text(SUMMARY_HEADER + f"{sample}\tarticv4.1\t{declared}\t{best}\t41.6\t{check}\tx\n")
+    return str(path)
+
+
+def test_scheme_columns_are_reported(tmp_path):
+    row = run(
+        tmp_path,
+        depth_profile(),
+        "--primer-scheme-summary",
+        scheme_summary(tmp_path, "ok", "41.64"),
+    )
+    assert row["primer_scheme_check"] == "ok"
+    assert row["primer_scheme_best"] == "midnight/midnightv2"
+    assert row["primer_scheme_enrichment"] == "41.6"
+    assert (row["qc_status"], row["qc_reasons"]) == ("PASS", "")
+
+
+def test_scheme_mismatch_warns(tmp_path):
+    row = run(
+        tmp_path, depth_profile(), "--primer-scheme-summary", scheme_summary(tmp_path, "mismatch")
+    )
+    assert row["primer_scheme_check"] == "mismatch"
+    assert (row["qc_status"], row["qc_reasons"]) == ("WARN", "primer_scheme_mismatch")
+
+
+@pytest.mark.parametrize("check", ["ok", "uninformative", "NA"])
+def test_other_scheme_checks_do_not_warn(tmp_path, check):
+    row = run(tmp_path, depth_profile(), "--primer-scheme-summary", scheme_summary(tmp_path, check))
+    assert row["primer_scheme_check"] == check
+    assert (row["qc_status"], row["qc_reasons"]) == ("PASS", "")
+
+
+def test_scheme_mismatch_na_enrichment_and_best(tmp_path):
+    path = tmp_path / "s.tsv"
+    path.write_text(SUMMARY_HEADER + "S\tmidnight\tNA\tNA\tNA\tNA\ttoo_few_reads\n")
+    row = run(tmp_path, depth_profile(), "--primer-scheme-summary", str(path))
+    assert (
+        row["primer_scheme_check"],
+        row["primer_scheme_best"],
+        row["primer_scheme_enrichment"],
+    ) == (
+        "NA",
+        "NA",
+        "NA",
+    )
+
+
+def test_scheme_mismatch_combines_and_never_downgrades(tmp_path):
+    summary = scheme_summary(tmp_path, "mismatch")
+    warn = run(tmp_path, depth_profile(ge10=70), "--primer-scheme-summary", summary)
+    assert (warn["qc_status"], warn["qc_reasons"]) == (
+        "WARN",
+        "low_coverage;primer_scheme_mismatch",
+    )
+    fail = run(tmp_path, depth_profile(ge10=30), "--primer-scheme-summary", summary)
+    assert (fail["qc_status"], fail["qc_reasons"]) == (
+        "FAIL",
+        "low_coverage;primer_scheme_mismatch",
+    )
+    both = run(
+        tmp_path,
+        depth_profile(ge10=70),
+        "--primer-scheme-summary",
+        summary,
+        "--ivar-trim-stats",
+        trim_stats(tmp_path, "1.00"),
+        "--min-primer-trimmed-pct",
+        "5",
+    )
+    assert both["qc_reasons"] == "low_coverage;low_primer_trimming;primer_scheme_mismatch"
+
+
+def test_scheme_mismatch_not_applied_to_negatives(tmp_path):
+    row = run(
+        tmp_path,
+        [0] * 100,
+        "--primer-scheme-summary",
+        scheme_summary(tmp_path, "mismatch"),
+        sample_type="negative",
+    )
+    assert (row["qc_status"], row["qc_reasons"]) == ("PASS", "")
+    assert row["primer_scheme_check"] == "mismatch"  # still reported
+
+
+def test_scheme_mismatch_kept_beside_no_depths(tmp_path):
+    out = tmp_path / "row.tsv"
+    argv = [
+        "--sample",
+        "S",
+        "--depths",
+        str(tmp_path / "missing"),
+        "--primer-scheme-summary",
+        scheme_summary(tmp_path, "mismatch"),
+        "-o",
+        str(out),
+    ]
+    assert qc.main(argv) == 0
+    row = dict(zip(qc.COLUMNS, out.read_text().splitlines()[1].split("\t")))
+    assert (row["qc_status"], row["qc_reasons"]) == ("FAIL", "no_depths;primer_scheme_mismatch")
+
+
+def test_scheme_summary_row_is_chosen_by_sample(tmp_path):
+    path = tmp_path / "s.tsv"
+    path.write_text(
+        SUMMARY_HEADER + "OTHER\tx\t1.0\tx\t9.0\tmismatch\tx\n" + "S\tx\t30.0\tx\t30.0\tok\tx\n"
+    )
+    row = run(tmp_path, depth_profile(), "--primer-scheme-summary", str(path))
+    assert row["primer_scheme_check"] == "ok"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",
+        SUMMARY_HEADER,
+        "sample\tx\nS\ty\n",
+        SUMMARY_HEADER + "S\ta\t1\tb\t2\tweird\tx\n",
+    ],
+)
+def test_bad_scheme_summary_does_not_crash(tmp_path, content):
+    path = tmp_path / "s.tsv"
+    path.write_text(content)
+    row = run(tmp_path, depth_profile(), "--primer-scheme-summary", str(path))
+    assert row["primer_scheme_check"] == "NA"
+    assert row["qc_reasons"] == ""
+
+
+def test_missing_scheme_summary_does_not_crash(tmp_path):
+    row = run(tmp_path, depth_profile(), "--primer-scheme-summary", str(tmp_path / "nope.tsv"))
+    assert row["primer_scheme_check"] == "NA"
+
+
 # ---- concat -------------------------------------------------------------------------------------------------
 
 
@@ -364,6 +699,17 @@ def test_concat_rejects_header_mismatch(tmp_path):
     bad = tmp_path / "bad.tsv"
     bad.write_text("sample\tqc_status\nS2\tPASS\n")
     assert qc.main(["--concat", good, str(bad), "-o", str(tmp_path / "o.tsv")]) == 2
+
+
+@pytest.mark.parametrize("n_columns", [23, 24])
+def test_concat_rejects_tables_from_before_the_scheme_check_columns(tmp_path, n_columns):
+    """Older tables (23 columns: before primer_trimmed_pct; 24: before the primer_scheme_* columns) are
+    rejected loudly, not padded with NA."""
+    good = make_row(tmp_path, "S1")
+    old = tmp_path / "old.tsv"
+    cols = qc.COLUMNS[:n_columns]
+    old.write_text("\t".join(cols) + "\n" + "\t".join(["S2"] + ["NA"] * (len(cols) - 1)) + "\n")
+    assert qc.main(["--concat", good, str(old), "-o", str(tmp_path / "o.tsv")]) == 2
 
 
 def test_concat_rejects_duplicates(tmp_path):

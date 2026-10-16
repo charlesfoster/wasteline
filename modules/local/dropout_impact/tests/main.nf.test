@@ -1,0 +1,141 @@
+nextflow_process {
+
+    name "Test Process DROPOUT_IMPACT"
+    script "../main.nf"
+    process "DROPOUT_IMPACT"
+    tag "modules"
+    tag "modules_local"
+    tag "dropout_impact"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/dropout_impact"
+                input[0] = file("\$d/amplicon_coverage.tsv")
+                input[1] = file("\$d/freyja_aggregated.tsv")
+                input[2] = file("\$d/dataset")
+                """
+            }
+        }
+
+        then {
+            def impact = new File(process.out.impact[0].toString()).readLines()
+            def summary = new File(process.out.summary[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert impact.size() == 1 },       // header only
+                { assert summary.size() == 1 },
+                { assert snapshot(process.out.impact, process.out.summary).match() }
+            )
+        }
+    }
+
+    test("tiny dataset directory with lineage_mutations.json - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/dropout_impact"
+                input[0] = file("\$d/amplicon_coverage.tsv")
+                input[1] = file("\$d/freyja_aggregated.tsv")
+                input[2] = file("\$d/dataset")
+                """
+            }
+        }
+
+        then {
+            def d = "${projectDir}/tests/fixtures/dropout_impact"
+            def impact = new File(process.out.impact[0].toString()).readLines()
+            def summary = new File(process.out.summary[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert impact == new File("${d}/expected_dropout_impact.tsv").readLines() },
+                { assert summary == new File("${d}/expected_dropout_impact_summary.tsv").readLines() },
+                { assert snapshot(process.out.impact, process.out.summary).match() }
+            )
+        }
+    }
+
+    test("barcodes csv as dataset - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/dropout_impact"
+                input[0] = file("\$d/amplicon_coverage.tsv")
+                input[1] = file("\$d/freyja_aggregated.tsv")
+                input[2] = file("\$d/barcodes.csv")
+                """
+            }
+        }
+
+        then {
+            def d = "${projectDir}/tests/fixtures/dropout_impact"
+            assertAll(
+                { assert process.success },
+                { assert new File(process.out.impact[0].toString()).readLines() == new File("${d}/expected_dropout_impact.tsv").readLines() },
+                { assert new File(process.out.summary[0].toString()).readLines() == new File("${d}/expected_dropout_impact_summary.tsv").readLines() }
+            )
+        }
+    }
+
+    test("min abundance passed through ext.args - real") {
+
+        tag "docker"
+        config "./ext_min_abundance.config"
+
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/dropout_impact"
+                input[0] = file("\$d/amplicon_coverage.tsv")
+                input[1] = file("\$d/freyja_aggregated.tsv")
+                input[2] = file("\$d/dataset")
+                """
+            }
+        }
+
+        then {
+            // at 0.005 lineage C (abundance 0.009) is detected in S1 and carries G700A in tiny_4
+            def rows = new File(process.out.impact[0].toString()).readLines().drop(1).collect { it.split('\t') as List }
+            def s1_tiny4 = rows.find { it[0] == 'S1' && it[1] == 'tiny_4' }
+            assertAll(
+                { assert process.success },
+                { assert s1_tiny4[6] == '2' },
+                { assert s1_tiny4[8] == 'B:1,C:1' }
+            )
+        }
+    }
+
+    test("a dataset directory with only a feather file fails clearly - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def ds = new File("\${launchDir}/feather_only")
+                ds.mkdirs()
+                new File(ds, 'usher_barcodes.feather').text = 'ARROW1'
+                def d = "\$projectDir/tests/fixtures/dropout_impact"
+                input[0] = file("\$d/amplicon_coverage.tsv")
+                input[1] = file("\$d/freyja_aggregated.tsv")
+                input[2] = file(ds.toString())
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                // conf/modules.config sets errorStrategy 'ignore' for this process (a bad dataset must not fail a run): no outputs
+                { assert process.failed || (process.out.impact.isEmpty() && process.out.summary.isEmpty()) }
+            )
+        }
+    }
+}

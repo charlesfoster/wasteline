@@ -1,0 +1,7 @@
+	NODATE_1.variants.tsv
+summarized	[('Omicron', 0.64450388), ('XBB.1.5* [Omicron (XBB.1.5.X)]', 0.25566758), ('BA.2.86* (BA.2.86.X)', 0.09982854)]
+lineages	BA.2 XBB.1.5 JN.1
+abundances	0.64450388 0.25566758 0.09982854
+resid	4.705468
+coverage	97.0
+pathogen	SARS-CoV-2

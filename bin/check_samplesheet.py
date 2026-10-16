@@ -18,6 +18,7 @@ import csv
 import datetime
 import gzip
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -26,7 +27,7 @@ ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SAMPLE_TYPES = ("sample", "negative")
 FASTQ_EXTS = (".fastq.gz", ".fq.gz")
-OPTIONAL_META = ["sample_type", "collection_date", "site"]
+OPTIONAL_META = ["sample_type", "collection_date", "site", "viral_load"]
 
 REQUIRED = {
     "full": ["sample", "fastq_1", "fastq_2"],
@@ -54,6 +55,15 @@ def valid_date(value: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def valid_viral_load(value: str) -> bool:
+    """A positive, finite number (blank is checked by the caller)."""
+    try:
+        number = float(value)
+    except ValueError:
+        return False
+    return math.isfinite(number) and number > 0
 
 
 def resolve(value: str, base: Path) -> Path:
@@ -162,6 +172,9 @@ def validate(sheet: Path, mode: str, check_files: bool = False) -> dict:
         date = row.get("collection_date", "")
         if date and not valid_date(date):
             errors.append(f"{tag}: collection_date '{date}' is not ISO YYYY-MM-DD")
+        load = row.get("viral_load", "").strip()
+        if load and not valid_viral_load(load):
+            errors.append(f"{tag}: viral_load '{load}' must be a positive number (or blank)")
 
         for col in path_cols:
             val = row.get(col, "")

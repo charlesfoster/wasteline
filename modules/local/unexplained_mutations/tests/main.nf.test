@@ -1,0 +1,139 @@
+nextflow_process {
+
+    name "Test Process UNEXPLAINED_MUTATIONS"
+    script "../main.nf"
+    process "UNEXPLAINED_MUTATIONS"
+    tag "modules"
+    tag "modules_local"
+    tag "unexplained_mutations"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/tests/fixtures/unexplained/PURE_C.variants.tsv.gz"), file("\$projectDir/tests/fixtures/unexplained/PURE_C.demix") ]
+                input[1] = file("\$projectDir/tests/data/barcodes_test.csv")
+                input[2] = []
+                input[3] = []
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.tsv[0][1].toString().endsWith('S_1.unexplained_mutations.tsv') },
+                { assert snapshot(process.out.tsv).match() }
+            )
+        }
+    }
+
+    test("PURE_C (JN.1) with three spiked SNVs: only the spikes are reported, annotated - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def tsv = new File("\${launchDir}/PURE_C.variants.tsv")
+                tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/unexplained/PURE_C_spiked.variants.tsv.gz")).bytes
+                input[0] = [ [ id:'PURE_C' ], file(tsv.toString()), file("\$projectDir/tests/fixtures/unexplained/PURE_C.demix") ]
+                input[1] = file("\$projectDir/tests/data/barcodes_test.csv")
+                input[2] = file("\$projectDir/assets/references/NC_045512.gff3")
+                input[3] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines[0] == 'sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tp_value' },
+                { assert lines.drop(1) == [
+                    'PURE_C\t22102\tA\tT\t0.3\t0\t0.3\t120\t36\tS\tE180D\tmissense\t2.39e-42',
+                    'PURE_C\t28802\tA\tT\t0.18\t0\t0.18\t100\t18\tN\tR177*\tstop_gained\t1.41e-17',
+                    'PURE_C\t29800\tG\tA\t0.12\t0\t0.12\t150\t18\tNA\tNA\tintergenic\t2.28e-14'
+                ] }
+            )
+        }
+    }
+
+    test("real MIX_A is fully explained by its own demix (custom barcodes CSV) - header only - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def tsv = new File("\${launchDir}/MIX_A.variants.tsv")
+                tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/unexplained/MIX_A.variants.tsv.gz")).bytes
+                input[0] = [ [ id:'MIX_A' ], file(tsv.toString()), file("\$projectDir/tests/fixtures/unexplained/MIX_A.demix") ]
+                input[1] = file("\$projectDir/tests/data/barcodes_test.csv")
+                input[2] = file("\$projectDir/assets/references/NC_045512.gff3")
+                input[3] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines.size() == 1 && lines[0].startsWith('sample\tposition\t') }
+            )
+        }
+    }
+
+    test("dataset directory (lineage_mutations.json), messier bundled-style demix, no GFF - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def tsv = new File("\${launchDir}/MIX_A.variants.tsv")
+                tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/unexplained/MIX_A.variants.tsv.gz")).bytes
+                input[0] = [ [ id:'MIX_A' ], file(tsv.toString()), file("\$projectDir/tests/fixtures/unexplained/bundled_subset/MIX_A.bundled.demix") ]
+                input[1] = file("\$projectDir/tests/fixtures/unexplained/bundled_subset")
+                input[2] = []
+                input[3] = []
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines.size() == 1 }
+            )
+        }
+    }
+
+    test("no demix (skipped / failed sample): header-only table, no abort - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def tsv = new File("\${launchDir}/PURE_C.variants.tsv")
+                tsv.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/unexplained/PURE_C_spiked.variants.tsv.gz")).bytes
+                input[0] = [ [ id:'LOWCOV' ], file(tsv.toString()), [] ]
+                input[1] = file("\$projectDir/tests/data/barcodes_test.csv")
+                input[2] = file("\$projectDir/assets/references/NC_045512.gff3")
+                input[3] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines == ['sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tp_value'] }
+            )
+        }
+    }
+}

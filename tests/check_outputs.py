@@ -220,6 +220,12 @@ def check_consensus(c, out, samples, barcodes, reference):
     c.check(fasta_path.exists(), "consensus_genomes.fasta exists")
     if not (stats_path.exists() and fasta_path.exists()):
         return
+    header = stats_path.read_text().splitlines()[0].split("\t")
+    c.check(
+        header == ["sample", "length", "n_count", "n_pct", "ambiguous_count", "status", "reason"],
+        "consensus_stats.tsv has 7 columns, reason last",
+        str(header),
+    )
     stats = {r["sample"]: r for r in read_tsv(stats_path)}
     fasta = read_fasta(fasta_path)
     for sample, info in samples.items():
@@ -236,6 +242,12 @@ def check_consensus(c, out, samples, barcodes, reference):
             str(stats.get(sample)),
         )
         c.check(sample in fasta, f"{sample}: consensus FASTA record present")
+        status_json = out / "samples" / sample / "consensus" / f"{sample}.consensus_status.json"
+        if status_json.exists():
+            c.check(
+                isinstance(json.loads(status_json.read_text()).get("warnings"), list),
+                f"{sample}: consensus_status.json has a warnings array",
+            )
         c.check(
             (out / "samples" / sample / "consensus" / f"{sample}.consensus.fa").exists(),
             f"{sample}: samples/{sample}/consensus/{sample}.consensus.fa published",
@@ -265,6 +277,118 @@ def check_consensus(c, out, samples, barcodes, reference):
             line for line in Path(reference).read_text().splitlines() if not line.startswith(">")
         )
         c.check(len(fasta[pure]) == len(ref), f"{pure} consensus has the reference length")
+
+
+def check_analyses(c, out, samples, mode, have_amplicons, declared_scheme):
+    """QC checks and surveillance tables added on top of the demix (summary/qc_summary.tsv, dropout_impact,
+    unexplained_mutations, freyja_timeseries). `declared_scheme`: primer scheme the run declared (mode full)."""
+    summary = out / "summary"
+    qc_path = summary / "qc_summary.tsv"
+    if not qc_path.exists():
+        return
+    qc_lines = qc_path.read_text().splitlines()
+    c.check(
+        len(qc_lines[0].split("\t")) == 27,
+        "qc_summary.tsv has 27 columns",
+        str(len(qc_lines[0].split("\t"))),
+    )
+    qc = {r["sample"]: r for r in read_tsv(qc_path)}
+
+    if mode == "full" and have_amplicons and declared_scheme:
+        # a scheme that matches the reads: `ok`, the declared scheme among the best matches, trimming happened
+        for sample, info in samples.items():
+            if info["sample_type"] != "sample" or info["expected_demix_status"] != "ok":
+                continue
+            row = qc.get(sample, {})
+            c.check(
+                row.get("primer_scheme_check") == "ok",
+                f"{sample}: primer scheme check is ok for the declared {declared_scheme} scheme",
+                str(row.get("primer_scheme_check")),
+            )
+            c.check(
+                declared_scheme in (row.get("primer_scheme_best") or "").split("/"),
+                f"{sample}: the declared scheme is among the best-matching schemes",
+                str(row.get("primer_scheme_best")),
+            )
+            pct = row.get("primer_trimmed_pct", "NA")
+            c.check(
+                pct not in ("", "NA") and float(pct) > 0,
+                f"{sample}: primer_trimmed_pct is filled from the ivar log",
+                pct,
+            )
+        c.check(
+            (out / "samples" / "MIX_A" / "coverage" / "MIX_A.primer_scheme_summary.tsv").exists()
+            if "MIX_A" in samples
+            else True,
+            "per-sample primer scheme check tables are published",
+        )
+
+    if have_amplicons:
+        path = summary / "dropout_impact.tsv"
+        c.check(path.exists(), "dropout_impact.tsv exists")
+        c.check(
+            (summary / "dropout_impact_summary.tsv").exists(), "dropout_impact_summary.tsv exists"
+        )
+        if path.exists():
+            rows = read_tsv(path)
+            for sample, info in samples.items():
+                if info["expected_demix_status"] != "ok" or info["sample_type"] != "sample":
+                    continue
+                got = {r["amplicon"] for r in rows if r["sample"] == sample}
+                c.check(
+                    got == set(info["dropout_amplicons"]),
+                    f"dropout_impact.tsv: {sample} lists exactly its dropped amplicons {info['dropout_amplicons']}",
+                    str(sorted(got)),
+                )
+            if "Site_1_week_2" in samples:
+                by_amplicon = {r["amplicon"]: r for r in rows if r["sample"] == "Site_1_week_2"}
+                c.check(
+                    by_amplicon.get("nCoV-2019_22", {}).get("affects_detected_lineage") == "true",
+                    "dropout impact: nCoV-2019_22 (spike) matters for the lineages detected in Site_1_week_2",
+                )
+                c.check(
+                    "XBB.1.5" in by_amplicon.get("nCoV-2019_22", {}).get("affected_lineages", ""),
+                    "dropout impact: nCoV-2019_22 loses XBB.1.5-defining sites",
+                )
+                c.check(
+                    by_amplicon.get("nCoV-2019_7", {}).get("affects_detected_lineage") == "false",
+                    "dropout impact: nCoV-2019_7 carries no site that matters for the detected lineages",
+                )
+
+    if mode in ("full", "demix"):
+        path = summary / "unexplained_mutations.tsv"
+        c.check(path.exists(), "unexplained_mutations.tsv exists")
+        if path.exists():
+            c.check(
+                path.read_text().splitlines()[0].startswith("sample\tposition\tref\talt"),
+                "unexplained_mutations.tsv has its header",
+            )
+            c.check(
+                not read_tsv(path),
+                "synthetic samples have no unexplained mutations at the default thresholds",
+                str(len(read_tsv(path))),
+            )
+
+    dates = {
+        row["collection_date"]
+        for row in qc.values()
+        if row["sample_type"] != "negative"
+        and row["demix_status"] == "ok"
+        and row["collection_date"] not in ("", "NA")
+    }
+    for name in ("freyja_timeseries.tsv", "freyja_timeseries_lineages.tsv"):
+        path = summary / name
+        if len(dates) >= 2:
+            c.check(path.exists(), f"{name} exists (>= 2 collection dates)")
+            if path.exists():
+                got = {r["collection_date"] for r in read_tsv(path)}
+                c.check(
+                    got == dates,
+                    f"{name}: one set of rows per collection date",
+                    str(sorted(got ^ dates)),
+                )
+        else:
+            c.check(not path.exists(), f"{name} is not written with fewer than 2 collection dates")
 
 
 def check_published_qc_is_complete(c, out, samples):
@@ -659,6 +783,11 @@ def main(argv=None):
         help="the run had no primer scheme (demix without --primer_scheme)",
     )
     parser.add_argument(
+        "--declared-scheme",
+        default=None,
+        help="mode full: the primer scheme the run declared; its QC rows must then have primer_scheme_check ok",
+    )
+    parser.add_argument(
         "--tolerance",
         type=float,
         default=None,
@@ -701,6 +830,7 @@ def main(argv=None):
         check_qc(c, out, samples, args.mode, have_amplicons)
         check_consensus(c, out, samples, args.barcodes, args.reference)
         check_published_qc_is_complete(c, out, samples)
+        check_analyses(c, out, samples, args.mode, have_amplicons, args.declared_scheme)
         if args.protocol == "capture":
             check_capture(c, out, samples, args.duplicates)
     else:

@@ -4,7 +4,9 @@
 Two modes:
 
   qc_summary.py --sample S --sample-type sample --depths S.depths [--flagstat S.flagstat]
-                [--fastp-json S.fastp.json] [--amplicons S.amplicon_coverage.tsv] -o S.qc.tsv
+                [--fastp-json S.fastp.json] [--amplicons S.amplicon_coverage.tsv]
+                [--ivar-trim-stats S.ivar_trim_stats.tsv]
+                [--primer-scheme-summary S.primer_scheme_summary.tsv] -o S.qc.tsv
       writes one row (with header).
 
   qc_summary.py --concat a.tsv b.tsv ... -o qc_summary.tsv
@@ -19,9 +21,12 @@ reads, then the flagstat primary total); `NA` when no denominator is available.
 QC status:
   sample_type=sample
     FAIL  pct genome >= --min-depth is below --fail-below-pct (default 50), or no reads at all
-    WARN  below --pass-min-pct (default 80), or amplicons_dropped > --max-dropped (default 10)
+    WARN  below --pass-min-pct (default 80), or amplicons_dropped > --max-dropped (default 10), or
+          primer_trimmed_pct < --min-primer-trimmed-pct (default 0 = rule off; a possible wrong primer scheme;
+          never FAIL by itself, and only when the value is known)
     PASS  otherwise
-    reasons: low_coverage, amplicon_dropout, no_reads
+          primer_scheme_check == mismatch (reads' 5' ends fit another primer scheme; always on, WARN only)
+    reasons: low_coverage, amplicon_dropout, low_primer_trimming, primer_scheme_mismatch, no_reads
   sample_type=negative
     FAIL  mapped_reads > --ntc-max-mapped-reads (1000) or pct_genome_ge_1x > --ntc-max-genome-coverage-pct (10)
     PASS  otherwise (never low_coverage)
@@ -33,6 +38,7 @@ QC status:
 import argparse
 import contextlib
 import json
+import math
 import re
 import statistics
 import sys
@@ -61,7 +67,12 @@ COLUMNS = [
     "consensus_length",
     "consensus_n_pct",
     "barcode_version",
+    "primer_trimmed_pct",
+    "primer_scheme_check",
+    "primer_scheme_best",
+    "primer_scheme_enrichment",
 ]
+SCHEME_CHECKS = ("ok", "mismatch", "uninformative", "NA")
 NA = "NA"
 
 
@@ -166,6 +177,61 @@ def parse_amplicons(path, sample):
     return total, dropped
 
 
+def parse_ivar_trim_stats(path, sample):
+    """Return primer_trimmed_pct (float, or None for NA) from an ivar_trim_stats.tsv.
+
+    Uses the row of `sample` when present, else the first data row. ValueError when unreadable or
+    without a primer_trimmed_pct column.
+    """
+    with open(path) as handle:
+        lines = [line.rstrip("\r\n") for line in handle if line.strip()]
+    if len(lines) < 2:
+        raise ValueError(f"{path}: no data row")
+    header = lines[0].split("\t")
+    if "primer_trimmed_pct" not in header:
+        raise ValueError(f"{path}: no 'primer_trimmed_pct' column")
+    i_pct = header.index("primer_trimmed_pct")
+    i_sample = header.index("sample") if "sample" in header else None
+    rows = [line.split("\t") for line in lines[1:]]
+    chosen = next(
+        (r for r in rows if i_sample is not None and r[i_sample : i_sample + 1] == [sample]),
+        rows[0],
+    )
+    if len(chosen) <= i_pct:
+        raise ValueError(f"{path}: short row")
+    try:
+        value = float(chosen[i_pct])
+    except ValueError:
+        return None  # NA
+    return value if math.isfinite(value) else None
+
+
+def parse_primer_scheme_summary(path, sample):
+    """Return (scheme_check, best_scheme or None, declared_enrichment float or None) from a
+    primer_scheme_summary.tsv (row of `sample`, else the first row). ValueError when unusable."""
+    with open(path) as handle:
+        lines = [line.rstrip("\r\n") for line in handle if line.strip()]
+    if len(lines) < 2:
+        raise ValueError(f"{path}: no data row")
+    header = lines[0].split("\t")
+    if "scheme_check" not in header:
+        raise ValueError(f"{path}: no 'scheme_check' column")
+    rows = [dict(zip(header, line.split("\t"))) for line in lines[1:]]
+    row = next((r for r in rows if r.get("sample") == sample), rows[0])
+    check = row.get("scheme_check", NA)
+    if check not in SCHEME_CHECKS:
+        raise ValueError(f"{path}: scheme_check {check!r} not one of {'|'.join(SCHEME_CHECKS)}")
+    best = row.get("best_scheme", NA)
+    best = None if best in ("", NA) else best
+    try:
+        enrichment = float(row.get("declared_enrichment", NA))
+    except ValueError:
+        enrichment = None
+    if enrichment is not None and not math.isfinite(enrichment):
+        enrichment = None
+    return check, best, enrichment
+
+
 def fmt(value, digits=2):
     return NA if value is None else f"{value:.{digits}f}"
 
@@ -174,7 +240,15 @@ def fmt_int(value):
     return NA if value is None else str(int(value))
 
 
-def assess(sample_type, stats, mapped_reads, amplicons_dropped, args):
+def assess(
+    sample_type,
+    stats,
+    mapped_reads,
+    amplicons_dropped,
+    args,
+    primer_trimmed_pct=None,
+    scheme_check=None,
+):
     """Return (qc_status, [reasons])."""
     reasons = []
     if sample_type == "negative":
@@ -190,8 +264,18 @@ def assess(sample_type, stats, mapped_reads, amplicons_dropped, args):
             reasons.append("ntc_reads")
         return ("FAIL" if reasons else "PASS"), reasons
 
+    # WARN-only reasons that are appended after the coverage reasons and never hide or downgrade them
+    warn_only = []
+    if (
+        args.min_primer_trimmed_pct > 0
+        and primer_trimmed_pct is not None
+        and primer_trimmed_pct < args.min_primer_trimmed_pct
+    ):
+        warn_only.append("low_primer_trimming")
+    if scheme_check == "mismatch":
+        warn_only.append("primer_scheme_mismatch")
     if stats is None:
-        return "FAIL", ["no_depths"]
+        return "FAIL", ["no_depths", *warn_only]
     if mapped_reads == 0 or stats["all_zero"]:
         return "FAIL", ["no_reads"]
     status = "PASS"
@@ -204,6 +288,10 @@ def assess(sample_type, stats, mapped_reads, amplicons_dropped, args):
         reasons.append("low_coverage")
     if amplicons_dropped is not None and amplicons_dropped > args.max_dropped:
         reasons.append("amplicon_dropout")
+        if status == "PASS":
+            status = "WARN"
+    if warn_only:
+        reasons.extend(warn_only)
         if status == "PASS":
             status = "WARN"
     return status, reasons
@@ -242,13 +330,37 @@ def build_row(args):
         except (OSError, ValueError) as exc:
             notes.append(f"amplicons: {exc}")
 
+    primer_trimmed_pct = None
+    if args.ivar_trim_stats:
+        try:
+            primer_trimmed_pct = parse_ivar_trim_stats(args.ivar_trim_stats, args.sample)
+        except (OSError, ValueError) as exc:
+            notes.append(f"ivar_trim_stats: {exc}")
+
+    scheme_check, scheme_best, scheme_enrichment = NA, None, None
+    if args.primer_scheme_summary:
+        try:
+            scheme_check, scheme_best, scheme_enrichment = parse_primer_scheme_summary(
+                args.primer_scheme_summary, args.sample
+            )
+        except (OSError, ValueError) as exc:
+            notes.append(f"primer_scheme_summary: {exc}")
+
     mapped_pct = None
     if mapped_reads is not None:
         denom = next((d for d in (trimmed, raw, flag_total) if d), None)
         if denom:
             mapped_pct = 100.0 * mapped_reads / denom
 
-    status, reasons = assess(args.sample_type, stats, mapped_reads, amp_dropped, args)
+    status, reasons = assess(
+        args.sample_type,
+        stats,
+        mapped_reads,
+        amp_dropped,
+        args,
+        primer_trimmed_pct,
+        scheme_check,
+    )
 
     row = {c: NA for c in COLUMNS}
     row.update(
@@ -263,6 +375,10 @@ def build_row(args):
             "mapped_pct": fmt(mapped_pct),
             "amplicons_total": fmt_int(amp_total),
             "amplicons_dropped": fmt_int(amp_dropped),
+            "primer_trimmed_pct": fmt(primer_trimmed_pct),
+            "primer_scheme_check": scheme_check,
+            "primer_scheme_best": scheme_best or NA,
+            "primer_scheme_enrichment": fmt(scheme_enrichment, 1),
             "qc_status": status,
             "qc_reasons": ";".join(reasons),
         }
@@ -330,6 +446,14 @@ def main(argv=None):
     p.add_argument("--fastp-json")
     p.add_argument("--amplicons", help="amplicon_coverage.tsv (counts amplicons_total/dropped)")
     p.add_argument(
+        "--ivar-trim-stats",
+        help="ivar_trim_stats.py output (gives primer_trimmed_pct; omit for NA, e.g. capture/no trimming)",
+    )
+    p.add_argument(
+        "--primer-scheme-summary",
+        help="primer_scheme_check.py --summary-out table (primer_scheme_* columns; omit for NA)",
+    )
+    p.add_argument(
         "--min-depth",
         type=int,
         default=10,
@@ -355,6 +479,12 @@ def main(argv=None):
     )
     p.add_argument(
         "--max-dropped", type=int, default=10, help="WARN when more amplicons than this are dropped"
+    )
+    p.add_argument(
+        "--min-primer-trimmed-pct",
+        type=float,
+        default=0.0,
+        help="WARN (low_primer_trimming) when a sample's primer_trimmed_pct is below this (default 0 = off)",
     )
     p.add_argument("--ntc-max-mapped-reads", type=int, default=1000)
     p.add_argument("--ntc-max-genome-coverage-pct", type=float, default=10.0)

@@ -1,0 +1,6 @@
+sample	length	n_count	n_pct	ambiguous_count	status	reason
+LOWCOV_1	29903	29903	100.00	0	failed	bcftools consensus failed: The fasta sequence does not match the REF allele at NC_045512.2:11287:
+NEG_1	29903	29903	100.00	0	empty	NA
+SiteA_W01_1	29903	12	0.04	0	ok	NA
+SiteA_W03_1	29903	30	0.10	1	ok	skipped variant at NC_045512.2:22942 (overlaps another variant)
+SiteB_W02_1	29903	8	0.03	0	ok	NA

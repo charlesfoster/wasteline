@@ -72,12 +72,24 @@
                 "SAMTOOLS_VIEW": {
                     "samtools": 1.24
                 },
+                "TIMESERIES_TABLE": {
+                    "python": "3.12.12"
+                },
+                "TIMESERIES_TABLE_LINEAGES": {
+                    "python": "3.12.12"
+                },
+                "UNEXPLAINED_MUTATIONS": {
+                    "python": "3.12.12"
+                },
+                "UNEXPLAINED_MUTATIONS_CONCAT": {
+                    "python": "3.12.12"
+                },
                 "Workflow": {
                     "charlesfoster/wasteline": "v0.1.0dev"
                 }
             }
         ],
-        "timestamp": "2026-10-16T07:47:22.891509",
+        "timestamp": "2026-10-16T18:32:46.374846",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

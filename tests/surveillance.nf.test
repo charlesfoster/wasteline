@@ -1,0 +1,325 @@
+nextflow_pipeline {
+
+    name "Test pipeline (QC checks, surveillance outputs, alignment and storage options)"
+    script "../main.nf"
+    tag "pipeline"
+    tag "surveillance"
+
+    // Relative paths in a samplesheet are checked against the launch directory, so the tests write
+    // a copy with absolute paths.
+    def absoluteSamplesheet = { outDir, root, dataset, name ->
+        def sheet = new File("${outDir}/${name}")
+        sheet.parentFile.mkdirs()
+        sheet.text = new File("${root}/tests/${dataset}/samplesheet.csv").text.replace("tests/${dataset}/", "${root}/tests/${dataset}/")
+        return sheet.toString()
+    }
+
+    // tests/data's samplesheet with a viral_load column (blank cells allowed)
+    def viralLoadSheet = { outDir, root ->
+        def sheet = new File("${outDir}/viral_load_samplesheet.csv")
+        sheet.parentFile.mkdirs()
+        def lines = new File("${root}/tests/data/samplesheet.csv").readLines().collect { line -> line.replace('tests/data/', "${root}/tests/data/") }
+        def loads = ['viral_load', '120000', '', '3.5e4', '', '', '', '910000']
+        sheet.text = [lines, loads].transpose().collect { line, load -> "${line},${load}" }.join('\n') + '\n'
+        return sheet.toString()
+    }
+
+    // a barcodes file we cannot read mutation lists from
+    def featherFile = { outDir ->
+        def file = new File("${outDir}/custom_barcodes.feather")
+        file.parentFile.mkdirs()
+        file.text = 'not a real feather file'
+        return file.toString()
+    }
+
+    test("-stub: full mode writes the QC-check and surveillance tables by default; growth rates and dashboard are opt-in") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            // the stub QC_CONCAT writes an empty table: the per-sample row has the 27 columns
+            def qc_header = new File("$outputDir/samples/MIX_A/coverage/MIX_A.qc_row.tsv").readLines()[0].split('\t')
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert qc_header.size() == 27 },
+                { assert qc_header[-4..-1] == ['primer_trimmed_pct', 'primer_scheme_check', 'primer_scheme_best', 'primer_scheme_enrichment'] },
+                { assert new File("$outputDir/summary/dropout_impact.tsv").exists() },
+                { assert new File("$outputDir/summary/dropout_impact_summary.tsv").exists() },
+                { assert new File("$outputDir/summary/unexplained_mutations.tsv").exists() },
+                { assert new File("$outputDir/summary/freyja_timeseries.tsv").exists() },
+                { assert new File("$outputDir/summary/freyja_timeseries_lineages.tsv").exists() },
+                { assert new File("$outputDir/samples/MIX_A/coverage/MIX_A.primer_scheme_summary.tsv").exists() },
+                { assert new File("$outputDir/samples/MIX_A/variants/MIX_A.unexplained_mutations.tsv").exists() },
+                // opt-in: not written unless requested
+                { assert !new File("$outputDir/summary/freyja_growth_rates.csv").exists() },
+                { assert !new File("$outputDir/summary/freyja_dashboard.html").exists() },
+                // the scheme in effect is recorded; the test profile declares midnight for its midnight-scheme reads
+                { assert run_info.params.primer_scheme == 'midnight' },
+                { assert snapshot(removeNextflowVersion("$outputDir/pipeline_info/software_versions.yml")).match() }
+            )
+        }
+    }
+
+    test("-stub: --freyja_growth and --freyja_dash publish the growth-rate table and the dashboard") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                freyja_growth = true
+                freyja_dash   = true
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/freyja_growth_rates.csv").exists() },
+                { assert new File("$outputDir/summary/freyja_growth_inputs.json").exists() },
+                { assert new File("$outputDir/summary/freyja_dashboard.html").exists() },
+                // only the dashboard itself is published, not its own copy of the growth table
+                { assert !new File("$outputDir/summary/freyja_dashboard_rel_growth_rates.csv").exists() },
+                { assert new File("$outputDir/summary/report.html").length() > 0 }
+            )
+        }
+    }
+
+    test("-stub: every new analysis can be switched off") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                primer_scheme_check   = false
+                dropout_impact        = false
+                unexplained_mutations = false
+                timeseries            = false
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert !new File("$outputDir/summary/dropout_impact.tsv").exists() },
+                { assert !new File("$outputDir/summary/unexplained_mutations.tsv").exists() },
+                { assert !new File("$outputDir/summary/freyja_timeseries.tsv").exists() },
+                { assert !new File("$outputDir/summary/freyja_timeseries_lineages.tsv").exists() },
+                { assert !new File("$outputDir/samples/MIX_A/coverage/MIX_A.primer_scheme_summary.tsv").exists() },
+                // the QC table still has its 27 columns (the new ones are NA)
+                { assert new File("$outputDir/samples/MIX_A/coverage/MIX_A.qc_row.tsv").readLines()[0].split('\t').size() == 27 }
+            )
+        }
+    }
+
+    test("-stub: a .feather-only --barcodes skips the mutation tables with one warning and the run succeeds") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = featherFile(outputDir)
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            def log_text = new File("$outputDir/../meta/nextflow.log").text
+            assertAll(
+                { assert workflow.success },
+                { assert log_text.count('Skipping the dropout-impact and unexplained-mutation tables') == 1 },
+                { assert !new File("$outputDir/summary/dropout_impact.tsv").exists() },
+                { assert !new File("$outputDir/summary/unexplained_mutations.tsv").exists() },
+                { assert new File("$outputDir/summary/report.html").length() > 0 }
+            )
+        }
+    }
+
+    test("-stub: aggregate mode builds the time series from a dated samplesheet with viral loads") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode     = 'aggregate'
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data_timeseries', 'aggregate_samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/freyja_timeseries.tsv").exists() },
+                { assert new File("$outputDir/summary/freyja_timeseries_lineages.tsv").exists() },
+                // the aggregate mode has no reads and no amplicons: no dropout or unexplained-mutation tables
+                { assert !new File("$outputDir/summary/dropout_impact.tsv").exists() },
+                { assert !new File("$outputDir/summary/unexplained_mutations.tsv").exists() },
+                // viral_load travels with the samplesheet
+                { assert new File("$outputDir/summary/samplesheet.csv").readLines()[0].endsWith('viral_load') }
+            )
+        }
+    }
+
+    test("-stub: a samplesheet with a viral_load column (blank cells allowed) is accepted") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = viralLoadSheet(outputDir, projectDir)
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/samplesheet.csv").readLines()[0].endsWith(',viral_load') },
+                { assert new File("$outputDir/summary/freyja_timeseries.tsv").exists() }
+            )
+        }
+    }
+
+    test("-stub: --bam_format cram publishes CRAM instead of BAM") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir     = "$outputDir"
+                input      = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes   = 'latest'
+                db_dir     = "$outputDir/db"
+                bam_format = 'cram'
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/samples/MIX_A/bam/MIX_A.primertrimmed.cram").exists() },
+                { assert new File("$outputDir/samples/MIX_A/bam/MIX_A.primertrimmed.cram.crai").exists() },
+                { assert !new File("$outputDir/samples/MIX_A/bam/MIX_A.primertrimmed.bam").exists() }
+            )
+        }
+    }
+
+    test("-stub: --aligner minibwa maps with MINIBWA_MEM instead of BWA_INDEX + BWA_MEM") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                aligner  = 'minibwa'
+            }
+        }
+
+        then {
+            def out = workflow.stdout.join('\n')
+            assertAll(
+                { assert workflow.success },
+                { assert out.contains('MINIBWA_MEM') },
+                { assert !(out =~ /:BWA_MEM \(/) },
+                { assert !out.contains('BWA_INDEX') }
+            )
+        }
+    }
+
+    test("-stub: the default scheme is qiagenv1 and is recorded in run_info when no scheme is given") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                primer_scheme = null
+            }
+        }
+
+        then {
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert run_info.params.primer_scheme == 'qiagenv1' }
+            )
+        }
+    }
+
+    // Real run (needs a container engine: nf-test test --tag docker --profile docker)
+    test("real run with the declared midnight scheme: scheme check ok, dropout of amplicon 22 matters for Site_1_week_2") {
+
+        tag "docker"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = "${projectDir}/tests/data/barcodes_test.csv"
+                db_dir   = "$outputDir/db"
+                primer_scheme = 'midnight'
+            }
+        }
+
+        then {
+            def rows = { path ->
+                def lines = new File(path).readLines()
+                def header = lines[0].split('\t', -1)
+                lines.drop(1).collect { line -> [ header, line.split('\t', -1) ].transpose().collectEntries { k, v -> [ (k): v ] } }
+            }
+            def qc = rows("$outputDir/summary/qc_summary.tsv").collectEntries { row -> [ (row.sample): row ] }
+            def dropout = rows("$outputDir/summary/dropout_impact.tsv").findAll { row -> row.sample == 'Site_1_week_2' }.collectEntries { row -> [ (row.amplicon): row ] }
+            def unexplained = rows("$outputDir/summary/unexplained_mutations.tsv")
+            assertAll(
+                { assert workflow.success },
+                { assert qc.MIX_A.primer_scheme_check == 'ok' && qc.MIX_A.primer_scheme_best.contains('midnight') },
+                { assert qc.MIX_A.primer_trimmed_pct.toDouble() > 0 },
+                { assert dropout['nCoV-2019_22'].affects_detected_lineage == 'true' },
+                { assert dropout['nCoV-2019_7'].affects_detected_lineage == 'false' },
+                // synthetic samples carry no unexplained variants at the default thresholds
+                { assert unexplained.isEmpty() },
+                { assert new File("$outputDir/summary/freyja_timeseries.tsv").readLines().size() > 1 },
+                { assert new File("$outputDir/summary/report_data.json").text.contains('"dropout_affects_lineages"') }
+            )
+        }
+    }
+}

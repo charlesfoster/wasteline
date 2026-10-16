@@ -22,6 +22,8 @@ nextflow_process {
                     file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz"),
                     [],
                     [],
+                    [],
+                    [],
                     []
                 ]
                 """
@@ -75,7 +77,7 @@ nextflow_process {
                     .join(AMPLICON_COVERAGE.out.tsv)
                     .map { meta, flagstat, amplicons ->
                         [ [ id:'PURE_C', sample_type:'sample', collection_date:'2026-01-19', site:'SiteB' ],
-                          pc_depths, flagstat, file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.fastp.json"), amplicons ]
+                          pc_depths, flagstat, file("\$projectDir/tests/fixtures/modules_phase3/PURE_C.fastp.json"), amplicons, [], [] ]
                     }
                 """
             }
@@ -100,7 +102,11 @@ nextflow_process {
                 { assert row.amplicons_dropped == '0' },
                 { assert row.qc_status == 'PASS' },
                 { assert row.qc_reasons == '' },
-                { assert row.demix_status == 'NA' }
+                { assert row.demix_status == 'NA' },
+                { assert row.primer_trimmed_pct == 'NA' },           // no ivar log given (capture / demix / skipped trimming)
+                { assert row.primer_scheme_check == 'NA' },
+                { assert row.primer_scheme_best == 'NA' },
+                { assert row.primer_scheme_enrichment == 'NA' }
             )
         }
     }
@@ -113,7 +119,7 @@ nextflow_process {
                 """
                 def zero = new File("\${launchDir}/NEG.depths")
                 zero.text = (1..500).collect { "ref\\t\${it}\\tA\\t0" }.join('\\n') + '\\n'
-                input[0] = [ [ id:'NEG_1', sample_type:'negative' ], file(zero.toString()), [], [], [] ]
+                input[0] = [ [ id:'NEG_1', sample_type:'negative' ], file(zero.toString()), [], [], [], [], [] ]
                 """
             }
         }
@@ -142,7 +148,7 @@ nextflow_process {
                 """
                 def empty = new File("\${launchDir}/EMPTY.depths")
                 empty.text = ''
-                input[0] = [ [ id:'EMPTY_1' ], file(empty.toString()), [], [], [] ]
+                input[0] = [ [ id:'EMPTY_1' ], file(empty.toString()), [], [], [], [], [] ]
                 """
             }
         }
@@ -157,6 +163,180 @@ nextflow_process {
                 { assert row.sample_type == 'sample' },
                 { assert row.qc_status == 'FAIL' },
                 { assert row.qc_reasons == 'no_depths' }
+            )
+        }
+    }
+
+    // The ivar logs below are real `ivar trim` 1.4.4 output (stderr) on PURE_C with the midnight scheme;
+    // 3515 of 15998 mapped reads (21.97 %) had primers trimmed.
+
+    test("with the real ivar log: primer_trimmed_pct is reported and the rule is off by default - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def depths = new File("\${launchDir}/PURE_C_ivar.depths")
+                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                input[0] = [ [ id:'PURE_C', sample_type:'sample' ], file(depths.toString()), [], [], [],
+                             file("\$projectDir/tests/fixtures/qc/ivar_trim_PURE_C.ivar.log"), [] ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def row = [lines[0].split('\t') as List, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert lines.size() == 2 },
+                { assert row.primer_trimmed_pct == '21.97' },
+                { assert row.qc_status == 'PASS' },
+                { assert row.qc_reasons == '' }
+            )
+        }
+    }
+
+    test("with the real ivar log and --min-primer-trimmed-pct above it: WARN low_primer_trimming - real") {
+
+        tag "docker"
+        config "./ext_min_primer_trimmed.config"
+        when {
+            process {
+                """
+                def depths = new File("\${launchDir}/PURE_C_ivar_warn.depths")
+                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                input[0] = [ [ id:'PURE_C', sample_type:'sample' ], file(depths.toString()), [], [], [],
+                             file("\$projectDir/tests/fixtures/qc/ivar_trim_PURE_C.ivar.log"), [] ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def row = [lines[0].split('\t') as List, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert row.primer_trimmed_pct == '21.97' },
+                { assert row.qc_status == 'WARN' },
+                { assert row.qc_reasons == 'low_primer_trimming' }
+            )
+        }
+    }
+
+    test("an empty ivar log (the nf-core module redirects stdout only) gives NA, never a failed row - real") {
+
+        tag "docker"
+        config "./ext_min_primer_trimmed.config"
+        when {
+            process {
+                """
+                def depths = new File("\${launchDir}/PURE_C_ivar_empty.depths")
+                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                def log = new File("\${launchDir}/PURE_C_empty.ivar.log")
+                log.text = ''
+                input[0] = [ [ id:'PURE_C', sample_type:'sample' ], file(depths.toString()), [], [], [], file(log.toString()), [] ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def row = [lines[0].split('\t') as List, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert row.primer_trimmed_pct == 'NA' },
+                { assert row.qc_status == 'PASS' },        // rule on (30) but nothing to judge
+                { assert row.qc_reasons == '' }
+            )
+        }
+    }
+
+    test("a garbled ivar log gives NA - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def depths = new File("\${launchDir}/PURE_C_ivar_garbled.depths")
+                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                def log = new File("\${launchDir}/garbled.ivar.log")
+                log.text = ['Segmentation fault', 'Trimmed primers from lots% (many) of reads'].join(System.lineSeparator())
+                input[0] = [ [ id:'PURE_C', sample_type:'sample' ], file(depths.toString()), [], [], [], file(log.toString()), [] ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def row = [lines[0].split('\t') as List, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert row.primer_trimmed_pct == 'NA' },
+                { assert row.qc_status == 'PASS' }
+            )
+        }
+    }
+
+    // PRIMER_SCHEME_CHECK summaries (the real tool output on PURE_C read starts) written by the test itself
+
+    test("a mismatch summary gives WARN primer_scheme_mismatch and fills the primer_scheme_* columns - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def depths = new File("\${launchDir}/PURE_C_scheme.depths")
+                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                def summary = new File("\${launchDir}/PURE_C.primer_scheme_summary.tsv")
+                summary.text = ['sample\tdeclared_scheme\tdeclared_enrichment\tbest_scheme\tbest_enrichment\tscheme_check\treason',
+                                'PURE_C\tarticv4.1\t1.1\tmidnight/midnightv2\t41.6\tmismatch\tbest_other_scheme'].join(System.lineSeparator()) + System.lineSeparator()
+                input[0] = [ [ id:'PURE_C', sample_type:'sample' ], file(depths.toString()), [], [], [], [], file(summary.toString()) ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def row = [lines[0].split('\t') as List, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert row.primer_scheme_check == 'mismatch' },
+                { assert row.primer_scheme_best == 'midnight/midnightv2' },
+                { assert row.primer_scheme_enrichment == '1.1' },
+                { assert row.qc_status == 'WARN' },
+                { assert row.qc_reasons == 'primer_scheme_mismatch' }
+            )
+        }
+    }
+
+    test("an ok summary plus the ivar log: both columns reported, PASS - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def depths = new File("\${launchDir}/PURE_C_scheme_ok.depths")
+                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
+                def summary = new File("\${launchDir}/PURE_C_ok.primer_scheme_summary.tsv")
+                summary.text = ['sample\tdeclared_scheme\tdeclared_enrichment\tbest_scheme\tbest_enrichment\tscheme_check\treason',
+                                'PURE_C\tmidnight\t41.6\tmidnight/midnightv2\t41.6\tok\tdeclared_enriched'].join(System.lineSeparator()) + System.lineSeparator()
+                input[0] = [ [ id:'PURE_C', sample_type:'sample' ], file(depths.toString()), [], [], [],
+                             file("\$projectDir/tests/fixtures/qc/ivar_trim_PURE_C.ivar.log"), file(summary.toString()) ]
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            def row = [lines[0].split('\t') as List, lines[1].split('\t') as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert row.primer_trimmed_pct == '21.97' },
+                { assert row.primer_scheme_check == 'ok' },
+                { assert row.primer_scheme_enrichment == '41.6' },
+                { assert row.qc_status == 'PASS' },
+                { assert row.qc_reasons == '' }
             )
         }
     }

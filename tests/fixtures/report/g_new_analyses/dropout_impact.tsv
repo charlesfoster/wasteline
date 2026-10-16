@@ -1,0 +1,6 @@
+sample	amplicon	start	end	mean_depth	n_informative_sites	n_sites_in_detected_lineages	affects_detected_lineage	affected_lineages
+LOWCOV_1	nCoV-2019_22	21533	22612	0.00	532	NA	false	NA
+SiteA_W03_1	nCoV-2019_7	6284	7401	4.70	318	0	false	NA
+SiteA_W03_1	nCoV-2019_22	21533	22612	3.10	532	10	true	XBB.1.5:9,BA.2:3,BA.5:3
+SiteB_W02_1	nCoV-2019_7	6284	7401	5.20	318	0	false	NA
+SiteB_W05_1	nCoV-2019_22	21533	22612	6.80	532	4	true	BA.2.86:3,XBB.1.5:1

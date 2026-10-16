@@ -21,6 +21,7 @@ import contextlib
 import csv
 import datetime
 import io
+import math
 import os
 import re
 import sys
@@ -34,6 +35,9 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SAMPLE_TYPES = ("sample", "negative")
 FASTQ_EXTS = (".fastq.gz", ".fq.gz")
 META_COLUMNS = ("sample_type", "collection_date", "site")
+# optional numeric column (e.g. gene copies per litre); written to a sheet only when some sample has a value
+VIRAL_LOAD = "viral_load"
+META_INPUT_COLUMNS = (*META_COLUMNS, VIRAL_LOAD)
 
 FULL_COLUMNS = ["sample", "fastq_1", "fastq_2", *META_COLUMNS]
 DEMIX_COLUMNS = ["sample", "variants", "depths", "fastp_json", *META_COLUMNS]
@@ -64,6 +68,15 @@ class SamplesheetError(Exception):
 # ----------------------------------------------------------------------------------------------
 # shared helpers
 # ----------------------------------------------------------------------------------------------
+def valid_viral_load(value: str) -> bool:
+    """A positive, finite number."""
+    try:
+        number = float(value)
+    except ValueError:
+        return False
+    return math.isfinite(number) and number > 0
+
+
 def valid_date(value: str) -> bool:
     if not DATE_RE.match(value):
         return False
@@ -100,9 +113,11 @@ def load_metadata(path: Path) -> tuple[dict[str, dict[str, str]], list[str], lis
         return {}, [f"cannot read metadata file {path}: {exc}"], []
     if "sample" not in header:
         return {}, [f"metadata file {path} has no 'sample' column (found: {header})"], []
-    extra = [h for h in header if h != "sample" and h not in META_COLUMNS]
+    extra = [h for h in header if h != "sample" and h not in META_INPUT_COLUMNS]
     if extra:
-        warnings.append(f"metadata columns ignored (not one of {', '.join(META_COLUMNS)}): {extra}")
+        warnings.append(
+            f"metadata columns ignored (not one of {', '.join(META_INPUT_COLUMNS)}): {extra}"
+        )
     for i, row in enumerate(rows, start=2):
         sample = row.get("sample", "")
         if not sample:
@@ -111,7 +126,12 @@ def load_metadata(path: Path) -> tuple[dict[str, dict[str, str]], list[str], lis
         if sample in meta:
             errors.append(f"metadata line {i}: duplicate sample '{sample}'")
             continue
-        entry = {c: row.get(c, "") for c in META_COLUMNS}
+        entry = {c: row.get(c, "") for c in META_INPUT_COLUMNS}
+        if entry[VIRAL_LOAD] and not valid_viral_load(entry[VIRAL_LOAD]):
+            errors.append(
+                f"metadata sample '{sample}': viral_load '{entry[VIRAL_LOAD]}' "
+                "must be a positive number (or blank)"
+            )
         if entry["collection_date"] and not valid_date(entry["collection_date"]):
             errors.append(
                 f"metadata sample '{sample}': collection_date '{entry['collection_date']}' "
@@ -145,6 +165,8 @@ def apply_metadata(records: list[dict[str, str]], meta: dict[str, dict[str, str]
             rec["site"] = entry["site"]
         if entry["sample_type"]:
             rec["sample_type"] = entry["sample_type"]
+        if entry[VIRAL_LOAD]:
+            rec[VIRAL_LOAD] = entry[VIRAL_LOAD]
     if missing:
         warnings.append(
             f"{len(missing)} sample(s) have no metadata row: {', '.join(sorted(missing))}"
@@ -349,10 +371,20 @@ def load_results_sheet(results: Path) -> tuple[dict[str, dict[str, str]], str | 
             if "sample" not in header:
                 continue
             return (
-                {r["sample"]: {c: r.get(c, "") for c in META_COLUMNS} for r in rows if r["sample"]},
+                {
+                    r["sample"]: {c: r.get(c, "") for c in META_INPUT_COLUMNS}
+                    for r in rows
+                    if r["sample"]
+                },
                 str(p),
             )
     return {}, None
+
+
+def carried_viral_load(meta):
+    """The viral_load of a results samplesheet row when it is a valid positive number, else blank."""
+    value = meta.get(VIRAL_LOAD, "")
+    return value if value and valid_viral_load(value) else ""
 
 
 def skipped_meta(sample, sheet_meta, neg_re):
@@ -427,7 +459,7 @@ def discover_results(
 
     sheet_meta, sheet_path = load_results_sheet(results)
     if sheet_path:
-        notes.append(f"carrying over sample_type/collection_date/site from {sheet_path}")
+        notes.append(f"carrying over sample_type/collection_date/site/viral_load from {sheet_path}")
 
     required = ("variants", "depths") if mode == "demix" else ("demix",)
     records = []
@@ -466,6 +498,7 @@ def discover_results(
             "sample_type": sample_type,
             "collection_date": meta.get("collection_date", ""),
             "site": meta.get("site", ""),
+            VIRAL_LOAD: carried_viral_load(meta),
         }
         for key in ("variants", "depths", "demix", "fastp_json"):
             rec[key] = str(files[key]) if files[key] is not None else ""
@@ -498,7 +531,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="regex; matching file names are skipped entirely (default: %(default)s)",
     )
     p.add_argument(
-        "--metadata", help="CSV keyed by 'sample' with collection_date, site, sample_type"
+        "--metadata",
+        help="CSV keyed by 'sample' with collection_date, site, sample_type, viral_load",
     )
     p.add_argument(
         "--recursive", action="store_true", help="search the FASTQ directory recursively"
@@ -584,6 +618,8 @@ def run(args: argparse.Namespace) -> int:
     for rec in records:
         for col in path_cols:
             rec[col] = make_path(rec.get(col, ""), rel_to)
+    if any(rec.get(VIRAL_LOAD) for rec in records):
+        columns = [*columns, VIRAL_LOAD]
     write_sheet(records, columns, args.output)
     print(
         f"wrote {len(records)} sample(s) to {'stdout' if args.output == '-' else args.output}",

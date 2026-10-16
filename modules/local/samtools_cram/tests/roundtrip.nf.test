@@ -1,0 +1,38 @@
+nextflow_workflow {
+
+    name "SAMTOOLS_CRAM round trip"
+    script "./roundtrip.nf"
+    workflow "ROUNDTRIP"
+    tag "modules"
+    tag "modules_local"
+    tag "samtools_cram"
+    tag "docker"
+
+    // BAM -> CRAM -> decode: same reads (name, flag, contig, pos, mapq, cigar, sequence, qualities), same count
+    test("the CRAM decodes to the BAM's reads - real") {
+
+        when {
+            workflow {
+                """
+                input[0] = channel.of([ [ id:'MIX_A' ], file("\$projectDir/tests/fixtures/markdup/MIX_A_1_4000.bam"), file("\$projectDir/tests/fixtures/markdup/MIX_A_1_4000.bam.bai") ])
+                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def (meta, bamTxt, cramTxt, counts) = workflow.out.decoded[0]
+            def bamLines = file(bamTxt.toString()).readLines()
+            def cramLines = file(cramTxt.toString()).readLines()
+            def countMap = file(counts.toString()).readLines().collectEntries { line -> [ (line.split(' ')[0]): line.split(' ')[1] as int ] }
+            assertAll(
+                { assert workflow.success },
+                { assert bamLines.size() == 2270 },
+                { assert cramLines.size() == bamLines.size() },
+                { assert cramLines == bamLines },
+                { assert countMap.bam == 2270 && countMap.cram == 2270 },
+                { assert countMap.cram_region == 2270 }
+            )
+        }
+    }
+}
