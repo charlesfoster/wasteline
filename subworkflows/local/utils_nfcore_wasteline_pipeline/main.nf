@@ -307,6 +307,12 @@ def validateInputParameters(mode) {
             error("Primer BED '${primerBed()}' refers to contig(s) ${unknown} that are not in the reference FASTA '${params.fasta}' (which has ${fasta_contigs}). Use a matching --primer_bed/--primer_scheme or --fasta.")
         }
     }
+    if (params.lineage_groups && !params.lineage_summary && mode in ['full', 'demix', 'aggregate']) {
+        log.warn("--lineage_groups is ignored with --lineage_summary false")
+    }
+    if (mode in ['report', 'update_db'] && (params.lineage_groups || params.site_aggregation)) {
+        log.warn("--lineage_groups/--site_aggregation are not used by --mode ${mode} and are ignored")
+    }
     if (mode in ['report', 'update_db', 'aggregate'] && (params.primer_scheme || params.primer_bed)) {
         log.warn("--primer_scheme/--primer_bed are not used by --mode ${mode} and are ignored")
     }
@@ -570,4 +576,45 @@ def mutationTablesUnsupportedReason() {
     def json = file("${path}/lineage_mutations.json")
     def has_csv = path.listFiles()?.any { f -> f.name.endsWith('.csv') && f.name.contains('barcode') }
     return (json.exists() && json.size() > 0) || has_csv ? null : "${path} has neither lineage_mutations.json nor a barcodes .csv"
+}
+
+//
+// Can the lineage-group summary read the lineage hierarchy (lineages.yml) of the Freyja dataset in effect?
+// A dataset directory has it (downloaded, pinned or bundled in the container); a bare barcodes .csv/.feather
+// file (custom --barcodes) does not. Returns null when supported, otherwise the reason.
+//
+def lineageHierarchyUnsupportedReason() {
+    def resolved = resolveBarcodes(params.barcodes, dbDir(), '--barcodes')
+    if (resolved.kind == 'fetch') {
+        return null
+    }
+    def path = resolved.path
+    if (path.isFile()) {
+        return "${path.name} is a barcodes file without a lineage hierarchy (lineages.yml)"
+    }
+    return file("${path}/lineages.yml").exists() ? null : "${path} has no lineages.yml"
+}
+
+//
+// The lineage groups file in effect: --lineage_groups, else the bundled assets/lineage_groups.csv
+//
+def lineageGroupsFile() {
+    return params.lineage_groups
+        ? file(params.lineage_groups, checkIfExists: true)
+        : file("${projectDir}/assets/lineage_groups.csv", checkIfExists: true)
+}
+
+//
+// What run_info.json records about the lineage groups file: its name ('bundled default' for the bundled one),
+// where it came from and its sha256
+//
+def lineageGroupsInfo() {
+    def groups = lineageGroupsFile()
+    def digest = java.security.MessageDigest.getInstance('SHA-256').digest(groups.bytes)
+    def sha = digest.collect { b -> String.format('%02x', b & 0xff) }.join('')
+    return [
+        lineage_groups_file: params.lineage_groups ? groups.name : 'bundled default',
+        lineage_groups_source: params.lineage_groups ? 'custom' : 'bundled',
+        lineage_groups_sha256: sha,
+    ]
 }

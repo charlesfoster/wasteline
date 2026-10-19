@@ -58,6 +58,7 @@ params {
     freyja_boot                    : Boolean = false
     annotate_variants              : Boolean = false
     primer_scheme_check            : Boolean = true
+    lineage_summary                : Boolean = true
     dropout_impact                 : Boolean = true
     unexplained_mutations          : Boolean = true
     timeseries                     : Boolean = true
@@ -96,6 +97,10 @@ params {
     freyja_growth_min_abundance     : Float = 0.01
     freyja_growth_min_dates         : Integer = 4
     freyja_growth_min_span_days     : Integer = 14
+    lineage_major_threshold         : Float = 0.1
+    lineage_min_abundance           : Float = 0.001
+    lineage_summary_decimals        : Integer = 6
+    site_aggregation_min_sites      : Integer = 1
     freyja_boot_n                   : Integer = 100
     freyja_boot_seed                : Integer = 0
     freyja_plot_mincov              : Float = 60

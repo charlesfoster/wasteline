@@ -17,6 +17,10 @@ include { PRIMER_SCHEME_CHECK    } from '../modules/local/primer_scheme_check/ma
 include { DROPOUT_IMPACT         } from '../modules/local/dropout_impact/main'
 include { UNEXPLAINED_MUTATIONS  } from '../modules/local/unexplained_mutations/main'
 include { UNEXPLAINED_MUTATIONS_CONCAT } from '../modules/local/unexplained_mutations_concat/main'
+include { LINEAGE_GROUPS_CHECK   } from '../modules/local/lineage_groups_check/main'
+include { SITE_AGGREGATE_CHECK   } from '../modules/local/site_aggregate_check/main'
+include { SITE_AGGREGATE         } from '../modules/local/site_aggregate/main'
+include { LINEAGE_SUMMARY        } from '../modules/local/lineage_summary/main'
 include { TIMESERIES_TABLE       } from '../modules/local/timeseries_table/main'
 include { TIMESERIES_TABLE as TIMESERIES_TABLE_LINEAGES } from '../modules/local/timeseries_table/main'
 include { FREYJA_RELGROWTHRATE   } from '../modules/local/freyja_relgrowthrate/main'
@@ -54,6 +58,9 @@ include { primerBed              } from '../subworkflows/local/utils_nfcore_wast
 include { protocolSettings       } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { defaultPrimerScheme    } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { mutationTablesUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { lineageGroupsFile      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { lineageGroupsInfo      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { lineageHierarchyUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { ivarOffset             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { previousRuns           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
@@ -144,6 +151,11 @@ workflow WASTELINE {
                 optionalFile(results, 'freyja_growth_rates.failed.txt'),
                 optionalFile(results, 'freyja_growth_inputs.json'),
                 file("${results}/summary/freyja_dashboard.html").exists() ? 'freyja_dashboard.html' : '',
+            ]), channel.value([
+                optionalFile(results, 'lineage_summary.csv'),
+                optionalFile(results, 'lineage_groups_resolved.tsv'),
+                optionalFile(results, 'site_aggregates_freyja.tsv'),
+                optionalFile(results, 'site_aggregates_meta.tsv'),
             ]))
             RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
         }
@@ -164,6 +176,37 @@ workflow WASTELINE {
     else {
         def ch_fasta = channel.value(file(params.fasta, checkIfExists: true))
         def ch_gff = channel.value(file(params.gff, checkIfExists: true))
+
+        //
+        // The lineage groups file (bundled default or --lineage_groups) and the sites CSV are checked FIRST, in parallel with fastp and the mapping, so that a
+        // typo stops the run within minutes (these processes keep the default error strategy). Unknown lineages and
+        // unknown site names are warnings, shown here. A dataset without a lineage hierarchy (custom barcodes file) cannot
+        // resolve the groups: the file format is still checked, the summary itself is skipped with one warning.
+        //
+        def run_lineage_groups = params.lineage_summary as boolean
+        def run_site_aggregation = params.site_aggregation as boolean
+        def lineage_reason = run_lineage_groups ? lineageHierarchyUnsupportedReason() : null
+        if (run_lineage_groups) {
+            LINEAGE_GROUPS_CHECK(
+                channel.value(lineageGroupsFile()),
+                lineage_reason ? channel.value([]) : FREYJA_DATA.out.dataset,
+            )
+            LINEAGE_GROUPS_CHECK.out.report.subscribe { report ->
+                report.readLines().findAll { line -> line.contains('WARNING') }.each { line -> log.warn line }
+            }
+            if (lineage_reason) {
+                log.warn "Skipping the lineage-group summary: ${lineage_reason}. Use a Freyja dataset directory with lineages.yml (--barcodes latest, container or a dataset directory) to get summary/lineage_summary.csv."
+            }
+        }
+        if (run_site_aggregation) {
+            SITE_AGGREGATE_CHECK(
+                channel.value(file(params.site_aggregation, checkIfExists: true)),
+                ch_samplesheet.first(),
+            )
+            SITE_AGGREGATE_CHECK.out.report.subscribe { report ->
+                report.readLines().findAll { line -> line.contains('warning') }.each { line -> log.warn line }
+            }
+        }
         // library settings (protocol, trimming, duplicate handling): see protocolSettings()
         def settings = protocolSettings(mode)
         // amplicon-level QC and primer trimming need the primer BED; probe-capture reads have none
@@ -552,6 +595,62 @@ workflow WASTELINE {
             }
         }
 
+        //
+        // Site aggregation (weighted average of the per-site RESULTS, never pooled reads) and the lineage-group summary.
+        // demix_status.tsv always exists for them (header only when every sample is ok, e.g. aggregate mode).
+        //
+        def ch_site_freyja = channel.value([])
+        def ch_site_meta = channel.value([])
+        def ch_lineage_summary = channel.empty()
+        def ch_lineage_resolved = channel.empty()
+        def ch_site_aggregates = channel.empty()
+        def ch_site_aggregates_meta = channel.empty()
+        if (run_site_aggregation || (run_lineage_groups && !lineage_reason)) {
+            // aggregate mode: the given .demix files are the usable samples (status ok), but the published
+            // demix_status.tsv lists only the unusable ones, so the summaries get their own, complete copy
+            def ch_given_ok = mode == 'aggregate'
+                ? ch_demixed.map { meta, _demix -> [ meta.id, 'ok', '', '', '', '' ].join('\t') }
+                : channel.empty()
+            // the samplesheet in effect plus the metadata of the samples discovery had to skip (a skipped negative control is
+            // only known from there), as one CSV
+            def ch_summary_sheet = ch_samplesheet
+                .splitCsv(header: true)
+                .map { row -> [ row.sample, row.sample_type ?: 'sample', row.collection_date, row.site, row.viral_load ].collect { v -> csvCell(v) }.join(',') }
+                .mix(ch_skipped.map { sample, _reason, sample_type, date, site -> [ sample, sample_type, date, site, '' ].collect { v -> csvCell(v) }.join(',') })
+                .collectFile(name: 'summary_samplesheet.csv', seed: 'sample,sample_type,collection_date,site,viral_load', sort: true, newLine: true)
+                .first()
+            def ch_status_for_summaries = ch_status_lines
+                .mix(ch_given_ok)
+                .ifEmpty('')
+                .collectFile(name: 'demix_status.tsv', seed: status_header, sort: true, newLine: true)
+                .first()
+            if (run_site_aggregation) {
+                SITE_AGGREGATE(
+                    FREYJA_AGGREGATE_PLOT.out.aggregated,
+                    ch_status_for_summaries,
+                    ch_summary_sheet,
+                    channel.value(file(params.site_aggregation, checkIfExists: true)),
+                )
+                ch_site_freyja = SITE_AGGREGATE.out.aggregated
+                ch_site_meta = SITE_AGGREGATE.out.meta
+                ch_site_aggregates = SITE_AGGREGATE.out.aggregated
+                ch_site_aggregates_meta = SITE_AGGREGATE.out.meta
+            }
+            if (run_lineage_groups && !lineage_reason) {
+                LINEAGE_SUMMARY(
+                    FREYJA_AGGREGATE_PLOT.out.aggregated,
+                    ch_status_for_summaries,
+                    ch_summary_sheet,
+                    channel.value(lineageGroupsFile()),
+                    FREYJA_DATA.out.dataset,
+                    ch_site_freyja,
+                    ch_site_meta,
+                )
+                ch_lineage_summary = LINEAGE_SUMMARY.out.summary
+                ch_lineage_resolved = LINEAGE_SUMMARY.out.resolved
+            }
+        }
+
         // Time series: needs at least two distinct collection dates among the non-negative aggregated samples
         // (growth rates and the dashboard check their own, stricter minimum and write a failure note instead)
         def ch_ts_go = ch_aggregate_in
@@ -634,7 +733,11 @@ workflow WASTELINE {
             .combine(wrapItem(ch_growth_failed.ifEmpty([])))
             .combine(wrapItem(ch_growth_inputs.ifEmpty([])))
             .combine(ch_dashboard.map { dashboard -> dashboard.name }.ifEmpty(''))
-        BUILD_REPORT_DATA(ch_report_in, ch_report_extra, ch_report_analyses)
+        def ch_report_groups = wrapItem(ch_lineage_summary.ifEmpty([]))
+            .combine(wrapItem(ch_lineage_resolved.ifEmpty([])))
+            .combine(wrapItem(ch_site_aggregates.ifEmpty([])))
+            .combine(wrapItem(ch_site_aggregates_meta.ifEmpty([])))
+        BUILD_REPORT_DATA(ch_report_in, ch_report_extra, ch_report_analyses, ch_report_groups)
         RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
     }
     }
@@ -655,6 +758,13 @@ workflow WASTELINE {
 def optionalFile(results, name) {
     def candidate = file("${results}/summary/${name}")
     return candidate.exists() ? candidate : []
+}
+
+//
+// One CSV cell, always quoted (commas and quotes inside are safe)
+//
+def csvCell(value) {
+    return '"' + (value ?: '').toString().replaceAll('[\r\n]+', ' ').replace('"', '""') + '"'
 }
 
 //
@@ -689,6 +799,11 @@ def runInfoBase(mode) {
     if (protocolSettings(mode).amplicons && !params.primer_bed && !params.primer_scheme) {
         plain_params.primer_scheme = defaultPrimerScheme()
     }
+    // lineage groups: which file made lineage_summary.csv (only when the summary is made)
+    def groups_info = [ lineage_groups_file: null, lineage_groups_source: null, lineage_groups_sha256: null ]
+    if (params.lineage_summary && mode in ['full', 'demix', 'aggregate'] && !lineageHierarchyUnsupportedReason()) {
+        groups_info = lineageGroupsInfo()
+    }
     def info = [
         pipeline_name: workflow.manifest.name,
         pipeline_version: workflow.manifest.version,
@@ -707,7 +822,7 @@ def runInfoBase(mode) {
         // earlier runs whose results this run builds on (demix/aggregate); barcode_version 'unknown'
         // for legacy Snakemake results, which recorded none
         previous_runs: previousRuns(mode),
-    ]
+    ] + groups_info
     if (mode == 'aggregate') {
         info.freyja_data_note = 'aggregate mode demixes nothing: freyja_data describes the dataset whose lineage hierarchy groups the plot, not the barcodes the .demix files were made with (see previous_runs)'
     }

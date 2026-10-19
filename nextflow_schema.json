@@ -781,6 +781,104 @@
                 }
             }
         },
+        "lineage_groups_and_sites_options": {
+            "title": "Lineage groups and site aggregation",
+            "type": "object",
+            "fa_icon": "fas fa-layer-group",
+            "description": "User-defined lineage groups per sample (on by default, with the bundled list `assets/lineage_groups.csv`), and result-level aggregation of sites into groups of sites (off unless a CSV is given).",
+            "properties": {
+                "lineage_summary": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Write the per-sample table of lineage groups (`summary/lineage_summary.csv`, plus the groups file used and a list of lineages in no group). `--lineage_summary false` turns it off.",
+                    "help_text": "Needs a Freyja dataset with lineages.yml (not a bare barcodes .csv/.feather); with such a dataset the summary is skipped with one warning.",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "lineage_groups": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.(csv|tsv|txt)$",
+                    "mimetype": "text/csv",
+                    "description": "CSV that defines the lineage groups (columns `group`, `include`, optional `exclude`, `in_total`). Default: the bundled `assets/lineage_groups.csv`. A copy of the file used is published as `summary/lineage_groups_used.csv`.",
+                    "help_text": "One row per output column; patterns such as `JN.1*` (the lineage and all its descendants), `NB.1.8.1` (exactly that lineage) and `RECOMBINANT*`. Start from the bundled file (or a previous run's `lineage_groups_used.csv`), edit it in Excel and save as CSV UTF-8. Format errors stop the run within minutes; unknown lineages are warnings. See docs/usage.md (Lineage groups).",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "lineage_major_threshold": {
+                    "type": "number",
+                    "default": 0.1,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Abundance at or above which a lineage is listed as `major` in `lineage_summary.csv` (exactly this value counts as major).",
+                    "fa_icon": "fas fa-percentage"
+                },
+                "lineage_min_abundance": {
+                    "type": "number",
+                    "default": 0.001,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Lineages below this abundance are not listed (the group sums still include them).",
+                    "fa_icon": "fas fa-percentage"
+                },
+                "lineage_summary_zeros": {
+                    "type": "string",
+                    "default": "blank",
+                    "enum": [
+                        "blank",
+                        "zero"
+                    ],
+                    "description": "How a group with no abundance is written in `lineage_summary.csv`: an empty cell or `0.000000`.",
+                    "fa_icon": "fas fa-table"
+                },
+                "lineage_summary_decimals": {
+                    "type": "integer",
+                    "default": 6,
+                    "minimum": 0,
+                    "maximum": 12,
+                    "description": "Decimals of the abundances in `lineage_summary.csv`.",
+                    "fa_icon": "fas fa-table"
+                },
+                "site_aggregation": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.(csv|tsv|txt)$",
+                    "mimetype": "text/csv",
+                    "description": "CSV that groups sites into aggregates (columns `aggregate_name`, `site_name`, optional `weight`); enables `summary/site_aggregates_freyja.tsv` and `site_aggregates_meta.tsv`. Off when not set.",
+                    "help_text": "Per-site Freyja results are combined by a weighted average of the RESULTS (reads are never pooled). Site names are matched to the samplesheet `site` column ignoring case and extra spaces. Format errors stop the run within minutes. See docs/usage.md (Site aggregation).",
+                    "fa_icon": "fas fa-object-group"
+                },
+                "site_aggregation_period": {
+                    "type": "string",
+                    "default": "week",
+                    "enum": [
+                        "week",
+                        "day"
+                    ],
+                    "description": "Time step of the site aggregates: ISO `week` (Monday to Sunday) or `day`.",
+                    "fa_icon": "fas fa-calendar-week"
+                },
+                "site_aggregation_weights": {
+                    "type": "string",
+                    "default": "auto",
+                    "enum": [
+                        "auto",
+                        "viral_load",
+                        "equal",
+                        "site_weight"
+                    ],
+                    "description": "Weights of the sites in an aggregate: `viral_load` (the samplesheet column), `site_weight` (the `weight` column of the sites file), `equal`, or `auto` (the best basis available for every site of that week, recorded per row).",
+                    "fa_icon": "fas fa-balance-scale"
+                },
+                "site_aggregation_min_sites": {
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 1,
+                    "description": "Omit aggregate-weeks with fewer contributing sites than this.",
+                    "fa_icon": "fas fa-sort-numeric-up"
+                }
+            }
+        },
         "report_and_extras_options": {
             "title": "Report and opt-in extras",
             "type": "object",
@@ -939,6 +1037,9 @@
         },
         {
             "$ref": "#/$defs/alignment_storage_options"
+        },
+        {
+            "$ref": "#/$defs/lineage_groups_and_sites_options"
         },
         {
             "$ref": "#/$defs/report_and_extras_options"

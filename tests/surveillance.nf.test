@@ -295,6 +295,7 @@ nextflow_pipeline {
                 outdir   = "$outputDir"
                 input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
                 barcodes = "${projectDir}/tests/data/barcodes_test.csv"
+                lineage_summary = false // custom barcodes file: no lineage hierarchy
                 db_dir   = "$outputDir/db"
                 primer_scheme = 'midnight'
             }

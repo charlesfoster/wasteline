@@ -135,6 +135,10 @@ nextflow_pipeline {
                 { assert qc.LOWCOV_D.qc_status == 'FAIL' && qc.LOWCOV_D.qc_reasons.contains('low_coverage') },
                 { assert qc.Site_1_week_2.qc_reasons.contains('amplicon_dropout') },
                 { assert qc.MIX_A.qc_status == 'PASS' },
+                // lineage groups run by default (the container dataset has a lineage hierarchy)
+                { assert new File("$outputDir/summary/lineage_summary.csv").readLines().size() == 6 }, // header + 5 non-control samples
+                { assert new File("$outputDir/summary/lineage_groups_used.csv").bytes == new File("${projectDir}/assets/lineage_groups.csv").bytes },
+                { assert new File("$outputDir/summary/lineage_ungrouped_summary.tsv").readLines().any { line -> line.startsWith('AY.4\t') && line.endsWith('\tAY.4*') } },
                 { assert qc.MIX_A.primer_scheme_check == 'ok' && qc.MIX_A.primer_scheme_best.contains('midnight') },
                 { assert qc.MIX_A.primer_trimmed_pct.toDouble() > 0 },
                 { assert new File("$outputDir/summary/consensus_stats.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] } == ['LOWCOV_D', 'MIX_A', 'MIX_B', 'PURE_C', 'Site_1_week_2'] },

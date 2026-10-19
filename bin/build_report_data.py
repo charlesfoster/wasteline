@@ -137,6 +137,14 @@ SUMMARY_PARAMS = (
     "freyja_growth_min_span_days",
     "freyja_growth_scale_by_viral_load",
     "freyja_dash",
+    "lineage_groups",
+    "lineage_major_threshold",
+    "lineage_min_abundance",
+    "lineage_summary_zeros",
+    "site_aggregation",
+    "site_aggregation_period",
+    "site_aggregation_weights",
+    "site_aggregation_min_sites",
 )
 # Thresholds that only appear in report_data.thresholds when the run recorded them
 OPTIONAL_THRESHOLDS = (
@@ -148,6 +156,21 @@ OPTIONAL_THRESHOLDS = (
     "unexplained_min_alt_depth",
     "unexplained_min_recurrence",
     "unexplained_max_pvalue",
+    "lineage_major_threshold",
+    "lineage_min_abundance",
+)
+UNGROUPED_FLAG_THRESHOLD = 0.02  # an ok sample with `other` >= this raises lineage_groups_ungrouped
+SITE_PERIOD_RE = re.compile(r"^(?P<name>.+)_(?P<period>\d{4}-W\d{2}|\d{4}-\d{2}-\d{2})$")
+LG_LEFT_ANCHORS = ("genome_coverage_pct", "weight_basis")
+LG_RIGHT_ANCHORS = (
+    "other",
+    "proportion_summary",
+    "major_lineages",
+    "major_abundances",
+    "minor_lineages",
+    "minor_abundances",
+    "ungrouped_lineages",
+    "status_reason",
 )
 MAX_TIMESERIES_LINEAGES = 30  # full-lineage time series keep the 30 most abundant lineages
 MAX_GROWTH_TEXT = 1000
@@ -772,6 +795,208 @@ def load_growth_rates(csv_path, failed_path, inputs_path, problems):
 
 
 # ---------------------------------------------------------------------------------------------
+# Lineage groups (lineage_summary.csv) and site aggregates
+# ---------------------------------------------------------------------------------------------
+def read_delimited(path):
+    """(header, rows) of a CSV/TSV whose delimiter is sniffed (`,` `;` or tab); UTF-8 with or without BOM."""
+    with open(path, newline="", encoding="utf-8-sig") as handle:
+        text = handle.read()
+    first = text.splitlines()[0] if text.strip() else ""
+    delimiter = max(",;\t", key=first.count) if first else ","
+    reader = csv.reader(text.splitlines(), delimiter=delimiter)
+    header = [h.strip() for h in next(reader, [])]
+    rows = []
+    for raw in reader:
+        if not raw or not any(c.strip() for c in raw):
+            continue
+        raw = raw + [""] * (len(header) - len(raw))
+        rows.append(dict(zip(header, raw, strict=False)))
+    return header, rows
+
+
+def _split_list(text, sep=";"):
+    return [] if is_na(text) else [part.strip() for part in str(text).split(sep) if part.strip()]
+
+
+def _ungrouped_pairs(text):
+    """`B.52:0.001 A.1:0.03` -> [[B.52, 0.001], [A.1, 0.03]]."""
+    out = []
+    for token in str(text or "").split():
+        name, sep, value = token.rpartition(":")
+        if not sep or not name:
+            continue
+        try:
+            out.append([name, round(float(value), 6)])
+        except ValueError:
+            continue
+    return out
+
+
+def load_lineage_audit(path, problems):
+    """lineage_groups_resolved.tsv -> {groups: [...], dataset_version, groups_sha256}."""
+    _, rows = read_delimited(path)
+    groups = []
+    for row in rows:
+        name = (row.get("group") or "").strip()
+        if not name:
+            continue
+        try:
+            matched = to_int(row.get("n_lineages_matched"))
+        except ValueError as err:
+            problems.add("lineage_groups_resolved.tsv", f"{name}: {err}")
+            matched = None
+        groups.append(
+            {
+                "name": name,
+                "include": _split_list(row.get("include")),
+                "exclude": _split_list(row.get("exclude")),
+                "in_total": str(row.get("in_total", "yes")).strip().lower() != "no",
+                "n_matched": matched,
+                "warnings": [
+                    w.strip() for w in str(row.get("warnings") or "").split(" | ") if w.strip()
+                ],
+            }
+        )
+    first = rows[0] if rows else {}
+    return {
+        "groups": groups,
+        "dataset_version": clean_str(first.get("dataset_version")),
+        "groups_sha256": clean_str(first.get("groups_sha256")),
+    }
+
+
+def load_lineage_ungrouped(path):
+    """Only what the report needs of lineage_summary.csv: per ok sample, `other` and the lineages behind it.
+
+    The per-sample group table is deliberately not read: it lives in the CSV, not in the report.
+    Returns a list of {sample, status, other, ungrouped}."""
+    _, rows = read_delimited(path)
+    out = []
+    for row in rows:
+        sample = clean_str(row.get("sample"))
+        if sample is None:
+            continue
+        try:
+            other = round_or_none(to_float(row.get("other")), 6)
+        except ValueError:
+            other = None
+        out.append(
+            {
+                "sample": sample,
+                "status": clean_str(row.get("status")),
+                "other": other,
+                "ungrouped": _ungrouped_pairs(row.get("ungrouped_lineages")),
+            }
+        )
+    return out
+
+
+def build_lineage_groups(audit, summary_rows, params, threshold=UNGROUPED_FLAG_THRESHOLD):
+    """The (small) `lineage_groups` object: audit facts, warnings and the inputs of the ungrouped flag."""
+    if audit is None and summary_rows is None:
+        return None
+    audit = audit or {}
+    configured = params.get("lineage_groups") if isinstance(params, dict) else None
+    ok_rows = [r for r in (summary_rows or []) if r["status"] == "ok"]
+    with_ungrouped = [r for r in ok_rows if r["ungrouped"]]
+    top = {}
+    for r in with_ungrouped:
+        for name, value in r["ungrouped"]:
+            entry = top.setdefault(name, [name, 0.0, 0])
+            entry[1] = max(entry[1], value)
+            entry[2] += 1
+    top_ungrouped = sorted(top.values(), key=lambda e: (-e[1], e[0]))[:10]
+    return {
+        "n_groups": len(audit.get("groups", [])),
+        "groups_sha256": audit.get("groups_sha256"),
+        "dataset_version": audit.get("dataset_version"),
+        "file": Path(str(configured)).name if configured else "bundled default",
+        "warnings": [
+            {"group": g["name"], "text": w} for g in audit.get("groups", []) for w in g["warnings"]
+        ],
+        "n_samples": len(ok_rows) if summary_rows is not None else None,
+        "n_samples_with_ungrouped": len(with_ungrouped),
+        "top_ungrouped": top_ungrouped,
+        "samples_above_threshold": sorted(
+            r["sample"] for r in ok_rows if r["other"] is not None and r["other"] >= threshold
+        ),
+        "ungrouped_flag_threshold": threshold,
+    }
+
+
+def load_site_aggregates(freyja_path, meta_path, problems):
+    """site_aggregates_freyja.tsv + site_aggregates_meta.tsv -> list of aggregate-periods."""
+    if freyja_path is None and meta_path is None:
+        return None
+    meta_rows = []
+    if meta_path is not None:
+        _, raw = read_delimited(meta_path)
+        for number, row in enumerate(raw, start=2):
+            label = clean_str(row.get("row_label"))
+            if label is None:
+                continue
+            try:
+                included = _split_list(row.get("sites_included"))
+                missing = _split_list(row.get("sites_missing"))
+                reasons = _split_list(row.get("missing_reasons"))
+                meta_rows.append(
+                    {
+                        "row_label": label,
+                        "aggregate_name": clean_str(row.get("aggregate_name")),
+                        "period": clean_str(row.get("period")),
+                        "period_start": clean_str(row.get("period_start")),
+                        "n_sites_included": to_int(row.get("n_sites_included"))
+                        if not is_na(row.get("n_sites_included"))
+                        else len(included),
+                        "sites_included": included,
+                        "sites_missing": missing,
+                        "missing_reasons": dict(zip(missing, reasons, strict=False)),
+                        "weight_basis": clean_str(row.get("weight_basis")),
+                        "weight_fraction_included": round_or_none(
+                            to_float(row.get("weight_fraction_included")), 4
+                        ),
+                        "n_samples": to_int(row.get("n_samples")),
+                    }
+                )
+            except ValueError as err:
+                problems.add("site_aggregates_meta.tsv", f"line {number}: {err}")
+    solutions = {}
+    if freyja_path is not None:
+        solutions = load_aggregated(freyja_path, {m["row_label"] for m in meta_rows}, problems)
+    if meta_path is None:
+        for label in solutions:
+            match = SITE_PERIOD_RE.match(label)
+            meta_rows.append(
+                {
+                    "row_label": label,
+                    "aggregate_name": match["name"] if match else label,
+                    "period": match["period"] if match else None,
+                    "period_start": None,
+                    "n_sites_included": None,
+                    "sites_included": [],
+                    "sites_missing": [],
+                    "missing_reasons": {},
+                    "weight_basis": None,
+                    "weight_fraction_included": None,
+                    "n_samples": None,
+                }
+            )
+    out = []
+    for meta in meta_rows:
+        sol = solutions.get(meta["row_label"]) or {}
+        out.append(
+            dict(
+                meta,
+                groups=sol.get("groups", []),
+                lineages=sol.get("lineages", []),
+                resid=sol.get("resid"),
+                coverage=sol.get("coverage"),
+            )
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
 # Depth files -> binned coverage tracks
 # ---------------------------------------------------------------------------------------------
 def collect_depth_files(items):
@@ -1213,6 +1438,57 @@ def build_run_flags(ctx):
             warned_cons,
         )
 
+    # Lineage groups: audit warnings and lineages that no group covers
+    lg = ctx.get("lineage_groups")
+    if lg:
+        warnings = lg["warnings"]
+        if warnings:
+            shown = "; ".join(f"{w['group']}: {w['text']}" for w in warnings[:3])
+            more = f" (and {len(warnings) - 3} more)" if len(warnings) > 3 else ""
+            flag(
+                "warn",
+                "lineage_groups_warnings",
+                f"{len(warnings)} warning(s) in the lineage groups audit: {shown}{more}.",
+            )
+        high = lg["samples_above_threshold"]
+        if high:
+            limit = lg["ungrouped_flag_threshold"]
+            top = ", ".join(f"{n} ({v * 100:.1f}%)" for n, v, _ in lg["top_ungrouped"][:3])
+            flag(
+                "info",
+                "lineage_groups_ungrouped",
+                f"{len(high)} sample(s) have {limit * 100:g}% or more of their lineages outside every "
+                f"lineage group (top ungrouped: {top or 'none listed'}); add them to your lineage "
+                "groups file; see summary/lineage_ungrouped_summary.tsv.",
+                high,
+            )
+
+    # Site aggregates that miss member sites or used a weaker weighting than asked for
+    sa = ctx.get("site_aggregates") or []
+    incomplete = [
+        a
+        for a in sa
+        if a["sites_missing"]
+        or str(a.get("weight_basis") or "").startswith(("equal (", "site_weight ("))
+    ]
+    if incomplete:
+        parts = [
+            f"{a['aggregate_name'] or a['row_label']} {a['period'] or ''}".strip()
+            + (
+                f" (missing {', '.join(a['sites_missing'])})"
+                if a["sites_missing"]
+                else " (weaker weighting)"
+            )
+            for a in incomplete[:4]
+        ]
+        more = f" and {len(incomplete) - 4} more" if len(incomplete) > 4 else ""
+        flag(
+            "info",
+            "site_aggregate_incomplete",
+            f"{len(incomplete)} of {len(sa)} site aggregate period(s) are incomplete or use a weaker "
+            f"weighting: {'; '.join(parts)}{more}.",
+        )
+
     # Primer scheme check (qc_summary.tsv primer_scheme_check): reads line up with another scheme
     mismatched = [s for s in real if s.get("primer_scheme_check") == "mismatch"]
     if mismatched:
@@ -1313,6 +1589,8 @@ def build(
     timeseries=None,
     growth=None,
     dashboard=None,
+    lineage_groups=None,
+    site_aggregates=None,
     mode=None,
     now=None,
     problems=None,
@@ -1547,6 +1825,8 @@ def build(
         "unexplained_mutations": unexplained_rows is not None,
         "timeseries": bool(timeseries_out),
         "growth_rates": growth_out is not None,
+        "lineage_groups": lineage_groups is not None,
+        "site_aggregates": bool(site_aggregates),
     }
     time_series = build_time_series(sample_list, demix)
     available["time_series"] = time_series is not None or bool(
@@ -1565,6 +1845,8 @@ def build(
             "dropout": dropout_out,
             "unexplained": unexplained_rows,
             "consensus": cons_out,
+            "lineage_groups": lineage_groups,
+            "site_aggregates": site_aggregates,
         }
     )
     failed_compare = sorted(
@@ -1606,6 +1888,8 @@ def build(
         "dashboard": {"file": dashboard} if dashboard else None,
         "dropout_impact": dropout_out,
         "unexplained_mutations": unexplained_rows,
+        "lineage_groups": lineage_groups,
+        "site_aggregates": site_aggregates,
     }
 
 
@@ -1677,6 +1961,18 @@ def parse_args(argv=None):
     parser.add_argument(
         "--dashboard-name",
         help="file name of the optional Freyja dashboard (shown as text only; never linked)",
+    )
+    parser.add_argument("--lineage-summary", help="lineage_summary.csv (LINEAGE_SUMMARY)")
+    parser.add_argument(
+        "--lineage-groups-resolved", help="lineage_groups_resolved.tsv: the groups audit table"
+    )
+    parser.add_argument("--site-aggregates", help="site_aggregates_freyja.tsv (SITE_AGGREGATE)")
+    parser.add_argument("--site-aggregates-meta", help="site_aggregates_meta.tsv (SITE_AGGREGATE)")
+    parser.add_argument(
+        "--ungrouped-flag-threshold",
+        type=float,
+        default=UNGROUPED_FLAG_THRESHOLD,
+        help="an ok sample whose `other` share is at least this raises lineage_groups_ungrouped",
     )
     parser.add_argument("--mode", help="override the mode recorded in run_info.json")
     parser.add_argument("--out", required=True, help="report_data.json")
@@ -1787,6 +2083,17 @@ def main(argv=None):
             problems,
         )
         inputs["dashboard"] = (args.dashboard_name or "").strip() or None
+        audit_path = optional_file(args.lineage_groups_resolved)
+        audit = load_lineage_audit(audit_path, problems) if audit_path else None
+        path = optional_file(args.lineage_summary)
+        summary_rows = load_lineage_ungrouped(path) if path else None
+        params = run_info.get("params") if isinstance(run_info.get("params"), dict) else {}
+        inputs["lineage_groups"] = build_lineage_groups(
+            audit, summary_rows, params, args.ungrouped_flag_threshold
+        )
+        inputs["site_aggregates"] = load_site_aggregates(
+            optional_file(args.site_aggregates), optional_file(args.site_aggregates_meta), problems
+        )
     except (OSError, UnicodeDecodeError, csv.Error) as err:
         print(f"build_report_data.py: {err}", file=sys.stderr)
         return 2

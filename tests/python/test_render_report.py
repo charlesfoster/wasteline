@@ -968,3 +968,230 @@ def test_consensus_reason_is_escaped(tmp_path):
     assert_valid(html)
     assert "<img src=x" not in html and "<script>alert(2)" not in html
     assert all(not any(k.startswith("on") for k in attrs) for _, attrs in parse(html).tags)
+
+
+# =============================================================================================
+# Lineage groups and site aggregates
+# =============================================================================================
+H = FIX / "h_lineage_groups"
+
+
+def build_h(tmp_path, drop=(), extra=None, only=None):
+    options = {
+        "--aggregated": "freyja_aggregated.tsv",
+        "--demix-status": "demix_status.tsv",
+        "--samplesheet": "samplesheet.csv",
+        "--lineage-summary": "lineage_summary.csv",
+        "--lineage-groups-resolved": "lineage_groups_resolved.tsv",
+        "--site-aggregates": "site_aggregates_freyja.tsv",
+        "--site-aggregates-meta": "site_aggregates_meta.tsv",
+    }
+    args = ["--run-info", str(H / "run_info.json")]
+    for option, name in options.items():
+        if option not in drop and (only is None or option in only):
+            args += [option, str(H / name)]
+    args += list(extra or []) + ["--out", str(tmp_path / "h.json")]
+    assert brd.main(args) == 0
+    return json.loads((tmp_path / "h.json").read_text())
+
+
+def section(html, sec_id):
+    part = html[html.index(f'<section id="{sec_id}"') :]
+    return part[: part.index("</section>")]
+
+
+@pytest.fixture(scope="module")
+def h_html(tmp_path_factory):
+    return render(build_h(tmp_path_factory.mktemp("h")))
+
+
+def test_site_aggregates_section(h_html):
+    sec = section(h_html, "sec-site-aggregates")
+    assert 'href="#sec-site-aggregates"' in h_html
+    assert "never from pooled reads" in sec and "weights" in sec.lower()
+    assert sec.count('class="sarow"') == 10  # 5 periods x (summarized + full view)
+    assert 'id="sa-summ"' in sec and 'id="sa-full" class="sa" hidden' in sec
+    assert 'data-show="#sa-full" data-hide="#sa-summ"' in sec  # same toggle as the per-sample bars
+    # grouped by aggregate, periods in order
+    assert sec.index("Catchment_X") < sec.index("Coastal")
+    first_view = sec[: sec.index('id="sa-full"')]
+    assert (
+        first_view.index("2026-W02") < first_view.index("2026-W03") < first_view.index("2026-W04")
+    )
+    # badges: contributing sites, weighting basis, weight share, missing sites with reasons
+    assert ">2/2 sites<" in sec and ">1/2 sites<" in sec
+    assert (
+        'class="chip2 weak" title="Weighting basis of the average (weaker than requested)">equal (viral_load missing)'
+        in sec
+    )
+    assert ">50% of weight<" in sec and ">64% of weight<" in sec
+    assert 'class="chip2 miss" title="Site_2: not_ok:failed">missing Site_2' in sec
+    assert 'title="Site_3: no_sample"' in sec
+    assert "<title>NB.1.8: 100.0%</title>" in sec
+    assert "site_aggregate_incomplete" in h_html
+
+
+def test_site_aggregate_bars_reuse_the_per_sample_colours(h_html):
+    per_sample = section(h_html, "sec-lineage")
+
+    def legend(part):
+        return {
+            m.split("</li>")[0].split("</i>")[1]: m.split('class="sw ')[1].split('"')[0]
+            for m in part.split("<li><i ")[1:]
+        }
+
+    sa = section(h_html, "sec-site-aggregates")
+    full_sa = legend(sa[sa.index('id="sa-full"') :])
+    full_samples = legend(per_sample[per_sample.index('id="lin-full"') :].split("<h3>")[0])
+    shared = set(full_sa) & set(full_samples)
+    assert shared and all(full_sa[n] == full_samples[n] for n in shared)
+
+
+def test_period_without_a_solution_shows_a_status_not_a_bar(tmp_path):
+    old = ROOT / "tests" / "fixtures" / "lineage_groups"
+    data = build_h(tmp_path, drop=("--site-aggregates", "--site-aggregates-meta"))
+    data["site_aggregates"] = brd.load_site_aggregates(
+        old / "site_aggregates_freyja.tsv", old / "site_aggregates_meta.tsv", brd.Problems()
+    )
+    html = render(data)
+    assert_valid(html)
+    sec = section(html, "sec-site-aggregates")
+    assert (
+        "no site contributed a result in this period" in sec
+        and ">0/2 sites<" in sec
+        and 'class="badge b-fail" title="Sites that contributed: none"' in sec
+    )
+
+
+def test_default_report_has_no_lineage_group_markup(tmp_path):
+    html = render(build_fixture("a_full", tmp_path))
+    for needle in ("sec-lineage-groups", "sec-site-aggregates", "sarow", "Lineage groups:"):
+        assert needle not in html, needle
+    assert html.count("<script>") == 1 and html.count("<style>") == 1
+
+
+def test_no_lineage_group_table_section_or_nav_link(h_html):
+    assert 'id="sec-lineage-groups"' not in h_html and "#sec-lineage-groups" not in h_html
+    assert (
+        'table class="sortable capped lg"' not in h_html and "Check your groups file" not in h_html
+    )
+    assert "BA.2.86* (excludes JN.1*)" not in h_html  # no group column heading anywhere
+
+
+def test_provenance_line_about_the_lineage_groups(h_html):
+    sec = section(h_html, "sec-provenance")
+    assert (
+        "Lineage groups: <code>groups.csv</code>, sha256 3cbeef2ff042, dataset 01_02_2026-03-04; "
+        "table in <code>summary/lineage_summary.csv</code>"
+    ) in sec
+
+
+def test_provenance_line_without_a_configured_file_and_without_audit_facts(tmp_path):
+    info = json.loads((H / "run_info.json").read_text())
+    del info["params"]["lineage_groups"]
+    ri = tmp_path / "ri.json"
+    ri.write_text(json.dumps(info))
+    out = tmp_path / "r.json"
+    assert (
+        brd.main(
+            [
+                "--run-info",
+                str(ri),
+                "--lineage-summary",
+                str(H / "real_lineage_summary.csv"),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    html = render(json.loads(out.read_text()))
+    assert_valid(html)
+    assert (
+        "Lineage groups: <code>bundled default</code>; table in <code>summary/lineage_summary.csv</code>"
+        in html
+    )
+
+
+def test_lineage_group_flags_render(h_html):
+    assert "lineage_groups_warnings" in h_html and "lineage_groups_ungrouped" in h_html
+    assert (
+        "add them to your lineage groups file; see summary/lineage_ungrouped_summary.tsv" in h_html
+    )
+
+
+def test_lineage_group_strings_are_escaped(tmp_path):
+    evil, evil2 = "<script>alert(1)</script>", 'x"><img src=x onerror=alert(2)>'
+    audit = tmp_path / "audit.tsv"
+    audit.write_text(
+        "group\tinclude\texclude\tin_total\tn_lineages_matched\twarnings\tdataset_version\tgroups_sha256\n"
+        f"{evil}\tJN.1*\t\tyes\t2\t{evil2} | second {evil}\t{evil2}\t{evil}\n"
+    )
+    summary = tmp_path / "summary.csv"
+    summary.write_text(
+        "sample,status,other,ungrouped_lineages\n"
+        f"{evil},ok,0.5,Evil<u>:0.5\n{evil2},ok,0.4,<i>Odd</i>:0.4\n"
+    )
+    info = json.loads((H / "run_info.json").read_text())
+    info["params"]["lineage_groups"] = f"/x/{evil2}.csv"
+    ri = tmp_path / "ri.json"
+    ri.write_text(json.dumps(info))
+    out = tmp_path / "r.json"
+    args = ["--run-info", str(ri), "--lineage-summary", str(summary), "--lineage-groups-resolved", str(audit),
+            "--out", str(out)]  # fmt: skip
+    assert brd.main(args) == 0
+    html = render(json.loads(out.read_text()))
+    assert_valid(html)
+    for needle in ("<script>alert", "<img src=x", "Evil<u>", "<i>Odd"):
+        assert needle not in html, needle
+    parser = parse(html)
+    assert [t for t, _ in parser.tags].count("script") == 1
+    assert all(not any(k.startswith("on") for k in attrs) for _, attrs in parser.tags)
+    assert "lineage_groups_warnings" in html and "&lt;script&gt;" in html
+
+
+def test_site_aggregate_strings_are_escaped(tmp_path):
+    evil, evil2 = "<script>alert(1)</script>", 'x"><img src=x onerror=alert(2)>'
+    meta = tmp_path / "meta.tsv"
+    meta.write_text(
+        "row_label\taggregate_name\tperiod\tperiod_start\tn_sites_included\tsites_included\tsites_missing\t"
+        "missing_reasons\tweight_basis\tweight_fraction_included\tn_samples\n"
+        f"Agg_2026-W01\t{evil}\t2026-W01\t2025-12-29\t1\t{evil2}\t{evil}\tnot_ok:{evil2}\t{evil2}\t0.5\t1\n"
+    )
+    freyja = tmp_path / "f.tsv"
+    freyja.write_text(
+        "\tsummarized\tlineages\tabundances\tresid\tcoverage\n"
+        "Agg_2026-W01\t[('Omicron<i>', 1.0)]\tEvil<u>\t1.0\t1\tNA\n"
+    )
+    out = tmp_path / "r.json"
+    args = ["--run-info", str(H / "run_info.json"), "--site-aggregates", str(freyja),
+            "--site-aggregates-meta", str(meta), "--out", str(out)]  # fmt: skip
+    assert brd.main(args) == 0
+    html = render(json.loads(out.read_text()))
+    assert_valid(html)
+    for needle in ("<script>alert", "<img src=x", "Evil<u>", "Omicron<i>"):
+        assert needle not in html, needle
+    parser = parse(html)
+    assert [t for t, _ in parser.tags].count("script") == 2
+    assert all(not any(k.startswith("on") for k in attrs) for _, attrs in parser.tags)
+    assert 'id="sec-site-aggregates"' in html
+
+
+def test_150_samples_with_site_aggregates_stay_small_and_fast():
+    data = synthetic_data(150)
+    data["lineage_groups"] = {"n_groups": 25, "groups_sha256": "a" * 64, "dataset_version": "x", "file": "g.csv",
+                              "warnings": [], "n_samples_with_ungrouped": 3, "top_ungrouped": [["B.52", 0.01, 3]]}  # fmt: skip
+    data["site_aggregates"] = [
+        {"row_label": f"Agg{i % 4}_2026-W{i % 20 + 1:02d}", "aggregate_name": f"Agg{i % 4}", "period": f"2026-W{i % 20 + 1:02d}",
+         "period_start": f"2026-01-{i % 20 + 1:02d}", "n_sites_included": 3, "sites_included": ["a", "b", "c"],
+         "sites_missing": ["d"], "missing_reasons": {"d": "no_sample"}, "weight_basis": "viral_load",
+         "weight_fraction_included": 0.8, "n_samples": 5,
+         "groups": [["Omicron", 0.6], ["Delta", 0.4]], "lineages": [[f"X{j}", 0.1] for j in range(10)]}
+        for i in range(60)
+    ]  # fmt: skip
+    start = time.perf_counter()
+    html = render(data)
+    elapsed = time.perf_counter() - start
+    assert_valid(html)
+    assert len(html.encode()) < 3_000_000, len(html)
+    assert elapsed < 10 and html.count('class="sarow"') == 120

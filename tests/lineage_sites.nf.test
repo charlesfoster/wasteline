@@ -1,0 +1,301 @@
+nextflow_pipeline {
+
+    name "Test pipeline (lineage groups and site aggregation)"
+    script "../main.nf"
+    tag "pipeline"
+    tag "lineage_sites"
+
+    // Helpers: files are written under the test's output directory, so nothing outside it is touched.
+    def absoluteSheet = { outDir, root, dataset, name ->
+        def sheet = new File("${outDir}/${name}")
+        sheet.parentFile.mkdirs()
+        sheet.text = new File("${root}/tests/${dataset}/samplesheet.csv").text.replace("tests/${dataset}/", "${root}/tests/${dataset}/")
+        return sheet.toString()
+    }
+    def writeFile = { outDir, name, text ->
+        def file = new File("${outDir}/${name}")
+        file.parentFile.mkdirs()
+        file.text = text
+        return file.toString()
+    }
+    def demixSheet = { outDir, root ->
+        def base = "${root}/tests/fixtures/samplesheet/results_new/samples"
+        return writeFile(outDir, 'demix_samplesheet.csv',
+            "sample,variants,depths,sample_type,collection_date,site\n" +
+            "Site_1_week_2,${base}/Site_1_week_2/freyja/Site_1_week_2.variants.tsv,${base}/Site_1_week_2/freyja/Site_1_week_2.depths,sample,2026-02-02,Site_1\n" +
+            "NEG_ntc,${base}/NEG_ntc/freyja/NEG_ntc.variants.tsv,${base}/NEG_ntc/freyja/NEG_ntc.depths,negative,,\n")
+    }
+
+    test("-stub: full mode, defaults: the bundled lineage groups run (no option needed) and a copy of the file is published") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+            }
+        }
+
+        then {
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/lineage_summary.csv").exists() },
+                { assert new File("$outputDir/summary/lineage_groups_resolved.tsv").exists() },
+                { assert new File("$outputDir/summary/lineage_ungrouped_summary.tsv").exists() },
+                // byte-identical copy of the bundled default
+                { assert new File("$outputDir/summary/lineage_groups_used.csv").bytes == new File("${projectDir}/assets/lineage_groups.csv").bytes },
+                { assert run_info.lineage_groups_source == 'bundled' && run_info.lineage_groups_file == 'bundled default' },
+                { assert run_info.lineage_groups_sha256 ==~ /[0-9a-f]{64}/ },
+                { assert snapshot(removeNextflowVersion("$outputDir/pipeline_info/software_versions.yml")).match() },
+                // the site aggregation stays off without a sites file
+                { assert !new File("$outputDir/summary/site_aggregates_freyja.tsv").exists() },
+                { assert !new File("$outputDir/summary/lineage_summary_site_aggregates.csv").exists() }
+            )
+        }
+    }
+
+    test("-stub: full mode with a custom groups file and a sites file writes the lineage summary, its audit and the site aggregates") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                lineage_groups   = "${projectDir}/assets/lineage_groups.csv"
+                site_aggregation = writeFile(outputDir, 'sites.csv', "aggregate_name,site_name\nAll,SiteA\nAll,SiteB\n")
+            }
+        }
+
+        then {
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/lineage_summary.csv").exists() },
+                { assert new File("$outputDir/summary/lineage_groups_resolved.tsv").exists() },
+                { assert new File("$outputDir/summary/lineage_summary_site_aggregates.csv").exists() },
+                { assert new File("$outputDir/summary/site_aggregates_freyja.tsv").exists() },
+                { assert new File("$outputDir/summary/site_aggregates_meta.tsv").exists() },
+                // the files of the two features are all published to summary/, the helper files are not
+                { assert !new File("$outputDir/summary/lineage_groups_check.txt").exists() },
+                { assert run_info.params.lineage_groups.endsWith('lineage_groups.csv') },
+                { assert run_info.lineage_groups_source == 'custom' && run_info.lineage_groups_file == 'lineage_groups.csv' },
+                { assert new File("$outputDir/summary/lineage_ungrouped_summary.tsv").exists() },
+                { assert run_info.params.site_aggregation_weights == 'auto' && run_info.params.lineage_major_threshold == 0.1 }
+            )
+        }
+    }
+
+    test("-stub: --lineage_summary false switches the lineage summary off; site aggregation is off unless a CSV is given") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                lineage_summary = false
+            }
+        }
+
+        then {
+            def run_info = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert !new File("$outputDir/summary/lineage_summary.csv").exists() },
+                { assert !new File("$outputDir/summary/lineage_groups_used.csv").exists() },
+                { assert run_info.lineage_groups_source == null },
+                { assert !new File("$outputDir/summary/site_aggregates_freyja.tsv").exists() }
+            )
+        }
+    }
+
+    test("-stub: a barcodes file without lineages.yml skips the lineage summary with ONE warning; site aggregation still works") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = "${projectDir}/tests/data/barcodes_test.csv"
+                db_dir   = "$outputDir/db"
+                site_aggregation = writeFile(outputDir, 'sites.csv', "aggregate_name,site_name\nAll,SiteA\nAll,SiteB\n")
+            }
+        }
+
+        then {
+            def log_text = new File("$outputDir/../meta/nextflow.log").text
+            def run_info_skipped = new groovy.json.JsonSlurper().parse(new File("$outputDir/pipeline_info/run_info.json"))
+            assertAll(
+                { assert workflow.success },
+                { assert log_text.count('Skipping the lineage-group summary') == 1 },
+                { assert !new File("$outputDir/summary/lineage_summary.csv").exists() },
+                { assert new File("$outputDir/summary/site_aggregates_meta.tsv").exists() },
+                { assert run_info_skipped.lineage_groups_source == null }
+            )
+        }
+    }
+
+    test("-stub: demix mode") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode     = 'demix'
+                outdir   = "$outputDir"
+                input    = demixSheet(outputDir, projectDir)
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                lineage_groups   = "${projectDir}/assets/lineage_groups.csv"
+                site_aggregation = writeFile(outputDir, 'sites.csv', "aggregate_name,site_name\nAll,Site_1\n")
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/lineage_summary.csv").exists() },
+                { assert new File("$outputDir/summary/lineage_summary_site_aggregates.csv").exists() },
+                { assert new File("$outputDir/summary/site_aggregates_freyja.tsv").exists() }
+            )
+        }
+    }
+
+    test("-stub: aggregate mode") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                mode     = 'aggregate'
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data_timeseries', 'aggregate_samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                lineage_groups   = "${projectDir}/assets/lineage_groups.csv"
+                site_aggregation = "${projectDir}/tests/fixtures/site_aggregate/sites.csv"
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/lineage_summary.csv").exists() },
+                { assert new File("$outputDir/summary/lineage_summary_site_aggregates.csv").exists() },
+                { assert new File("$outputDir/summary/site_aggregates_freyja.tsv").exists() },
+                { assert new File("$outputDir/summary/site_aggregates_meta.tsv").exists() }
+            )
+        }
+    }
+
+    // ---- real runs (docker) --------------------------------------------------------------------------------------
+
+    test("a bad groups CSV stops the run in the first processes, naming the rows - real") {
+
+        tag "docker"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = "${projectDir}/tests/data/barcodes_test.csv"
+                db_dir   = "$outputDir/db"
+                primer_scheme  = 'midnight'
+                lineage_groups = writeFile(outputDir, 'groups_bad.csv', "group,include,exclude,in_total\nJN.1*,JN.1*,,yes\nJN.1*,KP.3*,,yes\n")
+            }
+        }
+
+        then {
+            def out = (workflow.stdout + workflow.stderr).join('\n')
+            assertAll(
+                { assert workflow.failed },
+                { assert out.contains('the group name') && out.contains('appears twice (rows 2 and 3)') },
+                // nothing downstream of the mapping was reached
+                { assert !out.contains('FREYJA_VARIANTS') && !out.contains('FREYJA_DEMIX') }
+            )
+        }
+    }
+
+    test("a bad sites CSV stops the run in the first processes, naming the line - real") {
+
+        tag "docker"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = "${projectDir}/tests/data/barcodes_test.csv"
+                db_dir   = "$outputDir/db"
+                primer_scheme    = 'midnight'
+                site_aggregation = writeFile(outputDir, 'sites_bad.csv', "aggregate_name,site_name,weight\nMetro,SiteA,10\nMetro,,10\n")
+            }
+        }
+
+        then {
+            def out = (workflow.stdout + workflow.stderr).join('\n')
+            assertAll(
+                { assert workflow.failed },
+                { assert out.contains('line 3: site_name is blank') },
+                { assert !out.contains('FREYJA_VARIANTS') && !out.contains('FREYJA_DEMIX') }
+            )
+        }
+    }
+
+    // tests/data_timeseries: 3 sites x 8 weekly dates, viral loads, a negative control and a low-coverage sample
+    test("aggregate mode: Metro_2026-W03 XBB.1.5 is the hand-computed 0.107045, and the groups add up - real") {
+
+        tag "docker"
+
+        when {
+            params {
+                mode     = 'aggregate'
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data_timeseries', 'aggregate_samplesheet.csv')
+                barcodes = 'container'
+                db_dir   = "$outputDir/db"
+                site_aggregation = "${projectDir}/tests/fixtures/site_aggregate/sites.csv"
+            }
+        }
+
+        then {
+            def table = { path, delimiter ->
+                def lines = new File(path).readLines()
+                def header = lines[0].split(delimiter, -1)
+                lines.drop(1).collect { line -> [ header, line.split(delimiter, -1) ].transpose().collectEntries { k, v -> [ (k): v ] } }
+            }
+            def meta = table("$outputDir/summary/site_aggregates_meta.tsv", '\t').collectEntries { row -> [ (row.row_label): row ] }
+            def agg = new File("$outputDir/summary/site_aggregates_freyja.tsv").readLines().drop(1).collectEntries { line ->
+                def cols = line.split('\t', -1)
+                [ (cols[0]): [ cols[2].split(' '), cols[3].split(' ').collect { v -> v as double } ].transpose().collectEntries { k, v -> [ (k): v ] } ]
+            }
+            def summary = new File("$outputDir/summary/lineage_summary.csv").readLines()
+            assertAll(
+                { assert workflow.success },
+                { assert meta['Metro_2026-W03'].weight_basis == 'viral_load' && meta['Metro_2026-W03'].n_sites_included == '3' },
+                { assert Math.abs(agg['Metro_2026-W03']['XBB.1.5'] - 0.107045) < 1e-6 },
+                // SiteC has no viral load in week 2: the weights fall back to the sites file's population weights
+                { assert meta['Metro_2026-W02'].weight_basis == 'site_weight (viral_load missing)' },
+                // negative control and the nonexistent samples are not in the per-sample summary
+                { assert !summary.any { line -> line.startsWith('NEG_1,') } },
+                { assert summary.any { line -> line.startsWith('SiteA_W01_1,') } },
+                { assert new File("$outputDir/summary/lineage_summary_site_aggregates.csv").readLines().size() == meta.size() + 1 }
+            )
+        }
+    }
+}

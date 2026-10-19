@@ -93,4 +93,6 @@ barcode_version, barcode_version_iso`) and a fourth status `missing`; `freyja_ag
   removed from scope).
 - **Partial**: F13 (lock file misses the `FREYJA_DEMIX_COMPARE` alias; never used with Singularity), F15, D1 (CI and the
   bot never ran on GitHub), D4 (only Docker was executed; Singularity and conda are config-parsed), the `test_full` profile (placeholder).
+- **Added after the plan** (not plan items): the lineage-group summary (on by default, `--lineage_summary`, `--lineage_groups`) and
+  result-level site aggregation (`--site_aggregation`); see [usage.md](usage.md#lineage-groups).
 - Future work is listed in [development.md](development.md#future-work).

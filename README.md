@@ -68,6 +68,12 @@ profiles).
   long time-series tables per site (`summary/freyja_timeseries[_lineages].tsv`, plain and viral-load-weighted), and, opt-in,
   Freyja relative growth rates (`--freyja_growth`) and the interactive Freyja dashboard (`--freyja_dash`); all modes, also from
   existing `.demix` files.
+- **Lineage groups you maintain yourself.** `summary/lineage_summary.csv` has one row per sample and one column per group of
+  lineages (`JN.1*`, `KP.3*`, `RECOMBINANT*`, ...), defined in a CSV you can edit in Excel; a curated list is bundled and on by
+  default, `--lineage_groups my.csv` replaces it, a copy of the list used is published (`lineage_groups_used.csv`) and
+  `lineage_ungrouped_summary.tsv` shows which lineages the list does not cover yet.
+- **Site aggregation.** `--site_aggregation sites.csv` combines per-site results into groups of sites (weekly, weighted by viral
+  load or population served) by averaging the **results**, never by pooling reads; `summary/site_aggregates_*.tsv`.
 - **Optional** mutations-of-interest tracking; `--bam_format cram` for much smaller alignments; `--aligner minibwa` (experimental,
   see [docs/aligner_evaluation.md](docs/aligner_evaluation.md)); `bin/replay_run.py` rebuilds the exact command of a recorded run.
 - **One offline HTML report**: run-level flags, QC table, lineage abundance bars and heatmap, coverage tracks, amplicon dropout,
@@ -99,7 +105,7 @@ mode aggregate:  existing .demix files       ->  FREYJA_AGGREGATE_PLOT -> report
 mode report:     results of a finished run   ->  RENDER_REPORT
 mode update_db:  nothing                     ->  FREYJA_UPDATE (stores the dataset in --db_dir)
 
-after the demix: DROPOUT_IMPACT, UNEXPLAINED_MUTATIONS(_CONCAT), TIMESERIES_TABLE (all modes), and opt-in
+after the demix: LINEAGE_SUMMARY (default; bundled groups list), SITE_AGGREGATE (--site_aggregation), DROPOUT_IMPACT, UNEXPLAINED_MUTATIONS(_CONCAT), TIMESERIES_TABLE (all modes), and opt-in
                  FREYJA_RELGROWTHRATE (--freyja_growth) and FREYJA_DASH (--freyja_dash)
 
 optional branches (full and demix): --compare_barcodes (second FREYJA_DEMIX + BARCODE_COMPARE), --freyja_boot (FREYJA_BOOT),

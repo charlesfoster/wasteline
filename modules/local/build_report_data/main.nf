@@ -19,6 +19,8 @@ process BUILD_REPORT_DATA {
     // (summarized + lineages level), Freyja growth rates (+ why there are none, + what went into the fit) and the
     // name of the dashboard file ('' when none; it is linked, not embedded)
     tuple path(dropout_impact), path(dropout_summary), path(unexplained), path(timeseries), path(timeseries_lineages, stageAs: "lineages/*"), path(growth_rates), path(growth_failed), path(growth_inputs), val(dashboard_name)
+    // lineage-group summary (+ the audit of what each group matched; for flags and provenance only) and site aggregates (+ meta), [] when absent
+    tuple path(lineage_summary), path(lineage_groups_resolved), path(site_aggregates), path(site_aggregates_meta)
 
     output:
     path "report_data.json", emit: json
@@ -51,6 +53,10 @@ process BUILD_REPORT_DATA {
     def growth_failed_arg = growth_failed ? "--growth-failed ${growth_failed}" : ''
     def growth_inputs_arg = growth_inputs ? "--growth-inputs ${growth_inputs}" : ''
     def dashboard_arg = dashboard_name ? "--dashboard-name '${dashboard_name}'" : ''
+    def lineage_summary_arg = lineage_summary ? "--lineage-summary ${lineage_summary}" : ''
+    def lineage_resolved_arg = lineage_groups_resolved ? "--lineage-groups-resolved ${lineage_groups_resolved}" : ''
+    def site_aggregates_arg = site_aggregates ? "--site-aggregates ${site_aggregates}" : ''
+    def site_aggregates_meta_arg = site_aggregates_meta ? "--site-aggregates-meta ${site_aggregates_meta}" : ''
     def merged_arg = qc_summary ? "--write-qc-tsv qc_summary.merged.tsv" : ''
     """
     build_report_data.py \\
@@ -76,6 +82,10 @@ process BUILD_REPORT_DATA {
         ${growth_failed_arg} \\
         ${growth_inputs_arg} \\
         ${dashboard_arg} \\
+        ${lineage_summary_arg} \\
+        ${lineage_resolved_arg} \\
+        ${site_aggregates_arg} \\
+        ${site_aggregates_meta_arg} \\
         ${merged_arg} \\
         ${args} \\
         --out report_data.json

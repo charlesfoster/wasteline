@@ -28,6 +28,15 @@ import sys
 from pathlib import Path
 
 ABSENT_LINEAGE_MAX = 0.05
+FIXED_LINEAGE_COLUMNS = {
+    "sample",
+    "site",
+    "collection_date",
+    "status",
+    "genome_coverage_pct",
+    "status_reason",
+    "sample_type",
+}
 SNV_FRACTION_MIN = 0.9  # share of a lineage's SNVs that must be in its pure sample's consensus
 IUPAC_FOR = {"R": "AG", "Y": "CT", "S": "CG", "W": "AT", "K": "GT", "M": "AC"}
 
@@ -389,6 +398,142 @@ def check_analyses(c, out, samples, mode, have_amplicons, declared_scheme):
                 )
         else:
             c.check(not path.exists(), f"{name} is not written with fewer than 2 collection dates")
+
+
+def check_lineage_groups(c, out, samples, expect):
+    """summary/lineage_summary.csv and its companions. expect: `present` (the groups file ran against a dataset with
+    a lineage hierarchy) or `absent` (custom barcodes file: skipped, or --lineage_summary false)."""
+    summary = out / "summary"
+    names = [
+        "lineage_summary.csv",
+        "lineage_groups_resolved.tsv",
+        "lineage_groups_used.csv",
+        "lineage_ungrouped_summary.tsv",
+    ]
+    if expect == "absent":
+        c.check(
+            not any((summary / n).exists() for n in names),
+            "no lineage summary files (no lineage hierarchy, or switched off)",
+        )
+        return
+    for name in names:
+        c.check((summary / name).exists(), f"{name} exists")
+    if not all((summary / n).exists() for n in names):
+        return
+    default_groups = Path(__file__).resolve().parents[1] / "assets" / "lineage_groups.csv"
+    c.check(
+        (summary / "lineage_groups_used.csv").read_bytes() == default_groups.read_bytes(),
+        "lineage_groups_used.csv is a byte-identical copy of the groups file used (the bundled default)",
+    )
+    rows = {
+        r["sample"]: r
+        for r in csv.DictReader((summary / "lineage_summary.csv").read_text().splitlines())
+    }
+    c.check(
+        not any(
+            sample in rows for sample, info in samples.items() if info["sample_type"] == "negative"
+        ),
+        "negative controls are not in lineage_summary.csv",
+    )
+    for sample, info in samples.items():
+        row = rows.get(sample)
+        if info["sample_type"] == "negative" or row is None:
+            continue
+        if info["expected_demix_status"] == "ok" and row["status"] == "ok":
+            total = float(row["proportion_summary"])
+            c.check(0.97 <= total <= 1.03, f"{sample}: proportion_summary is about 1", str(total))
+        else:
+            values = [v for k, v in row.items() if k not in FIXED_LINEAGE_COLUMNS]
+            c.check(
+                row["status"] != "ok" and not any(values),
+                f"{sample}: a status row without values ({row['status']})",
+            )
+    if "PURE_C" in rows and rows["PURE_C"]["status"] == "ok":
+        jn = float(rows["PURE_C"]["JN.1* (excludes KP.2*, KP.3*, KW.1.1*, LP.8.1*)"] or 0)
+        both = float(rows["PURE_C"]["JN.1* (includes KP.2*, KP.3*, KW.1.1*, LP.8.1*)"] or 0)
+        c.check(
+            abs(jn - 1.0) <= 0.05 and abs(both - 1.0) <= 0.05,
+            "PURE_C (JN.1): both JN.1 groups carry ~1.0",
+            f"{jn} {both}",
+        )
+    if "MIX_A" in rows and rows["MIX_A"]["status"] == "ok":
+        omicron = float(rows["MIX_A"]["Omicron Lineage (B.1.1.529*)"] or 0)
+        c.check(
+            abs(omicron - 0.71) <= 0.05,
+            "MIX_A: BA.2 (~0.71) is in 'Omicron Lineage (B.1.1.529*)'",
+            str(omicron),
+        )
+        c.check("AY.4:" in rows["MIX_A"]["ungrouped_lineages"], "MIX_A: AY.4 (Delta) is ungrouped")
+        ungrouped = {r["lineage"]: r for r in read_tsv(summary / "lineage_ungrouped_summary.tsv")}
+        c.check(
+            ungrouped.get("AY.4", {}).get("suggested_pattern") == "AY.4*",
+            "lineage_ungrouped_summary.tsv lists AY.4 with the suggested pattern AY.4*",
+        )
+    resolved = read_tsv(summary / "lineage_groups_resolved.tsv")
+    c.check(
+        resolved and not any("not in the dataset" in r["warnings"] for r in resolved),
+        "the bundled default groups have no unknown lineage in the dataset",
+    )
+
+
+def check_site_aggregates(c, out, sites_file, period="week"):
+    """summary/site_aggregates_*.tsv: present, one meta row per freyja row, and no lineage in an aggregate that none of
+    its member sites' samples of that period has (a weighted average of results cannot invent one)."""
+    import datetime
+
+    summary = out / "summary"
+    freyja_path, meta_path = (
+        summary / "site_aggregates_freyja.tsv",
+        summary / "site_aggregates_meta.tsv",
+    )
+    c.check(
+        freyja_path.exists() and meta_path.exists(),
+        "site_aggregates_freyja.tsv and _meta.tsv exist",
+    )
+    if not (freyja_path.exists() and meta_path.exists()):
+        return
+    members = {}
+    for row in csv.DictReader(Path(sites_file).read_text(encoding="utf-8-sig").splitlines()):
+        members.setdefault(row["aggregate_name"].strip(), set()).add(
+            row["site_name"].strip().casefold()
+        )
+    sheet = {
+        r["sample"]: r
+        for r in csv.DictReader((summary / "samplesheet.csv").read_text().splitlines())
+    }
+    lineages = {}
+    for line in (summary / "freyja_aggregated.tsv").read_text().splitlines()[1:]:
+        cols = line.split("\t")
+        lineages[cols[0].replace(".variants.tsv", "")] = set(cols[2].split())
+
+    def week(date):
+        year, number, _ = datetime.date.fromisoformat(date).isocalendar()
+        return f"{year}-W{number:02d}" if period == "week" else date
+
+    meta = {r["row_label"]: r for r in read_tsv(meta_path)}
+    rows = [line.split("\t") for line in freyja_path.read_text().splitlines()[1:]]
+    c.check(
+        {r[0] for r in rows} == set(meta) and rows,
+        "every site aggregate row has a meta row",
+        str(sorted(set(meta))),
+    )
+    bad = []
+    for cols in rows:
+        record = meta.get(cols[0])
+        if not record:
+            continue
+        pool = set()
+        for sample, info in sheet.items():
+            if (
+                info.get("sample_type") != "negative"
+                and info.get("site", "").strip().casefold() in members[record["aggregate_name"]]
+                and info.get("collection_date")
+                and week(info["collection_date"]) == record["period"]
+            ):
+                pool |= lineages.get(sample, set())
+        if not set(cols[2].split()) <= pool:
+            bad.append((cols[0], sorted(set(cols[2].split()) - pool)))
+    c.check(not bad, "no aggregate lineage is missing from all of its member sites", str(bad))
 
 
 def check_published_qc_is_complete(c, out, samples):
@@ -788,6 +933,17 @@ def main(argv=None):
         help="mode full: the primer scheme the run declared; its QC rows must then have primer_scheme_check ok",
     )
     parser.add_argument(
+        "--site-aggregation",
+        default=None,
+        help="the sites CSV of the run: the site aggregates must then exist and be consistent with their members",
+    )
+    parser.add_argument(
+        "--lineage-groups",
+        choices=["present", "absent"],
+        default="absent",
+        help="present: the run had a Freyja dataset with a lineage hierarchy, so the lineage summary files must exist",
+    )
+    parser.add_argument(
         "--tolerance",
         type=float,
         default=None,
@@ -841,6 +997,9 @@ def main(argv=None):
         )
     check_report(c, out, samples, args.mode)
     check_negative_controls(c, out, samples)
+    check_lineage_groups(c, out, samples, args.lineage_groups)
+    if args.site_aggregation:
+        check_site_aggregates(c, out, args.site_aggregation)
     if args.mode == "aggregate" and "MIX_A" in samples:
         data = json.loads((out / "summary" / "report_data.json").read_text())
         by_sample = {s["sample"]: s for s in data["samples"]}

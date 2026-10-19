@@ -60,6 +60,12 @@
                 "IVAR_VARIANTS_TO_VCF": {
                     "python": "3.12.12"
                 },
+                "LINEAGE_GROUPS_CHECK": {
+                    "python": "3.12.12"
+                },
+                "LINEAGE_SUMMARY": {
+                    "python": "3.12.12"
+                },
                 "LOW_DEPTH_MASK": {
                     "python": "3.12.12"
                 },
@@ -321,6 +327,10 @@
                 "summary/freyja_plot_times.pdf",
                 "summary/freyja_timeseries.tsv",
                 "summary/freyja_timeseries_lineages.tsv",
+                "summary/lineage_groups_resolved.tsv",
+                "summary/lineage_groups_used.csv",
+                "summary/lineage_summary.csv",
+                "summary/lineage_ungrouped_summary.tsv",
                 "summary/qc_summary.tsv",
                 "summary/report.html",
                 "summary/report_data.json",
@@ -328,7 +338,7 @@
                 "summary/unexplained_mutations.tsv"
             ]
         ],
-        "timestamp": "2026-10-16T18:38:08.278025",
+        "timestamp": "2026-10-19T12:53:44.570651",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

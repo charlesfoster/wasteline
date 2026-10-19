@@ -11,6 +11,19 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Added`
 
+- Lineage groups: `summary/lineage_summary.csv` with one row per sample and one column per user-defined group of lineages
+  (patterns `JN.1*`, `NB.1.8.1`, `RECOMBINANT*`, with `exclude` and `in_total`), resolved against the lineage hierarchy of the Freyja
+  dataset. On by default with the bundled list `assets/lineage_groups.csv`; `--lineage_groups my.csv` replaces it and
+  `--lineage_summary false` turns it off. Also published: `lineage_groups_used.csv` (byte-identical copy of the list used),
+  `lineage_groups_resolved.tsv` (audit) and `lineage_ungrouped_summary.tsv` (lineages in no group, with a suggested pattern);
+  `run_info.json` records `lineage_groups_file`, `lineage_groups_source` and `lineage_groups_sha256`. Skipped with one warning for
+  a custom barcodes file (no `lineages.yml`). `bin/lineage_groups.py --check-groups` and `--print-default-groups`.
+- Site aggregation: `--site_aggregation sites.csv` combines per-site Freyja results into user-defined groups of sites by period
+  (`--site_aggregation_period week|day`) with a weighted average of the results (`--site_aggregation_weights auto|viral_load|equal|site_weight`,
+  `--site_aggregation_min_sites`); reads are never pooled. `summary/site_aggregates_freyja.tsv`, `site_aggregates_meta.tsv` and, with the
+  lineage summary, `lineage_summary_site_aggregates.csv`.
+- Mistakes in the groups or sites CSV stop the run within minutes (`LINEAGE_GROUPS_CHECK`, `SITE_AGGREGATE_CHECK`, first processes of
+  the run) with a message naming the row or line.
 - Quiet-error checks: a primer-scheme match check on the read 5' ends (`primer_scheme_check`, `primer_scheme_best`,
   `primer_scheme_enrichment`, `primer_trimmed_pct` in `qc_summary.tsv`, now **27 columns**; WARN reason `primer_scheme_mismatch`,
   optional `low_primer_trimming` via `--qc_min_primer_trimmed_pct`; `--primer_scheme_check`), `summary/dropout_impact[_summary].tsv`

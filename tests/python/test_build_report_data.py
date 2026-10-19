@@ -170,6 +170,8 @@ def test_full_run(tmp_path):
         "unexplained_mutations",
         "timeseries",
         "growth_rates",
+        "lineage_groups",
+        "site_aggregates",
     }
     assert all(v for k, v in data["available"].items() if k not in extras)
 
@@ -1156,3 +1158,250 @@ def test_old_six_column_consensus_table_still_loads(tmp_path):
 def test_no_consensus_flags_for_a_clean_consensus(tmp_path):
     data = run_builder("a_full", tmp_path / "r.json")
     assert not {"consensus_failed", "consensus_warnings"} & flag_codes(data)
+
+
+# =============================================================================================
+# Lineage groups (lineage_summary.csv) and site aggregates
+# =============================================================================================
+H = FIX / "h_lineage_groups"
+
+
+def build_h(tmp_path, drop=(), extra=None):
+    options = {
+        "--aggregated": "freyja_aggregated.tsv",
+        "--demix-status": "demix_status.tsv",
+        "--samplesheet": "samplesheet.csv",
+        "--lineage-summary": "lineage_summary.csv",
+        "--lineage-groups-resolved": "lineage_groups_resolved.tsv",
+        "--site-aggregates": "site_aggregates_freyja.tsv",
+        "--site-aggregates-meta": "site_aggregates_meta.tsv",
+    }
+    args = ["--run-info", str(H / "run_info.json")]
+    for option, name in options.items():
+        if option not in drop:
+            args += [option, str(H / name)]
+    args += list(extra or []) + ["--out", str(tmp_path / "h.json")]
+    assert brd.main(args) == 0
+    return json.loads((tmp_path / "h.json").read_text())
+
+
+def test_site_aggregates_structure(tmp_path):
+    data = build_h(tmp_path)
+    sa = data["site_aggregates"]
+    assert [a["row_label"] for a in sa][:2] == ["Catchment_X_2026-W02", "Catchment_X_2026-W03"]
+    w3 = sa[1]
+    assert w3["aggregate_name"] == "Catchment_X" and w3["period"] == "2026-W03"
+    assert w3["period_start"] == "2026-01-12" and w3["n_sites_included"] == 1
+    assert w3["sites_missing"] == ["Site_2"] and w3["missing_reasons"] == {
+        "Site_2": "not_ok:failed"
+    }
+    assert (
+        w3["weight_basis"] == "equal (viral_load missing)" and w3["weight_fraction_included"] == 0.5
+    )
+    assert (
+        w3["lineages"] == [["NB.1.8", 1.0]]
+        and w3["groups"] == [["Omicron", 1.0]]
+        and w3["n_samples"] == 1
+    )
+    assert sa[3]["aggregate_name"] == "Coastal" and sa[3]["missing_reasons"] == {
+        "Site_3": "no_sample"
+    }
+    assert sa[0]["weight_fraction_included"] == 1.0 and sa[0]["sites_missing"] == []
+
+
+def test_site_aggregates_old_meta_without_reasons_and_without_meta(tmp_path):
+    old = ROOT / "tests" / "fixtures" / "lineage_groups"
+    problems = brd.Problems()
+    sa = brd.load_site_aggregates(
+        old / "site_aggregates_freyja.tsv", old / "site_aggregates_meta.tsv", problems
+    )
+    assert [a["row_label"] for a in sa] == [
+        "Catchment_X_2026-W02", "Catchment_X_2026-W03", "Catchment_X_2026-W04",
+    ]  # fmt: skip
+    assert sa[0]["missing_reasons"] == {} and sa[0]["weight_fraction_included"] is None
+    assert sa[2]["lineages"] == [] and sa[2]["n_sites_included"] == 0  # no solution, kept
+    assert not problems.items
+    # only the Freyja table: name and period are parsed from the row label
+    only = brd.load_site_aggregates(old / "site_aggregates_freyja.tsv", None, brd.Problems())
+    assert only[0]["aggregate_name"] == "Catchment_X" and only[0]["period"] == "2026-W02"
+    assert only[0]["lineages"][0][0] == "JN.1.16" and only[0]["n_sites_included"] is None
+    # only the meta table: entries without a solution
+    meta = brd.load_site_aggregates(None, old / "site_aggregates_meta.tsv", brd.Problems())
+    assert len(meta) == 3 and all(a["lineages"] == [] for a in meta)
+
+
+def test_site_aggregate_flag_also_covers_a_weaker_weighting(tmp_path):
+    meta = tmp_path / "meta.tsv"
+    meta.write_text(
+        "row_label\taggregate_name\tperiod\tperiod_start\tn_sites_included\tsites_included\tsites_missing\t"
+        "missing_reasons\tweight_basis\tweight_fraction_included\tn_samples\n"
+        "A_2026-W01\tA\t2026-W01\t2025-12-29\t2\tS1;S2\t\t\tsite_weight (viral_load missing)\t1.0\t2\n"
+        "A_2026-W02\tA\t2026-W02\t2026-01-05\t2\tS1;S2\t\t\tviral_load\t1.0\t2\n"
+    )
+    out = tmp_path / "r.json"
+    assert (
+        brd.main(
+            [
+                "--run-info",
+                str(H / "run_info.json"),
+                "--site-aggregates-meta",
+                str(meta),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    flag = next(
+        f
+        for f in json.loads(out.read_text())["run_flags"]
+        if f["code"] == "site_aggregate_incomplete"
+    )
+    assert "1 of 2" in flag["message"] and "weaker weighting" in flag["message"]
+
+
+def test_default_build_has_no_lineage_group_data(tmp_path):
+    data = run_builder("a_full", tmp_path / "r.json")
+    assert data["lineage_groups"] is None and data["site_aggregates"] is None
+    assert (
+        data["available"]["lineage_groups"] is False
+        and data["available"]["site_aggregates"] is False
+    )
+    assert not {
+        "lineage_groups_warnings",
+        "lineage_groups_ungrouped",
+        "site_aggregate_incomplete",
+    } & flag_codes(data)
+
+
+# --------------------------------------------------------------------------- lineage groups (provenance + flags only)
+def test_real_lineage_summary_is_read_for_ungrouped_lineages_only():
+    rows = brd.load_lineage_ungrouped(H / "real_lineage_summary.csv")
+    assert len(rows) == 9 and rows[0]["sample"] == "WW-1274E" and rows[0]["status"] == "ok"
+    assert set(rows[0]) == {
+        "sample",
+        "status",
+        "other",
+        "ungrouped",
+    }  # no group columns, no lineages
+    assert rows[0]["other"] is None and rows[0]["ungrouped"] == []
+    hit = next(r for r in rows if r["ungrouped"])
+    assert hit["ungrouped"] == [["B.52", 0.001032]] and hit["other"] == 0.001032
+    assert any(r["status"] != "ok" and r["other"] is None for r in rows)
+
+
+def test_lineage_summary_other_columns_and_delimiters_are_tolerated(tmp_path):
+    path = tmp_path / "s.csv"
+    path.write_text(
+        "sample;site;status;G1;G2;other;ungrouped_lineages\nS1;A;ok;0.5;;0.5;X:0.3 Y:0.2\nS2;A;failed;;;;\n"
+    )
+    rows = brd.load_lineage_ungrouped(path)
+    assert rows[0]["ungrouped"] == [["X", 0.3], ["Y", 0.2]] and rows[1]["other"] is None
+    no_other = tmp_path / "n.csv"
+    no_other.write_text("sample,status\nS1,ok\n")
+    assert brd.load_lineage_ungrouped(no_other)[0]["ungrouped"] == []
+
+
+def test_lineage_groups_object_is_small_and_has_no_rows(tmp_path):
+    data = build_h(tmp_path)
+    lg = data["lineage_groups"]
+    assert data["available"]["lineage_groups"] is True
+    assert set(lg) == {
+        "n_groups", "groups_sha256", "dataset_version", "file", "warnings", "n_samples",
+        "n_samples_with_ungrouped", "top_ungrouped", "samples_above_threshold", "ungrouped_flag_threshold",
+    }  # fmt: skip
+    assert (
+        lg["n_groups"] == 8
+        and lg["dataset_version"] == "01_02_2026-03-04"
+        and len(lg["groups_sha256"]) == 64
+    )
+    assert lg["file"] == "groups.csv"  # basename of run_info.params.lineage_groups
+    assert lg["n_samples"] == 3 and lg["n_samples_with_ungrouped"] == 1
+    assert lg["top_ungrouped"] == [["A.1", 0.03, 1]] and lg["samples_above_threshold"] == [
+        "Site_1_week_2"
+    ]
+    assert (
+        lg["warnings"][0]["group"] == "KP.3*"
+        and "overlaps in_total group" in lg["warnings"][0]["text"]
+    )
+    assert len(lg["warnings"]) == 3 and lg["ungrouped_flag_threshold"] == 0.02
+    raw = json.dumps(data)
+    assert "JN.1.16" not in json.dumps(lg) and "Catchment" not in json.dumps(lg)
+    assert "major" not in lg and "rows" not in lg and "site_rows" not in lg
+    assert len(raw) < 20000
+
+
+def test_lineage_group_flags(tmp_path):
+    data = build_h(tmp_path)
+    codes = {f["code"]: f for f in data["run_flags"]}
+    warn = codes["lineage_groups_warnings"]
+    assert warn["level"] == "warn" and "3 warning(s) in the lineage groups audit" in warn["message"]
+    assert "KP.3*: in_total group overlaps" in warn["message"] and "XAA.1.7.9*" in warn["message"]
+    ungrouped = codes["lineage_groups_ungrouped"]
+    assert ungrouped["level"] == "info" and ungrouped["samples"] == ["Site_1_week_2"]
+    assert "A.1 (3.0%)" in ungrouped["message"]
+    assert (
+        "add them to your lineage groups file; see summary/lineage_ungrouped_summary.tsv"
+        in ungrouped["message"]
+    )
+    assert "site_aggregate_incomplete" in codes
+
+
+def test_ungrouped_flag_threshold_option(tmp_path):
+    assert "lineage_groups_ungrouped" not in flag_codes(
+        build_h(tmp_path, extra=["--ungrouped-flag-threshold", "0.5"])
+    )
+    low = build_h(tmp_path, extra=["--ungrouped-flag-threshold", "0.001"])
+    assert "lineage_groups_ungrouped" in flag_codes(low)
+    assert low["lineage_groups"]["ungrouped_flag_threshold"] == 0.001
+
+
+def test_clean_run_has_no_lineage_group_flags_and_default_file_name(tmp_path):
+    out = tmp_path / "r.json"
+    info = json.loads((H / "run_info.json").read_text())
+    del info["params"]["lineage_groups"]
+    ri = tmp_path / "ri.json"
+    ri.write_text(json.dumps(info))
+    args = ["--run-info", str(ri), "--lineage-summary", str(H / "real_lineage_summary.csv"),
+            "--lineage-groups-resolved", str(H / "real_lineage_groups_resolved.tsv"), "--out", str(out)]  # fmt: skip
+    assert brd.main(args) == 0
+    data = json.loads(out.read_text())
+    assert not {"lineage_groups_warnings", "lineage_groups_ungrouped"} & flag_codes(data)
+    assert (
+        data["lineage_groups"]["file"] == "bundled default"
+        and data["lineage_groups"]["warnings"] == []
+    )
+    assert data["lineage_groups"]["top_ungrouped"] == [
+        ["B.52", 0.001032, 1]
+    ]  # below the threshold: no flag
+
+
+def test_removed_site_summary_option_is_rejected():
+    with pytest.raises(SystemExit):
+        brd.parse_args(["--run-info", "x", "--out", "y", "--lineage-summary-sites", "z"])
+
+
+def test_lineage_group_options_ignore_no_file_placeholders(tmp_path):
+    (tmp_path / "NO_FILE").write_text("")
+    out = tmp_path / "r.json"
+    args = ["--run-info", str(H / "run_info.json"), "--out", str(out)]
+    for option in (
+        "--lineage-summary",
+        "--lineage-groups-resolved",
+        "--site-aggregates",
+        "--site-aggregates-meta",
+    ):
+        args += [option, str(tmp_path / "NO_FILE")]
+    assert brd.main(args) == 0
+    data = json.loads(out.read_text())
+    assert data["lineage_groups"] is None and data["site_aggregates"] is None
+
+
+def test_lineage_group_params_and_thresholds(tmp_path):
+    data = build_h(tmp_path)
+    assert data["params_summary"]["lineage_summary_zeros"] == "blank"
+    assert data["params_summary"]["site_aggregation_weights"] == "auto"
+    assert (
+        data["thresholds"]["lineage_major_threshold"] == 0.1
+        and data["thresholds"]["lineage_min_abundance"] == 0.001
+    )

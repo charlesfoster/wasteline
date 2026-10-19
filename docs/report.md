@@ -9,8 +9,9 @@ rendered from `summary/report_data.json` by `bin/render_report.py` using the Jin
 sample.
 
 The screenshots below are of a real `full` run on the synthetic test dataset (7 samples: three mixtures, one pure
-sample, one low-coverage sample, one clean and one contaminated negative control) with `--compare_barcodes container
---freyja_boot --annotate_variants` and the test barcode set `tests/data/barcodes_test.csv`.
+sample, one low-coverage sample, one clean and one contaminated negative control) with `--barcodes container`,
+`--compare_barcodes`, `--annotate_variants` and `--site_aggregation` (bootstrap intervals, `--freyja_boot`, are not shown in
+the screenshots; see the tooltip notes below).
 
 ![Report header, run-level flags and QC table](images/report_overview.png)
 
@@ -28,6 +29,7 @@ the third image.)
 Contents: [header](#header-and-barcode-version) | [run-level flags](#run-level-flags) | [QC](#quality-control) |
 [lineages](#lineage-abundance) | [coverage tracks](#coverage-tracks) | [amplicon dropout](#amplicon-dropout) |
 [dropout impact](#amplicon-dropout-impact) | [negative controls](#negative-controls) |
+[site aggregates](#site-aggregates) |
 [demix status](#demix-status) | [mutations of interest](#mutations-of-interest) |
 [unexplained mutations](#unexplained-mutations) | [time series](#time-series) |
 [barcode comparison](#barcode-comparison) | [consensus](#consensus-genomes) | [provenance](#provenance) |
@@ -81,6 +83,9 @@ the affected samples where relevant. All codes:
 | `primer_scheme_mismatch`       | warn  | The read starts of the listed samples line up much better with another primer scheme than with the declared `--primer_scheme`; the message names the best match(es) (needs the primer-scheme QC columns). |
 | `dropout_affects_lineages`     | warn  | Amplicon dropout hides lineage-informative sites of lineages detected in the listed samples (see [dropout impact](#amplicon-dropout-impact)); abundance estimates may be biased. |
 | `unexplained_mutations`        | info  | At least one mutation that the demixed lineages do not explain recurs in several samples (see [unexplained mutations](#unexplained-mutations)); possible novel lineage. |
+| `lineage_groups_warnings`      | warn  | The groups audit (`lineage_groups_resolved.tsv`) has warnings: a pattern that is not a lineage of the dataset, a group that matches nothing, or in-total groups that overlap; the first three are in the message (see [lineage groups](#lineage-groups)). |
+| `lineage_groups_ungrouped`     | info  | An `ok` sample has 2% or more (`--ungrouped-flag-threshold`) of its lineages outside every in-total group; the message names the top ungrouped lineages and says to add them to your lineage groups file (see `summary/lineage_ungrouped_summary.tsv`). |
+| `site_aggregate_incomplete`    | info  | Site aggregate periods are missing member sites or used a weaker weighting than requested (see [site aggregates](#site-aggregates)). |
 | `consensus_failed`             | warn  | The consensus genome failed for the listed samples (status `failed`, all-N sequence); the consensus table shows the reason, for example `bcftools consensus failed: The fasta sequence does not match the REF allele at NC_045512.2:11287:`. |
 | `consensus_warnings`           | info  | The consensus was built (`ok`) with warnings for the listed samples, for example `skipped variant at NC_045512.2:22942 (overlaps another variant)`. |
 | `qc_warn`                      | info  | One or more samples have QC `WARN`.                                                                                                         |
@@ -236,6 +241,36 @@ probability of the alt read count under the expected frequency). The thresholds 
 the file exists but has no rows the section says "None found with the current thresholds"; when the analysis did not run
 there is no section. A recurrent mutation also raises the info flag `unexplained_mutations`.
 
+## Lineage groups
+
+The lineage-group table (one column per group of **your** groups file, per sample) is deliberately **not** part of the
+HTML report: it lives in `summary/lineage_summary.csv` (and, for site aggregates,
+`summary/lineage_summary_site_aggregates.csv`), where it opens in a spreadsheet. The report only mentions it:
+
+- **Provenance** (last section) has one line: `Lineage groups: <groups file name>, sha256 <first 12>, dataset <Freyja
+  dataset version>; table in summary/lineage_summary.csv`. The file name comes from `--lineage_groups` (otherwise
+  "bundled default"); checksum and dataset version come from `summary/lineage_groups_resolved.tsv`, so the groups used
+  can be identified later.
+- **Run-level flags**: `lineage_groups_warnings` (warn) lists the first warnings of the groups audit (a pattern that is
+  not a lineage of the dataset, a group that matches nothing, or counted groups that overlap), and
+  `lineage_groups_ungrouped` (info) is raised when an `ok` sample has 2% or more of its lineages outside every counted
+  group; it names the top ungrouped lineages and points to `summary/lineage_ungrouped_summary.tsv`: add them to your
+  lineage groups file.
+
+## Site aggregates
+
+Only when `summary/site_aggregates_freyja.tsv` / `site_aggregates_meta.tsv` exist (`--site_aggregation`). Groups of
+sites (a catchment made of several treatment plants) **combined from the per-site results, never from pooled reads**:
+each site's samples are demixed on their own and the finished abundances of the member sites are averaged per period
+(ISO week by default) with weights (viral load, a weight such as population served from your sites file, or equal).
+The section has one stacked bar per aggregate-period, grouped by aggregate with the periods in order, drawn and
+coloured like the per-sample bars (the same Summarized groups / All lineages toggle; lineages keep the colour they have
+in the per-sample view). Chips beside each bar: **n/total sites** (green when every member site contributed, amber when
+some are missing, red when none did), the **weighting basis** (amber when it is weaker than requested, e.g.
+`equal (viral_load missing)`), the **share of the total weight** that contributed, one **missing &lt;site&gt;** chip per
+missing site (hover for the reason: `not_ok:failed`, `no_sample`, `no_date`) and the number of samples. A period where no
+site contributed shows its status instead of a bar. Incomplete periods raise the info flag `site_aggregate_incomplete`.
+
 ## Time series
 
 Only when at least two distinct collection dates exist among non-control samples with a lineage result. Shows the mean
@@ -326,6 +361,7 @@ example `skipped variant at NC_045512.2:22942 (overlaps another variant)`. Faile
 | Mutations of interest                            | with `--mutations_of_interest` |                         with `--mutations_of_interest`                          |                                                    no                                                    | as the original run |
 | Amplicon dropout impact                          |  with `--dropout_impact`       |                         with `--dropout_impact`                                 |                                                    no                                                    | as the original run |
 | Unexplained mutations                            | with `--unexplained_mutations` |                         with `--unexplained_mutations`                          |                                                    no                                                    | as the original run |
+| Site aggregates                                  |   with `--site_aggregation`    |                           with `--site_aggregation`                             |                                      with `--site_aggregation`                                           | as the original run |
 | Time series                                      |        when >= 2 dates         |                                 when >= 2 dates                                 | when >= 2 dates in the samplesheet in effect (`--input` or `--previous_results`; not with `--demix_dir`) | as the original run |
 | Negative controls                                |  when a control demixed `ok`   |                                      same                                       |                              same (a control `.demix` found in the inputs)                               | as the original run |
 | Barcode comparison                               |   with `--compare_barcodes`    |                            with `--compare_barcodes`                            |                                                    no                                                    | as the original run |
@@ -374,7 +410,9 @@ python bin/render_report.py --data report_data.json --template assets/templates/
 
 The optional analyses add `--dropout-impact`/`--dropout-summary` (`summary/dropout_impact*.tsv`), `--unexplained`
 (`summary/unexplained_mutations.tsv`), `--timeseries`/`--timeseries-lineages` (`summary/freyja_timeseries*.tsv`),
-`--growth-rates`/`--growth-failed`/`--growth-inputs` (`summary/freyja_growth_*`) and `--dashboard-name`; see
+`--growth-rates`/`--growth-failed`/`--growth-inputs` (`summary/freyja_growth_*`), `--dashboard-name`,
+`--lineage-summary`/`--lineage-groups-resolved` (`summary/lineage_*`; used for the provenance line and two flags only) and
+`--site-aggregates`/`--site-aggregates-meta` (`summary/site_aggregates_*.tsv`); see
 [report_data.md](report_data.md). Without them the report is identical to one built before they existed.
 
 (`--depths` takes depths files, so let the shell expand the glob **unquoted**: the script does not expand a quoted

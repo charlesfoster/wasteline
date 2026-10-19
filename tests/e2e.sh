@@ -5,6 +5,7 @@
 #        -> aggregate --previous_results / --demix_dir
 #        -> report --results_dir (HTML equals the original modulo timestamps)
 #        -> probe-capture data (--protocol capture, duplicates marked vs not) and --skip_primer_trimming
+#        -> lineage groups (on by default; the bundled list) and site aggregation, incl. a bad CSV that must abort early
 #        -> primer scheme check against a wrong declared scheme, CRAM output, time series + growth rates +
 #           dashboard (aggregate mode, tests/data_timeseries), replay of the full run (bin/replay_run.py --execute)
 #
@@ -21,6 +22,10 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 BARCODES="$REPO/tests/data/barcodes_test.csv"
 # check_outputs.py needs Python >= 3.12 (the pixi environment has it; the macOS system Python does not)
 if [ -n "${PYTHON:-}" ]; then PY=("$PYTHON"); elif command -v pixi > /dev/null; then PY=(pixi run --manifest-path "$REPO/pixi.toml" python); else PY=(python3); fi
+
+# Custom --barcodes files (tests/data/barcodes_test.csv) carry no lineage hierarchy, so the lineage-group summary is skipped
+# with a warning there: steps that are not about it say so to keep their logs quiet (step 1 keeps the default and checks the skip)
+LS_OFF=(--lineage_summary false)
 
 checksums() { (cd "$1" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256); }
 run() { # <name> <args...>
@@ -44,13 +49,16 @@ fail=0
 sed "s#tests/data/#$REPO/tests/data/#g" "$REPO/tests/data/samplesheet.csv" > "$SCRATCH/samplesheet.csv"
 
 # 1. full
-run full --mode full --input "$SCRATCH/samplesheet.csv" --barcodes "$BARCODES" --primer_scheme midnight \
+# sites for the site-aggregation checks: SiteA = MIX_A + MIX_B, SiteB = PURE_C (+ the skipped LOWCOV_D), Site_1 = Site_1_week_2
+printf 'aggregate_name,site_name\nBoth,SiteA\nBoth,SiteB\nAlone,Site_1\n' > "$SCRATCH/sites_full.csv"
+
+run full --mode full --input "$SCRATCH/samplesheet.csv" --barcodes "$BARCODES" --primer_scheme midnight --site_aggregation "$SCRATCH/sites_full.csv" \
     --compare_barcodes container --freyja_boot --annotate_variants
-check full --mode full --extras compare,boot,annotate --declared-scheme midnight || fail=1
+check full --mode full --extras compare,boot,annotate --declared-scheme midnight --site-aggregation "$SCRATCH/sites_full.csv" || fail=1
 checksums "$SCRATCH/out_full" > "$SCRATCH/out_full.sha256"
 
 # 2. demix from the full results: byte-identical demix files and aggregate, previous results untouched
-run demix --mode demix --previous_results "$SCRATCH/out_full" --barcodes "$BARCODES" --compare_barcodes container
+run demix --mode demix --previous_results "$SCRATCH/out_full" --barcodes "$BARCODES" --compare_barcodes container "${LS_OFF[@]}"
 check demix --mode demix --no-amplicons --extras compare || fail=1
 for demix in "$SCRATCH"/out_full/samples/*/freyja/*.demix; do # includes <s>.compare.demix (second barcodes)
     rel=${demix#"$SCRATCH/out_full/"}
@@ -79,7 +87,7 @@ gzip -f "$LEGACY/MIX_A/freyja/MIX_A.freyja_variants.tsv"
 mkdir -p "$LEGACY/MIX_A/variants" && mv "$LEGACY/MIX_A/freyja/MIX_A.freyja_variants.tsv.gz" "$LEGACY/MIX_A/variants/"
 gzip -f "$LEGACY/PURE_C/freyja/PURE_C.depths"
 checksums "$LEGACY" > "$SCRATCH/legacy.sha256"
-run demix_legacy --mode demix --previous_results "$LEGACY" --barcodes "$BARCODES"
+run demix_legacy --mode demix --previous_results "$LEGACY" --barcodes "$BARCODES" "${LS_OFF[@]}"
 check demix_legacy --mode demix --no-amplicons --tolerance 0.05 || fail=1
 same "freyja_aggregated.tsv (legacy demix)" "$SCRATCH/out_full/summary/freyja_aggregated.tsv" "$SCRATCH/out_demix_legacy/summary/freyja_aggregated.tsv"
 checksums "$LEGACY" | diff - "$SCRATCH/legacy.sha256" && echo "legacy results unchanged"
@@ -101,7 +109,7 @@ body.append(row)
 body.sort(key=lambda line: int(line.split("\t")[1]))
 open(sys.argv[2], "w").write("\n".join([lines[0]] + body) + "\n")
 PYMAKE
-run demix_deletion --mode demix --previous_results "$DELRES" --barcodes "$BARCODES"
+run demix_deletion --mode demix --previous_results "$DELRES" --barcodes "$BARCODES" "${LS_OFF[@]}"
 "${PY[@]}" - "$SCRATCH/out_demix_deletion" << 'PYCHECK' || fail=1
 import csv, json, sys
 
@@ -119,7 +127,7 @@ PYCHECK
 
 # 4. aggregate from the full results (carries sample_type/collection_date from summary/samplesheet.csv)
 run aggregate --mode aggregate --previous_results "$SCRATCH/out_full" --barcodes container
-check aggregate --mode aggregate || fail=1
+check aggregate --mode aggregate --lineage-groups present || fail=1
 same "freyja_aggregated.tsv (aggregate)" "$SCRATCH/out_full/summary/freyja_aggregated.tsv" "$SCRATCH/out_aggregate/summary/freyja_aggregated.tsv"
 run aggregate_dir --mode aggregate --demix_dir "$SCRATCH/out_full/samples" --barcodes container
 same "freyja_aggregated.tsv (aggregate --demix_dir)" "$SCRATCH/out_full/summary/freyja_aggregated.tsv" "$SCRATCH/out_aggregate_dir/summary/freyja_aggregated.tsv"
@@ -154,9 +162,9 @@ checksums "$SCRATCH/out_full" | diff - "$SCRATCH/out_full.sha256" && echo "resul
 
 # 6. probe-capture data (PLAN D13): no primer trimming, duplicates marked, no amplicon analysis
 sed "s#tests/data_capture/#$REPO/tests/data_capture/#g" "$REPO/tests/data_capture/samplesheet.csv" > "$SCRATCH/samplesheet_capture.csv"
-run capture --mode full --protocol capture --input "$SCRATCH/samplesheet_capture.csv" --barcodes "$BARCODES"
+run capture --mode full --protocol capture --input "$SCRATCH/samplesheet_capture.csv" --barcodes "$BARCODES" "${LS_OFF[@]}"
 check capture --mode full --protocol capture || fail=1
-run capture_nodup --mode full --protocol capture --duplicates none --input "$SCRATCH/samplesheet_capture.csv" --barcodes "$BARCODES"
+run capture_nodup --mode full --protocol capture --duplicates none --input "$SCRATCH/samplesheet_capture.csv" --barcodes "$BARCODES" "${LS_OFF[@]}"
 check capture_nodup --mode full --protocol capture --duplicates none || fail=1
 "${PY[@]}" - "$SCRATCH/out_capture/summary/qc_summary.tsv" "$SCRATCH/out_capture_nodup/summary/qc_summary.tsv" << 'PYCHECK' || fail=1
 import csv, sys
@@ -173,7 +181,7 @@ PYCHECK
 # 6b. --skip_primer_trimming on amplicon reads that are already trimmed (one sample)
 head -n 1 "$SCRATCH/samplesheet.csv" > "$SCRATCH/samplesheet_pure.csv"
 grep '^PURE_C,' "$SCRATCH/samplesheet.csv" >> "$SCRATCH/samplesheet_pure.csv"
-run skip_trim --mode full --skip_primer_trimming --input "$SCRATCH/samplesheet_pure.csv" --barcodes "$BARCODES"
+run skip_trim --mode full --skip_primer_trimming --input "$SCRATCH/samplesheet_pure.csv" --barcodes "$BARCODES" "${LS_OFF[@]}"
 "${PY[@]}" - "$SCRATCH/out_skip_trim" << 'PYCHECK' || fail=1
 import csv, glob, json, sys
 
@@ -195,7 +203,7 @@ PYCHECK
 #    scheme that does fit, and the report carries the run flag
 head -n 1 "$SCRATCH/samplesheet.csv" > "$SCRATCH/samplesheet_two.csv"
 grep -E '^(MIX_A|PURE_C),' "$SCRATCH/samplesheet.csv" >> "$SCRATCH/samplesheet_two.csv"
-run scheme_mismatch --mode full --primer_scheme articv4.1 --input "$SCRATCH/samplesheet_two.csv" --barcodes "$BARCODES"
+run scheme_mismatch --mode full --primer_scheme articv4.1 --input "$SCRATCH/samplesheet_two.csv" --barcodes "$BARCODES" "${LS_OFF[@]}"
 "${PY[@]}" - "$SCRATCH/out_scheme_mismatch/summary" << 'PYCHECK' || fail=1
 import csv, json, sys
 
@@ -214,7 +222,7 @@ sys.exit(0 if ok else 1)
 PYCHECK
 
 # 8. --bam_format cram: a CRAM (smaller than the BAM, indexed) is published instead of the BAM; the results are the same
-run cram --mode full --bam_format cram --primer_scheme midnight --input "$SCRATCH/samplesheet_pure.csv" --barcodes "$BARCODES"
+run cram --mode full --bam_format cram --primer_scheme midnight --input "$SCRATCH/samplesheet_pure.csv" --barcodes "$BARCODES" "${LS_OFF[@]}"
 "${PY[@]}" - "$SCRATCH" << 'PYCHECK' || fail=1
 import os, sys
 
@@ -235,7 +243,8 @@ PYCHECK
 
 # 9. time series, relative growth rates and the dashboard (aggregate mode on the dated synthetic data)
 sed "s#tests/data_timeseries/#$REPO/tests/data_timeseries/#g" "$REPO/tests/data_timeseries/samplesheet.csv" > "$SCRATCH/samplesheet_timeseries.csv"
-run timeseries --mode aggregate --input "$SCRATCH/samplesheet_timeseries.csv" --barcodes container --freyja_growth --freyja_dash
+run timeseries --mode aggregate --input "$SCRATCH/samplesheet_timeseries.csv" --barcodes container --freyja_growth --freyja_dash \
+    --site_aggregation "$REPO/tests/fixtures/site_aggregate/sites.csv"
 "${PY[@]}" - "$SCRATCH/out_timeseries/summary" "$REPO/tests/data_timeseries/truth.json" << 'PYCHECK' || fail=1
 import csv, json, os, sys
 
@@ -274,6 +283,39 @@ for message, ok in checks.items():
     bad += 0 if ok else 1
 sys.exit(1 if bad else 0)
 PYCHECK
+"${PY[@]}" - "$SCRATCH/out_timeseries/summary" "$REPO" "$REPO/tests/fixtures/site_aggregate/sites.csv" << 'PYCHECK' || fail=1
+import csv, sys
+from pathlib import Path
+
+summary = sys.argv[1]
+sys.path.insert(0, sys.argv[2] + "/tests")
+import check_outputs
+
+checker = check_outputs.Checker()
+check_outputs.check_site_aggregates(checker, Path(summary).parent, sys.argv[3])
+meta = {r["row_label"]: r for r in csv.DictReader(open(summary + "/site_aggregates_meta.tsv"), delimiter="\t")}
+agg = {}
+for line in open(summary + "/site_aggregates_freyja.tsv").read().splitlines()[1:]:
+    cols = line.split("\t")
+    agg[cols[0]] = dict(zip(cols[2].split(), map(float, cols[3].split())))
+w3 = meta["Metro_2026-W03"]
+lineage_rows = list(csv.DictReader(open(summary + "/lineage_summary.csv")))
+samples = {r["sample"] for r in lineage_rows}
+site_rows = list(csv.DictReader(open(summary + "/lineage_summary_site_aggregates.csv")))
+checks = {
+    "Metro_2026-W03: viral_load weights over 3 sites": w3["weight_basis"] == "viral_load" and w3["n_sites_included"] == "3",
+    "Metro_2026-W03 XBB.1.5 = 0.107045 (hand-computed)": abs(agg["Metro_2026-W03"]["XBB.1.5"] - 0.107045) < 1e-6,
+    "Metro_2026-W02: SiteC has no viral load, falls back to the population weights": meta["Metro_2026-W02"]["weight_basis"] == "site_weight (viral_load missing)",
+    "negative control NEG_1 is not in lineage_summary.csv": "NEG_1" not in samples and "SiteA_W01_1" in samples,
+    "lineage_summary_site_aggregates.csv has one row per aggregate-period": len(site_rows) == len(meta),
+    "every aggregate lineage exists in at least one member site (check_outputs.check_site_aggregates)": checker.failures == 0,
+}
+bad = 0
+for message, ok in checks.items():
+    print(("PASS" if ok else "FAIL") + "  " + message)
+    bad += 0 if ok else 1
+sys.exit(1 if bad else 0)
+PYCHECK
 # too few dates for a growth fit: the table is written, the growth rates are a failure note, and no dashboard without --freyja_dash
 awk -F, 'NR == 1 || $4 == "2026-01-05" || $4 == "2026-01-12"' "$SCRATCH/samplesheet_timeseries.csv" > "$SCRATCH/samplesheet_timeseries_short.csv"
 run timeseries_short --mode aggregate --input "$SCRATCH/samplesheet_timeseries_short.csv" --barcodes container --freyja_growth
@@ -291,6 +333,62 @@ ok = (
 print(("PASS" if ok else "FAIL") + "  two dates: time series written, growth rates replaced by a failure note, no dashboard unless requested")
 sys.exit(0 if ok else 1)
 PYCHECK
+
+# 9b. lineage groups and site aggregation in demix mode (container barcodes: a dataset with a lineage hierarchy), with
+#     a custom groups file that is published back byte-identical
+cat > "$SCRATCH/groups_custom.csv" << 'GROUPS'
+group,include,exclude,in_total
+Omicron (all B.1.1.529*),B.1.1.529*,,yes
+Delta (B.1.617.2*),B.1.617.2*,,yes
+GROUPS
+run demix_groups --mode demix --previous_results "$SCRATCH/out_full" --barcodes container \
+    --lineage_groups "$SCRATCH/groups_custom.csv" --site_aggregation "$SCRATCH/sites_full.csv"
+"${PY[@]}" - "$SCRATCH" << 'PYCHECK' || fail=1
+import csv, json, sys
+
+scratch = sys.argv[1]
+summary = scratch + "/out_demix_groups/summary"
+used = open(summary + "/lineage_groups_used.csv", "rb").read() == open(scratch + "/groups_custom.csv", "rb").read()
+rows = {r["sample"]: r for r in csv.DictReader(open(summary + "/lineage_summary.csv"))}
+info = json.load(open(scratch + "/out_demix_groups/pipeline_info/run_info.json"))
+ungrouped = open(summary + "/lineage_ungrouped_summary.tsv").read().splitlines()[0]
+ok = (
+    used
+    and set(rows) == {"LOWCOV_D", "MIX_A", "MIX_B", "PURE_C", "Site_1_week_2"}
+    and rows["MIX_A"]["status"] == "ok" and rows["LOWCOV_D"]["status"] != "ok"
+    and info["lineage_groups_source"] == "custom" and info["lineage_groups_file"] == "groups_custom.csv"
+    and len(info["lineage_groups_sha256"]) == 64
+    and ungrouped.startswith("lineage\tn_samples")
+    and (open(summary + "/site_aggregates_meta.tsv").read().count("\n") > 1)
+)
+print(("PASS" if ok else "FAIL") + "  demix mode: custom groups file used and copied back, one row per sample, negatives absent, run_info records the file, site aggregates written")
+sys.exit(0 if ok else 1)
+PYCHECK
+
+# 9c. mistakes in the user's CSVs stop the run within the first processes, naming the row/line (no mapping has run)
+printf 'group,include,exclude,in_total\nJN.1*,JN.1*,,yes\nJN.1*,KP.3*,,yes\n' > "$SCRATCH/groups_bad.csv"
+printf 'aggregate_name,site_name,weight\nMetro,SiteA,10\nMetro,,10\n' > "$SCRATCH/sites_bad.csv"
+for bad in groups sites; do
+    if [ "$bad" = groups ]; then flag=(--lineage_groups "$SCRATCH/groups_bad.csv"); else flag=(--site_aggregation "$SCRATCH/sites_bad.csv"); fi
+    if run "bad_$bad" --mode full --input "$SCRATCH/samplesheet.csv" --barcodes "$BARCODES" --primer_scheme midnight "${flag[@]}" > "$SCRATCH/bad_$bad.log" 2>&1; then
+        echo "FAIL  a bad $bad CSV did not stop the run"
+        fail=1
+    else
+        "${PY[@]}" - "$SCRATCH/out_bad_$bad" "$SCRATCH/bad_$bad.log" "$bad" << 'PYCHECK' || fail=1
+import csv, glob, sys
+
+out, log, kind = sys.argv[1:4]
+text = open(log).read()
+trace = glob.glob(out + "/pipeline_info/execution_trace_*.txt")
+names = {r["process"].split(":")[-1] for r in csv.DictReader(open(trace[0]), delimiter="\t")} if trace else set()
+message = "appears twice (rows 2 and 3)" if kind == "groups" else "line 3: site_name is blank"
+late = names & {"BWA_MEM", "SAMTOOLS_SORT", "FREYJA_VARIANTS", "FREYJA_DEMIX"}
+ok = message in text and not late
+print(("PASS" if ok else "FAIL") + f"  bad {kind} CSV: the run stops in the first processes with a message naming the row ({sorted(late) or 'no mapping step reached'})")
+sys.exit(0 if ok else 1)
+PYCHECK
+    fi
+done
 
 # 10. replay the full run: bin/replay_run.py reconstructs the command from run_info.json (the original is untouched);
 #     the replayed demix files are byte-identical and the barcodes come from the recorded custom file

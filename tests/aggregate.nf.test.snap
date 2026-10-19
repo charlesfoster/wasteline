@@ -14,12 +14,18 @@
                 "FREYJA_UPDATE": {
                     "freyja": "2.0.6"
                 },
+                "LINEAGE_GROUPS_CHECK": {
+                    "python": "3.12.12"
+                },
+                "LINEAGE_SUMMARY": {
+                    "python": "3.12.12"
+                },
                 "Workflow": {
                     "charlesfoster/wasteline": "v0.1.0dev"
                 }
             }
         ],
-        "timestamp": "2026-10-16T02:31:22.095721",
+        "timestamp": "2026-10-19T12:48:04.939652",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

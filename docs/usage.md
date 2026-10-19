@@ -15,7 +15,7 @@ Contents: [1 Prerequisites](#1-prerequisites) | [2 Modes](#2-modes-at-a-glance) 
 [4 Reference and primer schemes](#4-reference-and-primer-schemes) | [5 Running each mode](#5-running-each-mode) |
 [6 Freyja data (barcodes)](#6-freyja-data-barcodes) | [7 Freyja settings](#7-freyja-settings) |
 [8 Consensus genomes](#8-consensus-genomes) | [9 Negative controls and QC](#9-negative-controls-and-qc-thresholds) |
-[10 Mutations of interest](#10-mutations-of-interest) | [11 Resuming](#11-resuming-a-run--resume) |
+[10 Mutations of interest](#10-mutations-of-interest) | [Lineage groups](#lineage-groups) | [Site aggregation](#site-aggregation) | [11 Resuming](#11-resuming-a-run--resume) |
 [12 Profiles](#12-profiles) | [13 Resources](#13-resources) | [14 Parameter files](#14-parameter-files-and-boolean-flags) |
 [15 HPC](#15-running-on-an-hpc-cluster) | [16 Updating Freyja](#16-updating-the-freyja-version-of-the-pipeline) |
 [17 Not implemented](#17-not-implemented)
@@ -77,7 +77,7 @@ Rules common to all modes:
 - `collection_date` is an ISO date `YYYY-MM-DD` or empty. If any samples have dates, a time-aware plot
   (`freyja_plot_times.pdf`) and the report's time-series panel are produced from the dated samples (see
   [time series](#time-series-growth-rates-and-the-dashboard)).
-- `site` is free text.
+- `site` is free text. It is what `--site_aggregation` groups by ([below](#site-aggregation)).
 - `viral_load` (optional, any mode) is a positive number: the concentration of virus in the sample, in any unit you use
   consistently (for example gene copies per litre of wastewater). Leave it blank where unknown. It is used only for the
   load-weighted time series and, with `--freyja_growth_scale_by_viral_load`, the growth-rate fit
@@ -858,6 +858,194 @@ MIX_A   S N501Y   S:N501Y   11  41  52  0.788462
 MIX_B   S L452R   S:L452R    22   6  28  0.214286
 PURE_C  S N501Y   S:N501Y    0  40  40  1
 ```
+
+## Lineage groups
+
+Freyja reports hundreds of individual lineages. Most readers want a short table with a fixed set of columns, such as "JN.1
+and its descendants", "KP.3*", "XEC*", "recombinants" and "everything else". The **lineage summary** gives exactly that: one
+row per sample, one column per **group** of lineages, where the groups are defined in a small CSV file that you can edit in
+Excel. It is **on by default** with the list bundled in the pipeline (`assets/lineage_groups.csv`); `--lineage_groups my.csv`
+uses your own list and `--lineage_summary false` turns the summary off.
+
+It needs the lineage hierarchy of the Freyja dataset (`lineages.yml`, which every dataset from `--barcodes latest`,
+`container`, a stored version or a dataset directory has). A custom barcodes **file** (`--barcodes my.csv` or `my.feather`) has no
+hierarchy: the summary is then skipped, with one warning in the log, and the rest of the run is unaffected. It runs in modes
+`full`, `demix` and `aggregate`; in `aggregate` mode it summarises the aggregated results of the earlier runs.
+
+Outputs in `summary/`:
+
+| File                                  | What it is                                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lineage_summary.csv`                 | One row per sample, one column per group, plus `other`, `proportion_summary` and the lineages behind them ([output.md](output.md#summarylineage_summarycsv)). |
+| `lineage_groups_used.csv`             | A **byte-identical copy of the groups file that made the table**. Copy it as the start of your next edit; a results folder is self-describing.                |
+| `lineage_groups_resolved.tsv`         | Audit: for every group, how many lineages of the dataset it matched, any warnings, the dataset version and the checksum of the groups file.                   |
+| `lineage_ungrouped_summary.tsv`       | The lineages that fall in no group (`other`), biggest first, with a suggested pattern: where to look when the list needs a new row (see below).               |
+| `lineage_summary_site_aggregates.csv` | The same table for the site aggregates, only with `--site_aggregation` ([below](#site-aggregation)).                                                          |
+
+`pipeline_info/run_info.json` records which list was used: `lineage_groups_file` (the file name, or `bundled default`),
+`lineage_groups_source` (`bundled` or `custom`) and `lineage_groups_sha256`.
+
+### The groups file
+
+One row per output column; the order of the rows is the order of the columns. Keep it in Excel and **save as CSV UTF-8**
+("CSV UTF-8 (Comma delimited)", not "CSV (Macintosh)" or "Text (tab delimited)"). A file saved with `;` between the columns
+(Excel in many countries) also works.
+
+| Column     | Required | What to put                                                                                                                         |
+| ---------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `group`    | yes      | The column heading, exactly as you want to see it. Spaces, `*`, brackets and commas are fine. Must be unique.                       |
+| `include`  | yes      | One or more lineage patterns separated by `;`.                                                                                      |
+| `exclude`  | no       | Patterns to take out again, separated by `;`.                                                                                       |
+| `in_total` | no       | `yes` (default) or `no`. Say `no` for a group that only repeats lineages already counted in another group (an "includes ..." twin). |
+
+Patterns (case does not matter, spaces around names are ignored):
+
+| Pattern        | Matches                                                                                                                                       |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NB.1.8.1*`    | `NB.1.8.1` **and every descendant** (`RK.1.2`, `PQ.17.7.2`, ...).                                                                             |
+| `NB.1.8.1`     | exactly that lineage, nothing below it.                                                                                                       |
+| `RECOMBINANT*` | every lineage that descends from a recombinant (`XBB`, `XDV`, `XEC`, `XFG` and all their sub-lineages such as `NB.1.8.1`, `RK.1.2`, `XFG.1`). |
+
+- Short names and full Pango names are the same lineage (`NB.1.8` and `XDV.1.5.1.1.8`; `KP.3` is `B.1.1.529.2.86.1.1.11.1.3`):
+  descendants are found through the parent links of the Freyja dataset, not from the spelling of the name.
+- A lineage belongs to a group when it matches an `include` pattern and **no** `exclude` pattern.
+- Groups may overlap on purpose. That is how "JN.1* (excludes KP.3*)" and "JN.1* (includes KP.3*)" sit next to each other: every
+  column is the sum of the sample's lineages that match it. Mark the twin `in_total = no`, so that the total is not counted twice.
+- Write `RECOMBINANT*` for recombinants. `X*` means a lineage called `X`, which does not exist.
+- A name that is not in the dataset (a typo, or a lineage newer than the dataset) is reported **once** in the run log and in
+  `lineage_groups_resolved.tsv`, and matches nothing. It is a warning, not an error.
+
+A worked example (the first rows of a list):
+
+```
+group,include,exclude,in_total
+JN.1* (excludes KP.3*),JN.1*,KP.3*,yes
+JN.1* (includes KP.3*),JN.1*,,no
+KP.3*,KP.3*,,yes
+Recombinants (excludes NB.1.8.1*),RECOMBINANT*,NB.1.8.1*,yes
+NB.1.8.1*,NB.1.8.1*,,yes
+```
+
+A sample with `JN.1.16 0.55`, `KP.3.1 0.25`, `RK.1.2 0.15`, `XDV 0.05` gives `JN.1* (excludes KP.3*)` 0.55, `JN.1* (includes KP.3*)`
+0.80 (informational, not in the total), `KP.3*` 0.25, `NB.1.8.1*` 0.15, `Recombinants (excludes NB.1.8.1*)` 0.05, `other` empty and
+`proportion_summary` 1.00.
+
+### Editing the list
+
+1. Start from the bundled list: copy `assets/lineage_groups.csv` from the pipeline, run
+   `python bin/lineage_groups.py --print-default-groups > my_groups.csv` in a clone of the repository, or take the
+   `summary/lineage_groups_used.csv` of an earlier results folder (that is the file that produced those results).
+2. Open it in Excel (or any editor), add, remove or reorder rows, and **save as CSV UTF-8**.
+3. Run with `--lineage_groups my_groups.csv`. The file is checked **first thing in the run**, in parallel with the read processing:
+   a format error stops the run within minutes and names the row, for example
+   `lineage_groups.py: error: groups.csv: the group name 'JN.1*' appears twice (rows 2 and 3); group names must be unique`
+   (see [troubleshooting.md](troubleshooting.md#a-lineage-groups-or-sites-file-stops-the-run-at-the-start)).
+4. Re-run only the lineage summary of a finished run with `--mode aggregate --previous_results results --lineage_groups my_groups.csv`
+   (or `--mode demix`, which also re-estimates the lineages).
+
+**Reading `lineage_ungrouped_summary.tsv`.** The lineages that no `in_total` group covers end up in the `other` column. The table
+lists each one once (over all samples that were demixed `ok`; negative controls excluded):
+
+```
+lineage  n_samples  mean_abundance  max_abundance  suggested_pattern
+AY.4     1          0.287879        0.287879       AY.4*
+```
+
+`n_samples` is the number of samples in which it was found (at or above `--lineage_min_abundance`), `mean_abundance` and
+`max_abundance` are over those samples, the table is sorted by `max_abundance`, and `suggested_pattern` is the lineage name
+with a `*`. When something big shows up there, add a row for it to your list (copy the suggested pattern into `include`), so
+that the next run groups it; the table is always written, header only when nothing is ungrouped. The same lineages are in
+the `ungrouped_lineages` column of each sample's row, as `NAME:abundance`.
+
+### What the numbers mean
+
+A group value is the abundance (0-1) summed over **every** lineage in the sample's Freyja solution that matches the group
+(blank when zero; `--lineage_summary_zeros zero` writes `0.000000`). `--lineage_min_abundance` (0.001) never changes these sums, it
+only limits the lists. `other` is what no `in_total` group covers, and `proportion_summary` is the `in_total` groups plus
+`other`: about 1 when no two `in_total` groups overlap (an overlap is reported in the log), but Freyja's own lineage list sums to
+0.98-0.997 (it drops the tail below its cut-off), so expect 0.98-1.00 on real data, not exactly 1. `major_lineages` are those at 10
+% or more (`--lineage_major_threshold`; exactly 0.10 counts as major), `minor_lineages` the rest. A sample that is `failed`,
+`skipped_low_coverage` or `missing` still has a row, with its status and reason and empty values; negative controls have no row.
+
+## Site aggregation
+
+Wastewater from one catchment is often sequenced as several sites. A **site aggregate** combines the per-site Freyja results
+into one result per group of sites and period (for example, `Metro_Sites` per ISO week). It is **off** unless you give
+`--site_aggregation sites.csv`. Every sample is still demixed on its own, exactly as without the option; the finished abundance
+solutions of the member sites are then averaged with weights. **Reads are never pooled.**
+
+### The sites file
+
+A plain table, one row per site per group; keep it in Excel and **save as CSV UTF-8**.
+
+```
+aggregate_name,site_name,weight
+Metro_Sites,Site1,250000
+Metro_Sites,Site2,120000
+Metro_Sites,Site3,80000
+```
+
+| Column           | Required | Meaning                                                                                                                                                    |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aggregate_name` | yes      | The name of the group; becomes part of the row label (`Metro_Sites_2026-W41`). Letters, digits, `_` and `-`.                                               |
+| `site_name`      | yes      | A site as written in the `site` column of your samplesheet.                                                                                                |
+| `weight`         | no       | A positive number, usually the population served (`250000`); plain digits, no units and no thousands separators. Used only when the weights basis says so. |
+
+- A site can be in several groups: repeat it on another row.
+- Site names are matched to the samplesheet `site` column **ignoring case and extra spaces** (`site 1`, `SITE 1` and `Site 1` are
+  the same site); `Site1` and `Site 1` are **not**. A site name that no sample uses is reported once as a warning (probably a typo).
+- A file saved with `;` or tabs, a UTF-8 byte-order mark, Windows line endings and empty trailing rows are accepted.
+- Errors name the line and stop the run in the first minutes, for example `sites.csv: line 3: site_name is blank (aggregate
+'Metro')` or `sites.csv: line 5: site 'site1' is listed twice for aggregate 'Metro_Sites' (first on line 3)`.
+
+### Which samples count, which weights
+
+A sample contributes when it was demixed `ok`, is not a negative control, and has both a `site` and a valid ISO
+`collection_date` (`2026-10-12`). Everything else is left out (and counted in the process log). The period (`--site_aggregation_period`)
+is the ISO week, Monday to Sunday (`2026-W41`, labelled with that Monday in `period_start`), or `day`.
+
+For each aggregate and period: first the **replicates** of a site are combined (weighted by their `viral_load` if every one has
+one, else equally, so that a site with two samples never counts twice); then the **sites** are averaged with the weights of
+`--site_aggregation_weights`:
+
+- `viral_load`: the site's mean `viral_load` (concentration, or concentration times flow if you want the total virus entering all the
+  sites); `site_weight`: the `weight` column; `equal`: 1 for each site;
+- `auto` (default): `viral_load` if every contributing site has one, else `site_weight` if every contributing site has a weight, else
+  `equal`. The basis used is written per row (`viral_load`, `site_weight`, `site_weight (viral_load missing)`, `equal`, `equal
+(viral_load missing)`, `equal (site_weight missing)`), so it can change between weeks. An explicit choice that cannot be met falls
+  back to `equal` and says so. Sequencing depth is deliberately **not** a weight option: it measures how much was sequenced, not how
+  much virus a site contributes.
+
+For every lineage, `abundance = sum(w_i * a_i) / sum(w_i)` over the contributing sites (a lineage a site lacks counts as 0), and the
+same for Freyja's `summarized` groups, `resid` and `coverage`. An aggregate therefore **cannot contain a lineage that none of its member
+sites has**. `--site_aggregation_min_sites` omits weeks with fewer contributing sites.
+
+### Why results and not reads
+
+Pooling the reads (or variant tables) of several sites and demixing once weights each site by its sequencing depth, and the single fit
+of a mixture of mixtures can report lineages that no site contains. In a synthetic experiment (real Freyja 2.0.6, four finished test
+samples treated as four sites, with equal and with unequal depths, eight settings) the result-level aggregate stayed within 0.025
+(absolute abundance) of the weighted truth; the pooled fit was 0.02-0.09 away from the depth-weighted truth and 0.05-0.20 away from the
+equal-weight truth when depths differed, and **in all eight pooled fits Freyja reported a lineage that no site contains** (`B.1`,
+0.7-1.9 %), which the aggregate never does. Caveat: this was synthetic data with exactly known, linear lineage signatures, four sites and
+one barcode set, so it shows the direction and rough size of the effect, not what real wastewater gives. The experiment is described
+in `docs/wiring/site_aggregation.md`.
+
+### Reading the outputs
+
+`summary/site_aggregates_freyja.tsv` is in Freyja's aggregate format (row label `<aggregate_name>_<period>`), and
+`summary/site_aggregates_meta.tsv` says what went into each row:
+
+```
+row_label	aggregate_name	period	period_start	n_sites_included	sites_included	sites_missing	missing_reasons	weight_basis	weight_fraction_included	n_samples
+Metro_2026-W03	Metro	2026-W03	2026-01-12	3	SiteA;SiteB;SiteC			viral_load	1.00000000	6
+```
+
+`sites_missing` and `missing_reasons` (`no_sample`, `not_ok:<status>`, `no_date`) show which member sites did not contribute and why,
+`weight_basis` is the basis actually used, `weight_fraction_included` is the share of the member sites' weight that is in the row (`NA`
+when it cannot be computed) and `n_samples` counts the samples. A row with a missing site or a weaker basis than requested is not an
+error, but read it with that in mind. With the lineage summary on, `lineage_summary_site_aggregates.csv` has the lineage-group
+columns for each aggregate row.
 
 ## 11. Resuming a run: `-resume`
 

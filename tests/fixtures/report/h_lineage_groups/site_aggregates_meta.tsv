@@ -1,0 +1,6 @@
+row_label	aggregate_name	period	period_start	n_sites_included	sites_included	sites_missing	missing_reasons	weight_basis	weight_fraction_included	n_samples
+Catchment_X_2026-W02	Catchment_X	2026-W02	2026-01-05	2	Site_1;Site_2			viral_load	1.00000000	3
+Catchment_X_2026-W03	Catchment_X	2026-W03	2026-01-12	1	Site_1	Site_2	not_ok:failed	equal (viral_load missing)	0.50000000	1
+Catchment_X_2026-W04	Catchment_X	2026-W04	2026-01-19	2	Site_1;Site_2			viral_load	1.00000000	2
+Coastal_2026-W02	Coastal	2026-W02	2026-01-05	1	Site_2	Site_3	no_sample	site_weight	0.64000000	1
+Coastal_2026-W03	Coastal	2026-W03	2026-01-12	2	Site_2;Site_3			site_weight	1.00000000	2

@@ -181,6 +181,39 @@ dashboard need `--freyja_growth_min_dates` (4) distinct dates within the last `-
 a `collection_date`, negative controls and samples below `--freyja_plot_mincov` coverage are not used. The dashboard page fetches its
 styling from the internet when opened; offline it looks plain.
 
+### A lineage groups or sites file stops the run at the start
+
+The groups file (`--lineage_groups`, or the bundled default) and the sites file (`--site_aggregation`) are checked by two small
+processes, `LINEAGE_GROUPS_CHECK` and `SITE_AGGREGATE_CHECK`, **first thing in the run**, in parallel with the read processing. A
+format error stops the run within minutes (before mapping finishes) with a message that names the file and the row or line. Look
+for the `Command error:` block in the Nextflow output. Typical messages and what to do:
+
+| Message (shortened)                                                                   | What is wrong and how to fix it                                                                                |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `groups.csv: the group name 'JN.1*' appears twice (rows 2 and 3)`                     | Two rows with the same `group`. Group names are the column headings and must be unique (case does not matter). |
+| `groups.csv, row 4: group 'X' has no 'include' pattern`                               | The `include` cell is empty. Every group needs at least one pattern.                                           |
+| `groups.csv, row 2: in_total must be yes or no for group 'X', got 'maybe'`            | `in_total` is `yes`, `no` or empty.                                                                            |
+| `groups.csv, row 3: 'other' is a reserved output column name`                         | `sample`, `site`, `collection_date`, `status`, `other`, ... are fixed columns of the output; rename the group. |
+| `the groups file groups.csv needs the columns 'group' and 'include' in its first row` | The header row is missing or misspelled (an Excel title row above the header also causes this).                |
+| `sites.csv: line 3: site_name is blank (aggregate 'Metro')`                           | A row without a site. Fill it in or delete the row.                                                            |
+| `sites.csv: line 5: site 'site1' is listed twice for aggregate 'Metro_Sites'`         | The same site twice in one group (matching ignores case and extra spaces).                                     |
+| `sites.csv: line 4: weight '1 200' must be a positive number ...`                     | Write plain digits in `weight` (`1200`): no units, spaces or thousands separators; or leave it blank.          |
+| `sites.csv: line 1: unknown column 'site_names' (did you mean 'site_name'?)`          | A misspelled column name; the columns are `aggregate_name`, `site_name` and optional `weight`.                 |
+
+Unknown lineages in the groups file and site names that no sample uses are only **warnings** (shown once in the log): they match
+nothing, so a typo silently gives an empty column or a missing site in an aggregate; check
+`summary/lineage_groups_resolved.tsv` (column `warnings`) and the log. Other common slips: saving as "CSV (Macintosh)" or "Text (tab
+delimited)" instead of **CSV UTF-8** (accents or columns go wrong); writing `X*` for recombinants (use `RECOMBINANT*`); a comma inside a
+pattern cell (use `;`); and a sample whose `site` is spelled differently from the sites file (`Site_1` vs `Site1`).
+
+### The lineage summary is missing
+
+With the default settings `summary/lineage_summary.csv` is written in modes `full`, `demix` and `aggregate`. If it is not: the run
+log says `Skipping the lineage-group summary` when the Freyja dataset has no lineage hierarchy (a custom `--barcodes` `.csv` or
+`.feather` file; use `--barcodes latest`, `container` or a dataset directory that contains `lineages.yml`), or you gave
+`--lineage_summary false`. An `ungrouped_lineages` column or `lineage_ungrouped_summary.tsv` full of lineages means the groups list is
+out of date for the data: see [usage.md](usage.md#editing-the-list).
+
 ### Warning: `--primer_scheme/--primer_bed are ignored`
 
 ```

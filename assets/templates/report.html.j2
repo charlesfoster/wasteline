@@ -84,6 +84,39 @@
 <p class="note">An interactive Freyja dashboard was also produced: <code>{{ g.dashboard }}</code> (in the results folder). It is not part of this report and needs internet access to load its styling; this report works offline.</p>
 {% endif %}
 {%- endmacro %}
+{% macro sa_block(sa, key, id) -%}
+<div id="{{ id }}" class="sa"{% if key == 'full' %} hidden{% endif %}>
+  <ul class="legend" aria-label="Colour legend">
+    {% for item in sa.legend[key] %}<li><i class="sw {{ item.cls }}"></i>{{ item.name }}</li>{% endfor %}
+  </ul>
+  {% for agg in sa.aggregates %}
+  <h3>{{ agg.name }}</h3>
+  <div class="bars">
+    {% for p in agg.periods %}
+    {% set row = p.rows[key] %}
+    <div class="sarow">
+      <span class="lbl" title="{{ p.label }}">{{ p.period|dash }}{% if p.start %} <small class="reasons">{{ p.start }}</small>{% endif %}</span>
+      {% if row.segs %}
+      <svg viewBox="0 0 1000 14" preserveAspectRatio="none" role="img" aria-label="Aggregated lineages of {{ p.label }}">
+        <rect class="track" x="0" y="0" width="1000" height="14"/>
+        {% for s in row.segs %}<rect class="{{ s.cls }}" x="{{ s.x }}" y="0" width="{{ s.w }}" height="14"><title>{{ s.title }}</title></rect>{% endfor %}
+      </svg>
+      {% else %}
+      <span class="nobar">{{ dxbadge(row.status) }} {{ row.reason }}</span>
+      {% endif %}
+      <span class="chips">
+        <span class="badge b-{{ 'fail' if p.n_inc == 0 else ('pass' if not p.missing else 'warn') }}" title="Sites that contributed: {{ p.included|default('none', true) }}">{{ p.n_inc }}/{{ p.n_total }} sites</span>
+        {% if p.basis %}<span class="chip2{{ ' weak' if p.weak_basis }}" title="Weighting basis of the average{% if p.weak_basis %} (weaker than requested){% endif %}">{{ p.basis }}</span>{% endif %}
+        {% if p.frac is not none %}<span class="chip2" title="Share of the member sites' total weight that contributed">{{ p.frac|round(0)|int }}% of weight</span>{% endif %}
+        {% for m in p.missing %}<span class="chip2 miss" title="{{ m.site }}: {{ m.reason }}">missing {{ m.site }}</span>{% endfor %}
+        {% if p.n_samples is not none %}<small class="reasons">{{ p.n_samples }} sample(s)</small>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -275,6 +308,15 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
 .seg button{background:var(--panel)}
 .seg button[aria-pressed=true]{background:var(--link);color:var(--bg);border-color:var(--link)}
 .seg button+button{border-left:0}
+.sarow{display:grid;grid-template-columns:minmax(110px,170px) minmax(160px,1fr) 370px;gap:8px;align-items:center;margin:3px 0}
+.sarow .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.83rem}
+.sarow svg{width:100%;height:16px;display:block}
+.sarow svg .track{fill:var(--track)}
+.sarow .chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:flex-start;font-size:.74rem}
+.chip2{border:1px solid var(--line);border-radius:999px;padding:0 7px;background:var(--panel);white-space:nowrap}
+.chip2.weak{border-color:var(--warn);color:var(--warn);background:var(--warn-bg)}
+.chip2.miss{border-color:var(--warn);color:var(--warn)}
+@media (max-width:980px){.sarow{grid-template-columns:1fr}}
 @media print{table.capped tr.more{display:table-row}.tsctl{display:none}}
 </style>
 {% endif %}
@@ -311,6 +353,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
   {% endif %}
   <nav class="toc" aria-label="Sections">
     <a href="#sec-flags">Run flags</a><a href="#sec-qc">QC</a><a href="#sec-lineage">Lineages</a>
+    {% if sa %}<a href="#sec-site-aggregates">Site aggregates</a>{% endif %}
     {% if controls %}<a href="#sec-controls">Negative controls</a>{% endif %}
     <a href="#sec-coverage">Coverage</a><a href="#sec-amplicons">Amplicon dropout</a><a href="#sec-demix">Demix status</a>
     {% if dx %}<a href="#sec-dropout-impact">Dropout impact</a>{% endif %}
@@ -406,6 +449,17 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
   {% endif %}
 </section>
 
+{% if sa %}
+<section id="sec-site-aggregates">
+  <h2>Site aggregates</h2>
+  <p class="note">Groups of sites (for example a catchment made of several treatment plants), <b>combined from the per-site results, never from pooled reads</b>: every site's samples are demixed on their own, then the finished abundances of the member sites are averaged per period. Weights: <i>viral_load</i> weights each site by its viral load in that period, <i>site_weight</i> by the weight (for example population served) in your sites file, <i>equal</i> counts every site alike; a basis such as <i>equal (viral_load missing)</i> means the weighting you asked for was not available that period. Several samples of one site and period are combined first, so a site never counts twice. A period with sites <b>missing</b> is still shown: hover the amber chip for the reason (<code>not_ok:failed</code>: that site's demix failed or was skipped; <code>no_sample</code>: no sample in that period; <code>no_date</code>: samples without a valid date).</p>
+  <div class="seg" role="group" aria-label="Lineage resolution">
+    <button type="button" data-show="#sa-summ" data-hide="#sa-full" aria-pressed="true">Summarized groups</button><button type="button" data-show="#sa-full" data-hide="#sa-summ" aria-pressed="false"{% if not sa.has_full %} disabled{% endif %}>All lineages</button>
+  </div>
+  {{ sa_block(sa, 'summ', 'sa-summ') }}
+  {{ sa_block(sa, 'full', 'sa-full') }}
+</section>
+{% endif %}
 <section id="sec-coverage">
   <h2>Coverage tracks</h2>
   {% if coverage %}
@@ -747,6 +801,9 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
   </tbody></table></div>
   {% else %}
   <p class="na-note">The run provenance contains no <code>freyja_data</code> block.</p>
+  {% endif %}
+  {% if lgi %}
+  <p class="note">Lineage groups: <code>{{ lgi.file }}</code>{% if lgi.sha %}, sha256 {{ lgi.sha }}{% endif %}{% if lgi.dataset %}, dataset {{ lgi.dataset }}{% endif %}; table in <code>summary/lineage_summary.csv</code></p>
   {% endif %}
   {% if previous_runs %}
   <h3>Previous runs this report builds on</h3>

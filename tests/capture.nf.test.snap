@@ -51,6 +51,12 @@
                 "IVAR_VARIANTS_TO_VCF": {
                     "python": "3.12.12"
                 },
+                "LINEAGE_GROUPS_CHECK": {
+                    "python": "3.12.12"
+                },
+                "LINEAGE_SUMMARY": {
+                    "python": "3.12.12"
+                },
                 "LOW_DEPTH_MASK": {
                     "python": "3.12.12"
                 },
@@ -89,7 +95,7 @@
                 }
             }
         ],
-        "timestamp": "2026-10-16T18:32:46.374846",
+        "timestamp": "2026-10-19T12:49:24.803964",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

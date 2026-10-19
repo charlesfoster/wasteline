@@ -99,6 +99,11 @@ def normalise(data):
     out["dashboard"] = _as_dict(data.get("dashboard")) or None
     out["dropout_impact"] = _as_dict(data.get("dropout_impact")) or None
     unexplained = data.get("unexplained_mutations")
+    lineage_groups = _as_dict(data.get("lineage_groups"))
+    out["lineage_groups"] = lineage_groups or None
+    out["site_aggregates"] = [
+        a for a in _as_list(data.get("site_aggregates")) if isinstance(a, dict)
+    ] or None
     out["unexplained_mutations"] = (
         [r for r in unexplained if isinstance(r, dict) and r.get("sample") is not None]
         if isinstance(unexplained, list)
@@ -179,7 +184,7 @@ def _ci(info, name):
     return ""
 
 
-def lineage_view(samples, demix, key):
+def lineage_view(samples, demix, key, palette=None):
     """Stacked bars + heatmap for `key` in ('groups', 'lineages') over samples with status ok."""
     entries = []
     totals = Counter()
@@ -194,8 +199,8 @@ def lineage_view(samples, demix, key):
         if info.get("status") == "ok":
             for name, frac in pairs:
                 totals[name] += frac
-    palette = _palette(totals)
-    legend = [{"name": n, "cls": f"c{i}"} for n, i in palette.items()]
+    palette = _palette(totals) if palette is None else palette
+    legend = [{"name": n, "cls": f"c{i}"} for n, i in palette.items() if n in totals]
     if any(name not in palette for name in totals):
         legend.append({"name": "Other", "cls": "co"})
 
@@ -972,6 +977,102 @@ def timeseries_view(data, palettes):
     }
 
 
+def lineage_groups_info(data):
+    """One provenance line about the user's lineage groups (the table itself is in the CSV)."""
+    lg = data["lineage_groups"]
+    if not lg:
+        return None
+    sha = (lg.get("groups_sha256") or "")[:12]
+    return {
+        "file": lg.get("file") or "bundled default",
+        "sha": sha or None,
+        "dataset": lg.get("dataset_version"),
+    }
+
+
+def _merge_palette(base, totals):
+    """Keep the colours the per-sample view gave to names present here; give new names free ones."""
+    pal = {n: i for n, i in base.items() if n in totals}
+    free = iter(i for i in range(N_COLORS) if i not in set(pal.values()))
+    for name, _ in totals.most_common():
+        if name in pal or name == "Other":
+            continue
+        nxt = next(free, None)
+        if nxt is None:
+            break
+        pal[name] = nxt
+    return pal
+
+
+def site_aggregates_view(data, palettes):
+    entries = data["site_aggregates"]
+    if not entries:
+        return None
+    samples, demix = [], {}
+    for a in entries:
+        label = str(a.get("row_label"))
+        has_solution = bool(_as_list(a.get("lineages")) or _as_list(a.get("groups")))
+        samples.append({"sample": label, "sample_type": "sample", "qc_status": None})
+        demix[label] = {
+            "status": "ok" if has_solution else "missing",
+            "reason": "no site contributed a result in this period" if not has_solution else "",
+            "groups": a.get("groups"),
+            "lineages": a.get("lineages"),
+        }
+    views = {}
+    for key, label in (("groups", "summ"), ("lineages", "full")):
+        totals = Counter()
+        for a in entries:
+            for p in _as_list(a.get(key)):
+                if len(p) == 2 and _num(p[1]) is not None:
+                    totals[str(p[0])] += p[1]
+        pal = _merge_palette(palettes[label], totals)
+        view = lineage_view(samples, demix, key, palette=pal)
+        views[label] = {
+            "legend": view["legend"],
+            "rows": {r["sample"]: r for r in view["rows"]},
+            "n_ok": view["n_ok"],
+        }
+    blocks = {}
+    for a in entries:
+        label = str(a.get("row_label"))
+        missing = _as_list(a.get("sites_missing"))
+        reasons = _as_dict(a.get("missing_reasons"))
+        n_inc = a.get("n_sites_included")
+        if n_inc is None:
+            n_inc = len(_as_list(a.get("sites_included")))
+        basis = a.get("weight_basis")
+        frac = _num(a.get("weight_fraction_included"))
+        period = {
+            "label": label,
+            "period": a.get("period"),
+            "start": a.get("period_start"),
+            "n_inc": n_inc,
+            "n_total": n_inc + len(missing),
+            "included": ", ".join(str(x) for x in _as_list(a.get("sites_included"))),
+            "missing": [
+                {"site": str(m), "reason": reasons.get(m) or "no reason recorded"} for m in missing
+            ],
+            "basis": basis,
+            "weak_basis": str(basis or "").startswith(("equal (", "site_weight (")),
+            "frac": None if frac is None else frac * 100,
+            "n_samples": a.get("n_samples"),
+            "rows": {k: views[k]["rows"][label] for k in views},
+        }
+        blocks.setdefault(a.get("aggregate_name") or label, []).append(period)
+    aggregates = []
+    for name, periods in blocks.items():
+        periods.sort(key=lambda p: (p["start"] or p["period"] or "", p["label"]))
+        aggregates.append({"name": name, "periods": periods})
+    return {
+        "aggregates": aggregates,
+        "legend": {k: views[k]["legend"] for k in views},
+        "has_full": views["full"]["n_ok"] > 0,
+        "n_periods": len(entries),
+        "n_incomplete": sum(1 for a in aggregates for p in a["periods"] if p["missing"]),
+    }
+
+
 def build_context(data):
     data = normalise(data)
     samples = data["samples"]
@@ -1030,6 +1131,8 @@ def build_context(data):
             data, {"summarized": summ["palette"], "lineages": full["palette"]}
         ),
         "growth": growth_view(data),
+        "lgi": lineage_groups_info(data),
+        "sa": site_aggregates_view(data, {"summ": summ["palette"], "full": full["palette"]}),
         "coverage": coverage_view(data),
         "amp": amplicon_view(data),
         "ts": time_series_view(data, summ["palette"]),
@@ -1057,6 +1160,7 @@ def build_context(data):
         or context["ue"] is not None
         or context["ts_new"]
         or context["growth"]
+        or context["sa"]
         or qc_extra["trim"]
         or qc_extra["check"]
         or any(r.get("_rtip") for r in samples)

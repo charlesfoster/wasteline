@@ -18,6 +18,7 @@ nextflow_process {
                 def dir = "\$projectDir/tests/fixtures/modules_report/minimal"
                 input[1] = [ [], [], [], [] ]
                 input[2] = [ [], [], [], [], [], [], [], [], '' ]
+                input[3] = [ [], [], [], [] ]
                 input[0] = [ file("\$dir/run_info.json"), [], [], [], [], [], [], [], [] ]
                 """
             }
@@ -40,6 +41,7 @@ nextflow_process {
                 def dir = "\$projectDir/tests/fixtures/modules_report/f_real_qc"
                 input[1] = [ [], [], [], [] ]
                 input[2] = [ [], [], [], [], [], [], [], [], '' ]
+                input[3] = [ [], [], [], [] ]
                 input[0] = [
                     file("\$dir/run_info.json"), file("\$dir/qc_summary.tsv"), file("\$dir/amplicon_coverage.tsv"),
                     [], [], [], [], [], []
@@ -72,6 +74,7 @@ nextflow_process {
                 def dir = "\$projectDir/tests/fixtures/modules_report/a_full"
                 input[1] = [ [], [], [], [] ]
                 input[2] = [ [], [], [], [], [], [], [], [], '' ]
+                input[3] = [ [], [], [], [] ]
                 input[0] = [
                     file("\$dir/run_info.json"), file("\$dir/qc_summary.tsv"), file("\$dir/amplicon_coverage.tsv"),
                     file("\$dir/freyja_aggregated.tsv"), file("\$dir/demix_status.tsv"), file("\$dir/consensus_stats.tsv"),
@@ -110,6 +113,7 @@ nextflow_process {
                 def dir = "\$projectDir/tests/fixtures/modules_report/minimal"
                 input[1] = [ [], [], [], [] ]
                 input[2] = [ [], [], [], [], [], [], [], [], '' ]
+                input[3] = [ [], [], [], [] ]
                 input[0] = [
                     file("\$dir/run_info.json"), [], [], file("\$dir/freyja_aggregated.tsv"), file("\$dir/demix_status.tsv"),
                     [], [], [], []
