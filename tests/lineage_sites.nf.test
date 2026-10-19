@@ -47,6 +47,8 @@ nextflow_pipeline {
                 { assert new File("$outputDir/summary/lineage_summary.csv").exists() },
                 { assert new File("$outputDir/summary/lineage_groups_resolved.tsv").exists() },
                 { assert new File("$outputDir/summary/lineage_ungrouped_summary.tsv").exists() },
+                // the Excel workbook is on by default (the stub leaves an empty placeholder)
+                { assert new File("$outputDir/summary/lineage_summary.xlsx").exists() },
                 // byte-identical copy of the bundled default
                 { assert new File("$outputDir/summary/lineage_groups_used.csv").bytes == new File("${projectDir}/assets/lineage_groups.csv").bytes },
                 { assert run_info.lineage_groups_source == 'bundled' && run_info.lineage_groups_file == 'bundled default' },
@@ -90,6 +92,30 @@ nextflow_pipeline {
                 { assert run_info.lineage_groups_source == 'custom' && run_info.lineage_groups_file == 'lineage_groups.csv' },
                 { assert new File("$outputDir/summary/lineage_ungrouped_summary.tsv").exists() },
                 { assert run_info.params.site_aggregation_weights == 'auto' && run_info.params.lineage_major_threshold == 0.1 }
+            )
+        }
+    }
+
+    test("-stub: --lineage_summary_xlsx false writes the CSV only") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                lineage_summary_xlsx = false
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/lineage_summary.csv").exists() },
+                { assert !new File("$outputDir/summary/lineage_summary.xlsx").exists() }
             )
         }
     }

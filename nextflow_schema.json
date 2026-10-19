@@ -10,9 +10,7 @@
             "type": "object",
             "fa_icon": "fas fa-terminal",
             "description": "Define where the pipeline should find input data and save output data.",
-            "required": [
-                "outdir"
-            ],
+            "required": ["outdir"],
             "properties": {
                 "input": {
                     "type": "string",
@@ -33,13 +31,7 @@
                 "mode": {
                     "type": "string",
                     "default": "full",
-                    "enum": [
-                        "full",
-                        "demix",
-                        "aggregate",
-                        "report",
-                        "update_db"
-                    ],
+                    "enum": ["full", "demix", "aggregate", "report", "update_db"],
                     "description": "Pipeline mode.",
                     "help_text": "`full`: FASTQ to aggregated Freyja results. `demix`: re-run `freyja demix` (e.g. with newer barcodes) on existing variants/depths files, then aggregate. `aggregate`: aggregate existing `.demix` files only. `report`: rebuild the HTML report of a previous run (`--results_dir`, written to a different `--outdir`). `update_db`: download the latest Freyja data into `--db_dir` and exit.",
                     "fa_icon": "fas fa-random"
@@ -88,10 +80,7 @@
                 "protocol": {
                     "type": "string",
                     "default": "amplicon",
-                    "enum": [
-                        "amplicon",
-                        "capture"
-                    ],
+                    "enum": ["amplicon", "capture"],
                     "description": "Library protocol. `amplicon` (default): tiled PCR amplicons, reads are primer-trimmed. `capture`: probe-capture libraries (e.g. Twist): no primer trimming, no amplicon-dropout analysis, PCR duplicates are marked.",
                     "help_text": "With `capture`, `--primer_scheme` and `--primer_bed` are ignored (with a warning). The protocol is recorded in run_info.json and shown in the report header.",
                     "fa_icon": "fas fa-flask"
@@ -105,11 +94,7 @@
                 "duplicates": {
                     "type": "string",
                     "default": "auto",
-                    "enum": [
-                        "auto",
-                        "mark",
-                        "none"
-                    ],
+                    "enum": ["auto", "mark", "none"],
                     "description": "PCR-duplicate handling after alignment. `mark`: flag duplicates (`samtools markdup`); Freyja's pileup then ignores them. `none`: leave them. `auto`: `mark` for `--protocol capture`, `none` for `amplicon`.",
                     "help_text": "Duplicates are flagged, never removed. Not used by modes without reads (`demix`, `aggregate`).",
                     "fa_icon": "fas fa-clone"
@@ -179,9 +164,7 @@
                     "description": "Freyja `--pathogen` name (set by conf/pathogens/*.config). Only SARS-CoV-2 is implemented.",
                     "fa_icon": "fas fa-virus",
                     "hidden": true,
-                    "enum": [
-                        "SARS-CoV-2"
-                    ],
+                    "enum": ["SARS-CoV-2"],
                     "errorMessage": "Only --pathogen SARS-CoV-2 is implemented and validated (reference, primers, Freyja dataset names are SARS-CoV-2 specific)."
                 }
             }
@@ -377,11 +360,7 @@
                 "freyja_plot_interval": {
                     "type": "string",
                     "default": "MS",
-                    "enum": [
-                        "MS",
-                        "W",
-                        "D"
-                    ],
+                    "enum": ["MS", "W", "D"],
                     "description": "Interval of the time-aware plot (`freyja plot --times`, drawn when samples have a `collection_date`): month (`MS`), week (`W`) or day (`D`).",
                     "fa_icon": "fas fa-calendar"
                 },
@@ -394,11 +373,11 @@
                 },
                 "min_genome_coverage_for_demix": {
                     "type": "number",
-                    "default": 60,
+                    "default": 50,
                     "minimum": 0,
                     "maximum": 100,
-                    "description": "Skip demixing samples with less than this % of the genome at depth >= `--freyja_covcut`.",
-                    "help_text": "Skipped samples are listed in `summary/demix_status.tsv` with status `skipped_low_coverage` and are excluded from the aggregate.",
+                    "description": "High-confidence threshold: samples with less than this % of the genome at depth >= `--freyja_covcut` are not demixed (status `skipped_low_coverage`).",
+                    "help_text": "Default 50, from real wastewater data (28 QIAseq samples: the median sample has only 58 % of the genome at >= 10x, mostly because of amplicon dropout, not too few reads). Below this an abundance estimate rests on too little of the lineage-defining sites to trust. Skipped samples are listed in `summary/demix_status.tsv` and are excluded from the aggregate. Freyja's own plot hides samples below `--freyja_plot_mincov` (60).",
                     "fa_icon": "fas fa-ban"
                 }
             }
@@ -425,16 +404,16 @@
                 },
                 "qc_pass_min_pct": {
                     "type": "number",
-                    "default": 80,
-                    "description": "PASS needs at least this % of the genome at `qc_min_depth`.",
+                    "default": 60,
+                    "description": "PASS needs at least this % of the genome at `qc_min_depth`. Default 60 (it was 80 in the clinical pipeline: real wastewater samples rarely reach it).",
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 100
                 },
                 "qc_fail_below_pct": {
                     "type": "number",
-                    "default": 50,
-                    "description": "FAIL below this % of the genome at `qc_min_depth`.",
+                    "default": 30,
+                    "description": "FAIL below this % of the genome at `qc_min_depth`. Default 30; between this and `--qc_pass_min_pct` is WARN (`low_coverage`).",
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 100
@@ -555,6 +534,14 @@
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
+                "primer_check_min_hit_fraction": {
+                    "type": "number",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Fraction of reads that must start within the window of a primer 5' end for a scheme to count as matching (0 disables). Stops sparse schemes whose enrichment ratio is inflated by a tiny window set.",
+                    "fa_icon": "fas fa-ruler"
+                },
                 "primer_check_window": {
                     "type": "integer",
                     "default": 2,
@@ -580,10 +567,18 @@
                 "dropout_min_abundance": {
                     "type": "number",
                     "default": 0.01,
-                    "description": "A lineage counts as detected at this abundance when assessing dropout impact.",
+                    "description": "A lineage counts as detected at this abundance when assessing dropout impact (it is then listed and its defining sites are counted).",
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
+                },
+                "dropout_min_affect_abundance": {
+                    "type": "number",
+                    "default": 0.05,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Minimum abundance of a detected lineage for its DEFINING sites (mutations that separate it from its parent) in a dropped amplicon to raise the dropout flag (`affects_detected_lineage`).",
+                    "fa_icon": "fas fa-percentage"
                 },
                 "unexplained_mutations": {
                     "type": "boolean",
@@ -631,7 +626,7 @@
                 },
                 "unexplained_max_pvalue": {
                     "type": "number",
-                    "default": 1.67e-06,
+                    "default": 1.67e-6,
                     "description": "Binomial guard against depth noise (Bonferroni-style over the genome); 1 disables it.",
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
@@ -760,10 +755,7 @@
                 "aligner": {
                     "type": "string",
                     "default": "bwa",
-                    "enum": [
-                        "bwa",
-                        "minibwa"
-                    ],
+                    "enum": ["bwa", "minibwa"],
                     "description": "Read aligner. `bwa` (bwa mem) is the default and validated choice; `minibwa` is experimental.",
                     "help_text": "minibwa is a young successor of bwa-mem; its alignments are not identical to bwa mem's. Compare with `tests/compare_aligners.sh` before relying on it; see docs/aligner_evaluation.md.",
                     "fa_icon": "fas fa-align-left"
@@ -771,10 +763,7 @@
                 "bam_format": {
                     "type": "string",
                     "default": "bam",
-                    "enum": [
-                        "bam",
-                        "cram"
-                    ],
+                    "enum": ["bam", "cram"],
                     "description": "Format of the published alignments (needs `--save_bam`).",
                     "help_text": "`cram` publishes a reference-based CRAM and its `.crai` instead of the BAM and `.bai` (about a third of the size). Reading a CRAM needs the same reference FASTA (`samtools view --reference ref.fa`). Freyja and all QC steps still use the BAM, which stays in the work directory.",
                     "fa_icon": "fas fa-file-archive"
@@ -823,10 +812,7 @@
                 "lineage_summary_zeros": {
                     "type": "string",
                     "default": "blank",
-                    "enum": [
-                        "blank",
-                        "zero"
-                    ],
+                    "enum": ["blank", "zero"],
                     "description": "How a group with no abundance is written in `lineage_summary.csv`: an empty cell or `0.000000`.",
                     "fa_icon": "fas fa-table"
                 },
@@ -836,6 +822,20 @@
                     "minimum": 0,
                     "maximum": 12,
                     "description": "Decimals of the abundances in `lineage_summary.csv`.",
+                    "fa_icon": "fas fa-table"
+                },
+                "lineage_summary_xlsx": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Also write `summary/lineage_summary.xlsx`: a formatted Excel workbook of the lineage summary (numbers as numbers, frozen header, filter; the CSV is unchanged).",
+                    "fa_icon": "fas fa-file-excel"
+                },
+                "lineage_summary_xlsx_decimals": {
+                    "type": "integer",
+                    "default": 3,
+                    "minimum": 0,
+                    "maximum": 6,
+                    "description": "Decimals shown for abundances in the workbook (display only; the stored values are the CSV values).",
                     "fa_icon": "fas fa-table"
                 },
                 "site_aggregation": {
@@ -851,22 +851,14 @@
                 "site_aggregation_period": {
                     "type": "string",
                     "default": "week",
-                    "enum": [
-                        "week",
-                        "day"
-                    ],
+                    "enum": ["week", "day"],
                     "description": "Time step of the site aggregates: ISO `week` (Monday to Sunday) or `day`.",
                     "fa_icon": "fas fa-calendar-week"
                 },
                 "site_aggregation_weights": {
                     "type": "string",
                     "default": "auto",
-                    "enum": [
-                        "auto",
-                        "viral_load",
-                        "equal",
-                        "site_weight"
-                    ],
+                    "enum": ["auto", "viral_load", "equal", "site_weight"],
                     "description": "Weights of the sites in an aggregate: `viral_load` (the samplesheet column), `site_weight` (the `weight` column of the sites file), `equal`, or `auto` (the best basis available for every site of that week, recorded per row).",
                     "fa_icon": "fas fa-balance-scale"
                 },
@@ -890,6 +882,14 @@
                     "default": false,
                     "description": "Do not build `report_data.json` / `report.html`.",
                     "fa_icon": "fas fa-file-alt"
+                },
+                "report_anonymize": {
+                    "type": "string",
+                    "default": "none",
+                    "enum": ["none", "paths", "full"],
+                    "description": "Remove identifying strings from `report_data.json` and `report.html` so the report can be shared: `paths` (file paths, user and host names), `full` (also sample IDs and site names, replaced by `S001`, `SITE1`, ...).",
+                    "help_text": "`full` also writes the private mapping `summary/sample_id_map.csv`: keep it OUT of anything you share with the report. All other files in `summary/` (for example `qc_summary.tsv`) keep the real IDs. In mode `report` the report data are rebuilt from the summary files when this is not `none`.",
+                    "fa_icon": "fas fa-user-secret"
                 },
                 "mutations_of_interest": {
                     "type": "string",
@@ -927,14 +927,7 @@
                     "description": "Method used to save pipeline results to output directory.",
                     "help_text": "The Nextflow `publishDir` option specifies which intermediate files should be saved to the output directory. This option tells the pipeline what method should be used to move these files. See [Nextflow docs](https://www.nextflow.io/docs/latest/process.html#publishdir) for details.",
                     "fa_icon": "fas fa-copy",
-                    "enum": [
-                        "symlink",
-                        "rellink",
-                        "link",
-                        "copy",
-                        "copyNoFollow",
-                        "move"
-                    ],
+                    "enum": ["symlink", "rellink", "link", "copy", "copyNoFollow", "move"],
                     "hidden": true
                 },
                 "email_on_fail": {
@@ -978,10 +971,7 @@
                     "hidden": true
                 },
                 "help": {
-                    "type": [
-                        "boolean",
-                        "string"
-                    ],
+                    "type": ["boolean", "string"],
                     "description": "Display the help message."
                 },
                 "help_full": {

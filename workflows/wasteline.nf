@@ -113,13 +113,19 @@ workflow WASTELINE {
             newLine: true
         )
 
+    if (params.report_anonymize == 'full' && mode != 'update_db' && !params.skip_report) {
+        log.warn "--report_anonymize full: sample IDs and site names are replaced in report_data.json and report.html only. summary/sample_id_map.csv maps them back and must NOT be shared with the report; the other files in summary/ (qc_summary.tsv, ...) keep the real IDs."
+    }
+
     if (mode == 'report') {
         //
         // Rebuild report.html from a finished run (--results_dir); nothing else runs
         //
         def results = file(params.results_dir)
         def existing_data = file("${results}/summary/report_data.json")
-        if (existing_data.exists()) {
+        // report_data.json is rebuilt from the summary files when the report must be anonymised: the renderer has no
+        // anonymisation of its own, and an existing report_data.json holds the real IDs
+        if (existing_data.exists() && params.report_anonymize == 'none') {
             // the run already wrote report_data.json: only the HTML is rendered again
             RENDER_REPORT(channel.value(existing_data), file("${projectDir}/assets/templates/report.html.j2"))
         }

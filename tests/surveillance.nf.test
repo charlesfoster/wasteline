@@ -71,6 +71,57 @@ nextflow_pipeline {
         }
     }
 
+    test("-stub: --report_anonymize full publishes the private id map; paths and none do not") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                report_anonymize = 'full'
+            }
+        }
+
+        then {
+            def log_text = new File("$outputDir/../meta/nextflow.log").text
+            assertAll(
+                { assert workflow.success },
+                { assert new File("$outputDir/summary/sample_id_map.csv").exists() },
+                { assert new File("$outputDir/summary/report.html").length() > 0 },
+                // the map must not be shared with the report: the log says so, once
+                { assert log_text.count('summary/sample_id_map.csv maps them back and must NOT be shared') == 1 }
+            )
+        }
+    }
+
+    test("-stub: --report_anonymize paths writes no id map") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            params {
+                outdir   = "$outputDir"
+                input    = absoluteSamplesheet(outputDir, projectDir, 'data', 'samplesheet.csv')
+                barcodes = 'latest'
+                db_dir   = "$outputDir/db"
+                report_anonymize = 'paths'
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert !new File("$outputDir/summary/sample_id_map.csv").exists() },
+                { assert new File("$outputDir/summary/report.html").length() > 0 }
+            )
+        }
+    }
+
     test("-stub: --freyja_growth and --freyja_dash publish the growth-rate table and the dashboard") {
 
         tag "stub"

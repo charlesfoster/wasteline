@@ -319,6 +319,17 @@ def check_analyses(c, out, samples, mode, have_amplicons, declared_scheme):
                 f"{sample}: the declared scheme is among the best-matching schemes",
                 str(row.get("primer_scheme_best")),
             )
+            summary_path = (
+                out / "samples" / sample / "coverage" / f"{sample}.primer_scheme_summary.tsv"
+            )
+            if summary_path.exists():
+                scheme = read_tsv(summary_path)[0]
+                hit = scheme.get("declared_hit_fraction", "NA")
+                c.check(
+                    hit not in ("", "NA") and float(hit) >= 0.05,
+                    f"{sample}: the declared scheme's hit fraction is above the floor (0.05)",
+                    str(hit),
+                )
             pct = row.get("primer_trimmed_pct", "NA")
             c.check(
                 pct not in ("", "NA") and float(pct) > 0,
@@ -340,6 +351,20 @@ def check_analyses(c, out, samples, mode, have_amplicons, declared_scheme):
         )
         if path.exists():
             rows = read_tsv(path)
+            c.check(
+                {"n_defining_sites", "n_differential_sites"} <= set(rows[0]) if rows else True,
+                "dropout_impact.tsv has the defining-site columns",
+            )
+            summary_rows = read_tsv(summary / "dropout_impact_summary.tsv")
+            c.check(
+                {"defining_sites_total", "defining_sites_lost", "pct_defining_sites_lost"}
+                <= set(
+                    summary_rows[0]
+                    if summary_rows
+                    else {"defining_sites_total", "defining_sites_lost", "pct_defining_sites_lost"}
+                ),
+                "dropout_impact_summary.tsv has the defining-site columns",
+            )
             for sample, info in samples.items():
                 if info["expected_demix_status"] != "ok" or info["sample_type"] != "sample":
                     continue
@@ -358,6 +383,11 @@ def check_analyses(c, out, samples, mode, have_amplicons, declared_scheme):
                 c.check(
                     "XBB.1.5" in by_amplicon.get("nCoV-2019_22", {}).get("affected_lineages", ""),
                     "dropout impact: nCoV-2019_22 loses XBB.1.5-defining sites",
+                )
+                c.check(
+                    int(by_amplicon.get("nCoV-2019_22", {}).get("n_defining_sites") or 0) > 0
+                    and by_amplicon.get("nCoV-2019_7", {}).get("n_defining_sites") == "0",
+                    "dropout impact: defining sites are lost in nCoV-2019_22 and none in nCoV-2019_7",
                 )
                 c.check(
                     by_amplicon.get("nCoV-2019_7", {}).get("affects_detected_lineage") == "false",
@@ -406,6 +436,7 @@ def check_lineage_groups(c, out, samples, expect):
     summary = out / "summary"
     names = [
         "lineage_summary.csv",
+        "lineage_summary.xlsx",
         "lineage_groups_resolved.tsv",
         "lineage_groups_used.csv",
         "lineage_ungrouped_summary.tsv",
@@ -420,6 +451,20 @@ def check_lineage_groups(c, out, samples, expect):
         c.check((summary / name).exists(), f"{name} exists")
     if not all((summary / n).exists() for n in names):
         return
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(summary / "lineage_summary.xlsx") as workbook:
+            bad_member = workbook.testzip()
+            sheets = re.findall(r'<sheet name="([^"]+)"', workbook.read("xl/workbook.xml").decode())
+    except (zipfile.BadZipFile, KeyError, OSError) as exc:
+        bad_member, sheets = str(exc), []
+    c.check(
+        bad_member is None
+        and {"Lineage summary", "Ungrouped lineages", "Groups used", "About"} <= set(sheets),
+        "lineage_summary.xlsx is a valid workbook with its sheets",
+        f"{bad_member} {sheets}",
+    )
     default_groups = Path(__file__).resolve().parents[1] / "assets" / "lineage_groups.csv"
     c.check(
         (summary / "lineage_groups_used.csv").read_bytes() == default_groups.read_bytes(),

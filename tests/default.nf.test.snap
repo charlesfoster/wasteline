@@ -330,6 +330,7 @@
                 "summary/lineage_groups_resolved.tsv",
                 "summary/lineage_groups_used.csv",
                 "summary/lineage_summary.csv",
+                "summary/lineage_summary.xlsx",
                 "summary/lineage_ungrouped_summary.tsv",
                 "summary/qc_summary.tsv",
                 "summary/report.html",
@@ -338,7 +339,7 @@
                 "summary/unexplained_mutations.tsv"
             ]
         ],
-        "timestamp": "2026-10-19T12:53:44.570651",
+        "timestamp": "2026-10-20T09:04:18.00688",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

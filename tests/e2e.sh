@@ -390,6 +390,45 @@ PYCHECK
     fi
 done
 
+# 9d. --report_anonymize full: the report (and report_data.json) carry no sample ID, site, path or user name; the private
+#     id map is published and the other summary files keep the real IDs
+run anonymize --mode full --report_anonymize full --primer_scheme midnight --input "$SCRATCH/samplesheet_two.csv" --barcodes "$BARCODES" "${LS_OFF[@]}"
+"${PY[@]}" - "$SCRATCH" "$REPO" << 'PYCHECK' || fail=1
+import csv, getpass, json, sys
+from pathlib import Path
+
+scratch, repo = Path(sys.argv[1]), sys.argv[2]
+summary = scratch / "out_anonymize" / "summary"
+html = (summary / "report.html").read_text()
+data = (summary / "report_data.json").read_text()
+secrets = ["MIX_A", "PURE_C", "SiteA", "SiteB", str(scratch), repo, getpass.getuser()]
+leaks = [x for x in secrets if x and (x in html or x in data)]
+id_map = list(csv.DictReader((summary / "sample_id_map.csv").open()))
+originals = {r["original"] for r in id_map}
+qc = (summary / "qc_summary.tsv").read_text()
+ok = (
+    not leaks
+    and {"MIX_A", "PURE_C", "SiteA", "SiteB"} <= originals
+    and json.loads(data).get("anonymized") == "full"
+    and "MIX_A" in qc  # the other summary files keep the real IDs (documented)
+)
+print(("PASS" if ok else "FAIL") + f"  --report_anonymize full: no ID/site/path/user in report.html or report_data.json ({leaks or 'none found'}), id map published")
+sys.exit(0 if ok else 1)
+PYCHECK
+# report mode rebuilds report_data.json (it exists in the results) when the report must be anonymised
+run report_anonymized --mode report --results_dir "$SCRATCH/out_full" --report_anonymize paths
+"${PY[@]}" - "$SCRATCH" "$REPO" << 'PYCHECK' || fail=1
+import getpass, sys
+from pathlib import Path
+
+scratch, repo = Path(sys.argv[1]), sys.argv[2]
+html = (scratch / "out_report_anonymized" / "summary" / "report.html").read_text()
+leaks = [x for x in (str(scratch), repo, getpass.getuser()) if x and x in html]
+ok = not leaks and "MIX_A" in html and not (scratch / "out_report_anonymized" / "summary" / "sample_id_map.csv").exists()
+print(("PASS" if ok else "FAIL") + f"  mode report --report_anonymize paths: rebuilt without paths or user name ({leaks or 'none found'}), sample IDs kept, no id map")
+sys.exit(0 if ok else 1)
+PYCHECK
+
 # 10. replay the full run: bin/replay_run.py reconstructs the command from run_info.json (the original is untouched);
 #     the replayed demix files are byte-identical and the barcodes come from the recorded custom file
 mkdir -p "$SCRATCH/launch_replay"
@@ -405,6 +444,30 @@ for demix in "$SCRATCH"/out_full/samples/*/freyja/*.demix; do
     same "$(basename "$rel") (replay)" "$demix" "$SCRATCH/out_replay/$rel"
 done
 checksums "$SCRATCH/out_full" | diff - "$SCRATCH/out_full.sha256" && echo "original results unchanged by the replay"
+
+# 11. bin/reanalyse_runs.py: a dry run lists the full run and prints the command, writing nothing; --diff of two demixes of
+#     the same variants with the same barcodes flags nothing; one real --execute with the bundled (container) barcodes, which
+#     differ from the recorded test barcodes, makes a NEW directory with a diff CSV (the same barcodes would be `up to date`)
+before=$(cd "$SCRATCH" && find . -maxdepth 3 -not -name "reanalyse_*" | sort | shasum -a 256)
+python3 "$REPO/bin/reanalyse_runs.py" "$SCRATCH" --runs out_full --barcodes container --pipeline-dir "$REPO" > "$SCRATCH/reanalyse_dry.txt" 2>&1 || fail=1
+after=$(cd "$SCRATCH" && find . -maxdepth 3 -not -name "reanalyse_*" | sort | shasum -a 256)
+if grep -q "out_full" "$SCRATCH/reanalyse_dry.txt" && grep -q "nextflow run" "$SCRATCH/reanalyse_dry.txt" && grep -q -- "--mode demix" "$SCRATCH/reanalyse_dry.txt" && [ "$before" = "$after" ]; then
+    echo "PASS  reanalyse_runs.py dry run: finds out_full, prints the demix command, writes nothing"
+else
+    echo "FAIL  reanalyse_runs.py dry run"; fail=1
+fi
+python3 "$REPO/bin/reanalyse_runs.py" --diff "$SCRATCH/out_full" "$SCRATCH/out_demix" --report "$SCRATCH/diff_same_barcodes.csv" > "$SCRATCH/reanalyse_diff.txt" 2>&1 || fail=1
+flagged=$(awk -F, 'NR > 1 && $0 ~ /,yes(,|$)/' "$SCRATCH/diff_same_barcodes.csv" | wc -l | tr -d ' ')
+[ "$flagged" -eq 0 ] && echo "PASS  reanalyse_runs.py --diff of the full run and its demix (same barcodes): 0 flagged" || { echo "FAIL  --diff flagged $flagged row(s)"; fail=1; }
+mkdir -p "$SCRATCH/launch_reanalysis"
+(cd "$SCRATCH/launch_reanalysis" && python3 "$REPO/bin/reanalyse_runs.py" "$SCRATCH" --runs out_full --barcodes container --pipeline-dir "$REPO" \
+    --execute --outdir-suffix _reanalysis_test --extra-args "-work-dir $SCRATCH/work_reanalysis" --report "$SCRATCH/reanalysis_diff.csv") || fail=1
+if [ -f "$SCRATCH/out_full_reanalysis_test/summary/reanalysis_diff.csv" ] && [ -f "$SCRATCH/out_full_reanalysis_test/summary/freyja_aggregated.tsv" ]; then
+    echo "PASS  reanalyse_runs.py --execute: new directory with the re-analysed results and reanalysis_diff.csv"
+else
+    echo "FAIL  reanalyse_runs.py --execute produced no reanalysis_diff.csv"; fail=1
+fi
+checksums "$SCRATCH/out_full" | diff - "$SCRATCH/out_full.sha256" && echo "original results unchanged by the re-analysis"
 
 [ "$fail" -eq 0 ] && echo "E2E OK" || echo "E2E FAILED"
 exit $fail
