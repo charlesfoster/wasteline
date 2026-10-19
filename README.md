@@ -74,8 +74,10 @@ profiles).
   `lineage_ungrouped_summary.tsv` shows which lineages the list does not cover yet.
 - **Site aggregation.** `--site_aggregation sites.csv` combines per-site results into groups of sites (weekly, weighted by viral
   load or population served) by averaging the **results**, never by pooling reads; `summary/site_aggregates_*.tsv`.
+- **Shareable report.** `--report_anonymize paths|full` removes file paths, user names and (with `full`) sample IDs and site names from
+  the report; the lineage summary also comes as a formatted Excel workbook (`summary/lineage_summary.xlsx`).
 - **Optional** mutations-of-interest tracking; `--bam_format cram` for much smaller alignments; `--aligner minibwa` (experimental,
-  see [docs/aligner_evaluation.md](docs/aligner_evaluation.md)); `bin/replay_run.py` rebuilds the exact command of a recorded run.
+  see [docs/aligner_evaluation.md](docs/aligner_evaluation.md)); `bin/replay_run.py` rebuilds the exact command of a recorded run, and `bin/reanalyse_runs.py` re-estimates past runs with newer Freyja barcodes (no re-mapping) and shows what changed ([docs/reanalysis.md](docs/reanalysis.md)).
 - **One offline HTML report**: run-level flags, QC table, lineage abundance bars and heatmap, coverage tracks, amplicon dropout,
   demix status, negative controls, barcode comparison, provenance. Readable with 100+ samples (see [docs/report.md](docs/report.md)).
 - Helper scripts to make and check samplesheets, including from the results of a previous (or legacy Snakemake) run.

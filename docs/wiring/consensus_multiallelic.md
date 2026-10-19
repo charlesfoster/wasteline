@@ -57,19 +57,19 @@ second row that is not a member now leaves the ALT plain when the reference is a
 Tested in `quay.io/biocontainers/bcftools:1.23--h3a4d415_0` on a hand-made VCF over `ACGTACGT...`: polyploid GTs ARE
 honoured and give the union of the listed alleles, independent of allele order.
 
-| REF | ALT | GT | consensus |
-| --- | --- | --- | --- |
-| A | C,G | `1/2` | `S` |
-| C | G,T | `1/2` | `K` |
-| G | A,T | `0/1/2` | `D` (G,A,T) |
-| T | A,C,G | `0/1/2/3` | `N` (all four) |
-| A | C,G,T | `1/2/3` | `B` |
-| C | A,G | `0/1/2` | `V` |
-| G | C,T | `0/1/2` | `B` |
-| T | A,C | `0/1/2` | `H` |
-| A | G | `0/1` | `R` |
-| T | A,G | `1/2` | `R` |
-| G | A,T | `1/2` | `W` |
+| REF | ALT   | GT        | consensus      |
+| --- | ----- | --------- | -------------- |
+| A   | C,G   | `1/2`     | `S`            |
+| C   | G,T   | `1/2`     | `K`            |
+| G   | A,T   | `0/1/2`   | `D` (G,A,T)    |
+| T   | A,C,G | `0/1/2/3` | `N` (all four) |
+| A   | C,G,T | `1/2/3`   | `B`            |
+| C   | A,G   | `0/1/2`   | `V`            |
+| G   | C,T   | `0/1/2`   | `B`            |
+| T   | A,C   | `0/1/2`   | `H`            |
+| A   | G     | `0/1`     | `R`            |
+| T   | A,G   | `1/2`     | `R`            |
+| G   | A,T   | `1/2`     | `W`            |
 
 So no fallback to "the two highest-frequency members" is needed. If a future bcftools stopped honouring them, the pytest
 `test_cases_default` (three/four-member sites) and the nf-test "multi-allelic sites: one IUPAC code ..." fail.
@@ -88,16 +88,16 @@ separate "expected" tone. Existing test `SNV inside a deleted span` was updated 
 
 ## Real-data check (read-only on run1, scratch outputs only; before = HEAD modules, after = new modules, same inputs)
 
-| Sample | Position | Old | New | Why |
-| --- | --- | --- | --- | --- |
-| WW-1274E | 23604 | S | R | C>G 0.61 + C>A 0.39: {G,A} |
-| WW-1275E | 22942 | K | R | T>G 0.68 + T>A 0.29: {G,A} |
-| WW-1275E | 23485 | W | A | G 0.056 + C 0.001 + A 0.728 (f_ref 0.21, one member): plain A (rule c, absent reference) |
-| WW-1277E | 22896 | K | S | T>G 0.58 + T>C 0.42: {G,C} |
-| WW-1277E | 22942 | W | A | G 0.27 (3 reads, not a member) + A 0.55 (f_ref 0.18): plain A (rule c) |
-| WW-1278E | 22896 | W | A | A 0.58 + C 0.24 + G 0.18, reference absent: plain A (rule c) |
-| WW-1280E | 22896 | K | S | T>C 0.56 + T>G 0.43: {C,G} |
-| WW-1276E, 1279E, 1281E, 1282E | - | - | - | no consensus difference |
+| Sample                        | Position | Old | New | Why                                                                                      |
+| ----------------------------- | -------- | --- | --- | ---------------------------------------------------------------------------------------- |
+| WW-1274E                      | 23604    | S   | R   | C>G 0.61 + C>A 0.39: {G,A}                                                               |
+| WW-1275E                      | 22942    | K   | R   | T>G 0.68 + T>A 0.29: {G,A}                                                               |
+| WW-1275E                      | 23485    | W   | A   | G 0.056 + C 0.001 + A 0.728 (f_ref 0.21, one member): plain A (rule c, absent reference) |
+| WW-1277E                      | 22896    | K   | S   | T>G 0.58 + T>C 0.42: {G,C}                                                               |
+| WW-1277E                      | 22942    | W   | A   | G 0.27 (3 reads, not a member) + A 0.55 (f_ref 0.18): plain A (rule c)                   |
+| WW-1278E                      | 22896    | W   | A   | A 0.58 + C 0.24 + G 0.18, reference absent: plain A (rule c)                             |
+| WW-1280E                      | 22896    | K   | S   | T>C 0.56 + T>G 0.43: {C,G}                                                               |
+| WW-1276E, 1279E, 1281E, 1282E | -        | -   | -   | no consensus difference                                                                  |
 
 All 9 samples: status `ok`, length 29903 before and after, every `-` is identical (WW-1275E: 20 in total, the nine at
 11288-11296 among them). Warnings before: 9 in 7 samples (22942, 23604, 22896 x2, 28370 x4, 29759); after: 5, all

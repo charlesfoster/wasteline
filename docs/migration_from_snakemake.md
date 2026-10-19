@@ -139,6 +139,13 @@ file is described in [output.md](output.md).
 
 ## 4. The QC table
 
+**The coverage thresholds changed.** The old pipeline judged a sample PASS from **80 %** of the genome at depth (and FAIL below 50 %).
+wasteline's defaults are calibrated on real wastewater data (28 QIAseq samples, in which only 3 reach 80 % and the median is 58 %, mostly
+because of amplicon dropout): `--qc_pass_min_pct 60` (PASS), `--qc_fail_below_pct 30` (FAIL), and `--min_genome_coverage_for_demix 50` (the
+high-confidence threshold below which a sample is not demixed; it was 60). Samples that were PASS/WARN/FAIL in the old pipeline can
+therefore get a different status with the same data. To judge as before, pass `--qc_pass_min_pct 80 --qc_fail_below_pct 50
+--min_genome_coverage_for_demix 60`.
+
 `<name>_QC.csv` (comma-separated) becomes `summary/qc_summary.tsv` (tab-separated, `NA` for missing values, one row per
 sample including negatives).
 

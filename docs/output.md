@@ -184,10 +184,10 @@ and the remaining columns of the same file (the demix, consensus and barcode col
 
 ```
 sample         qc_status  qc_reasons                      demix_status          demix_reason                                   consensus_length  consensus_n_pct  barcode_version
-LOWCOV_D       FAIL       low_coverage;amplicon_dropout   skipped_low_coverage  less than 60% of the genome covered at >= 10x  29903             100.00           custom
+LOWCOV_D       FAIL       low_coverage;amplicon_dropout   skipped_low_coverage  less than 50% of the genome covered at >= 10x  29903             100.00           custom
 MIX_A          PASS                                       ok                    NA                                             29903             1.38             custom
 NEG_CONTAM     FAIL       ntc_reads                       ok                    NA                                             NA                NA               custom
-NEG_E          PASS                                       skipped_low_coverage  less than 60% of the genome covered at >= 10x  NA                NA               custom
+NEG_E          PASS                                       skipped_low_coverage  less than 50% of the genome covered at >= 10x  NA                NA               custom
 Site_1_week_2  WARN       amplicon_dropout                ok                    NA                                             29903             6.94             custom
 ```
 
@@ -235,8 +235,8 @@ QC rules (thresholds are parameters; defaults shown):
 | ----------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------ |
 | sample      | FAIL                     | no mapped reads or all depths 0                                                                                    | `no_reads`               |
 | sample      | FAIL                     | depths unreadable or empty                                                                                         | `no_depths`              |
-| sample      | FAIL                     | % genome at `--qc_min_depth` (10x) below `--qc_fail_below_pct` (50)                                                | `low_coverage`           |
-| sample      | WARN                     | % genome at `--qc_min_depth` below `--qc_pass_min_pct` (80)                                                        | `low_coverage`           |
+| sample      | FAIL                     | % genome at `--qc_min_depth` (10x) below `--qc_fail_below_pct` (30)                                                | `low_coverage`           |
+| sample      | WARN                     | % genome at `--qc_min_depth` below `--qc_pass_min_pct` (60)                                                        | `low_coverage`           |
 | sample      | WARN (if otherwise PASS) | more than `--qc_max_dropped_amplicons` (1) amplicons dropped                                                       | `amplicon_dropout`       |
 | sample      | WARN (if otherwise PASS) | the declared primer scheme does not match the reads (`primer_scheme_check` is `mismatch`)                          | `primer_scheme_mismatch` |
 | sample      | WARN (if otherwise PASS) | `primer_trimmed_pct` below `--qc_min_primer_trimmed_pct` (off by default)                                          | `low_primer_trimming`    |
@@ -281,10 +281,10 @@ One row per sample, **whatever happened to it**. Sorted by `sample`. Real conten
 
 ```
 sample         status                reason                                          genome_coverage_pct  barcode_version  barcode_version_iso
-LOWCOV_D       skipped_low_coverage  less than 60% of the genome covered at >= 10x   0.0                  custom
+LOWCOV_D       skipped_low_coverage  less than 50% of the genome covered at >= 10x   0.0                  custom
 MIX_A          ok                                                                    99.3345              custom
 NEG_CONTAM     ok                                                                    94.5457              custom
-NEG_E          skipped_low_coverage  less than 60% of the genome covered at >= 10x   0.0                  custom
+NEG_E          skipped_low_coverage  less than 50% of the genome covered at >= 10x   0.0                  custom
 Site_1_week_2  ok                                                                    93.0576              custom
 ```
 
@@ -299,7 +299,7 @@ Site_1_week_2  ok                                                               
 
 The coverage gate exists because Freyja reports a confident-looking answer even at very low depth (the 0.6x sample
 `LOWCOV_D` demixes to a single lineage with Freyja `coverage` 0.0); only the gate keeps such a result out. It is on by
-default (`--min_genome_coverage_for_demix 60`). A sample with essentially no mapped reads (`NEG_E`) is routed to
+default (`--min_genome_coverage_for_demix 50`). A sample with essentially no mapped reads (`NEG_E`) is routed to
 `skipped_low_coverage` as well, because `freyja demix` would crash on its header-only variants file.
 
 `missing` rows appear in `demix`/`aggregate` runs for samples found in `--previous_results` that cannot be used: a
@@ -477,9 +477,9 @@ coverage gate skipped is `skipped_low_coverage` again):
 
 ```
 sample         status                reason                                         barcode_version
-LOWCOV_D       skipped_low_coverage  less than 60% of the genome covered at >= 10x  09_17_2026-00-46
+LOWCOV_D       skipped_low_coverage  less than 50% of the genome covered at >= 10x  09_17_2026-00-46
 MIX_A          ok                                                                   09_17_2026-00-46
-NEG_E          skipped_low_coverage  less than 60% of the genome covered at >= 10x  09_17_2026-00-46
+NEG_E          skipped_low_coverage  less than 50% of the genome covered at >= 10x  09_17_2026-00-46
 ```
 
 A second demix that fails is never fatal: it is `failed` here and in `.compare.demix_status.json`, the sample has no
@@ -542,56 +542,68 @@ For a `latest` or `container` run `barcode_version` is the stamp (for example `0
 Which dropped amplicons matter for the lineages that were detected ([usage.md](usage.md#dropout-impact)). Written in `full`
 mode (amplicon protocol) and in `demix` mode with an explicit primer scheme; not in other modes, and skipped with one warning
 when the Freyja dataset has no readable mutation lists (a `.feather`-only custom `--barcodes`). `dropout_impact.tsv` has one row per
-**dropped** amplicon of each sample (the header is always written):
+**dropped** amplicon of each sample (the header is always written). Real rows (synthetic `Site_1_week_2`; the test barcodes have no
+lineage hierarchy, so every lineage is its own root and all its informative sites are defining):
 
 ```
-sample         amplicon      start  end    mean_depth  n_informative_sites  n_sites_in_detected_lineages  affects_detected_lineage  affected_lineages
-Site_1_week_2  nCoV-2019_7   6284   7401   4.66        5                    0                             false                     NA
-Site_1_week_2  nCoV-2019_22  21533  22612  5.22        28                   10                            true                      XBB.1.5:9,BA.2:3,BA.5:3
+sample         amplicon      start  end    mean_depth  n_informative_sites  n_sites_in_detected_lineages  affects_detected_lineage  affected_lineages        n_defining_sites  n_differential_sites
+Site_1_week_2  nCoV-2019_7   6284   7401   4.66        5                    0                             false                     NA                       0                 0
+Site_1_week_2  nCoV-2019_22  21533  22612  5.22        28                   10                            true                      XBB.1.5:9,BA.2:3,BA.5:3  10                8
 ```
 
-| Column                                             | Meaning                                                                                                                                               |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sample`, `amplicon`, `start`, `end`, `mean_depth` | As in `amplicon_coverage.tsv`.                                                                                                                        |
-| `n_informative_sites`                              | Single-nucleotide sites inside the amplicon that some, but not nearly all, lineages of the dataset carry (fixed mutations cannot separate lineages).  |
-| `n_sites_in_detected_lineages`                     | Of those, the number carried by lineages detected in the sample (abundance >= `--dropout_min_abundance`); `NA` for a sample without an aggregate row. |
-| `affects_detected_lineage`                         | `true` when a detected lineage carries at least one informative site in the amplicon.                                                                 |
-| `affected_lineages`                                | Up to five detected lineages with their site counts (`name:count`), most affected first; `NA` if none.                                                |
+Two kinds of sites: an **informative** site is a single-nucleotide substitution carried by some but not nearly all (< 95 %) lineages of
+the dataset; a **defining** site of a lineage is an informative site that the lineage carries and its **parent** does not (parent from
+the dataset's `lineages.yml`; the nearest ancestor with a barcode when the parent has none; a recombinant root does not count the
+sites of its recombinant parents as its own; without `lineages.yml` the parent is guessed from the name, with a warning).
+
+| Column                                             | Meaning                                                                                                                                                                                        |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`, `amplicon`, `start`, `end`, `mean_depth` | As in `amplicon_coverage.tsv`.                                                                                                                                                                 |
+| `n_informative_sites`                              | Informative sites inside the amplicon.                                                                                                                                                         |
+| `n_sites_in_detected_lineages`                     | Of those, the number carried by lineages detected in the sample (abundance >= `--dropout_min_abundance`, 0.01); `NA` for a sample without an aggregate row.                                    |
+| `affects_detected_lineage`                         | `true` when a lineage detected at `--dropout_min_affect_abundance` (0.05) or more has at least one **defining** site in the amplicon.                                                          |
+| `affected_lineages`                                | Up to five detected lineages (>= 0.01) with their number of **defining** sites in the span (`name:count`), most first; `NA` if none. Lineages below 0.05 are listed but do not raise the flag. |
+| `n_defining_sites`                                 | Distinct defining sites in the amplicon, over all detected lineages; `NA` without an aggregate row.                                                                                            |
+| `n_differential_sites`                             | Sites in the amplicon carried by some but not all detected lineages (0 with fewer than two detected). Reported, not part of the flag.                                                          |
 
 `dropout_impact_summary.tsv` has one row per sample of the amplicon table (zeros when nothing dropped):
 
 ```
-sample         n_dropped_amplicons  informative_sites_total  informative_sites_in_dropped  pct_informative_sites_lost  n_dropped_affecting_detected_lineages
-MIX_A          0                    244                      0                             0.00                        0
-NEG_E          29                   244                      244                           100.00                      NA
-Site_1_week_2  2                    244                      33                            13.52                       1
+sample         n_dropped_amplicons  informative_sites_total  informative_sites_in_dropped  pct_informative_sites_lost  n_dropped_affecting_detected_lineages  defining_sites_total  defining_sites_lost  pct_defining_sites_lost
+MIX_A          0                    244                      0                             0.00                        0                                      89                    0                    0.00
+NEG_E          29                   244                      244                           100.00                      NA                                     NA                    NA                   NA
+Site_1_week_2  2                    244                      33                            13.52                       1                                      94                    10                   10.64
 ```
 
-(The 244 informative sites are those of the small test barcode file; with a real Freyja dataset there are thousands.) Samples
-that were not demixed (skipped, negative controls) have `NA` for the lineage columns.
+`n_dropped_affecting_detected_lineages` counts the dropped amplicons where the flag is `true`. `defining_sites_total` is the number of
+distinct defining sites of the detected lineages inside the union of the sample's amplicon spans, `defining_sites_lost` those inside the
+union of the dropped spans, `pct_defining_sites_lost` their share (`NA` when the total is 0). Samples that were not demixed (skipped,
+negative controls) have `NA` for the lineage columns. (The 244 informative sites are those of the small test barcode file; with a real
+Freyja dataset there are thousands, and far fewer amplicons are flagged than under the earlier "any informative site" rule.)
 
 ### `summary/unexplained_mutations.tsv`
 
 Frequent single-nucleotide variants that the demixed lineage mixture does not predict
 ([usage.md](usage.md#unexplained-mutations)), for all non-negative samples of modes `full` and `demix`. The header is always
 written; on the synthetic samples at the default thresholds the table is empty. The per-sample tables are in
-`samples/<s>/variants/<s>.unexplained_mutations.tsv` (without `n_samples` and `recurrent`, which are added when the tables are
-combined). A real row (a spiked variant in the synthetic `PURE_C` test fixture):
+`samples/<s>/variants/<s>.unexplained_mutations.tsv` (without `n_samples` and `recurrent`, which are inserted before `p_value` when the tables are
+combined; at most 100 rows per sample, the largest excess first). A real row (a spiked variant in the synthetic `PURE_C` test fixture):
 
 ```
-sample  position  ref  alt  observed_freq  expected_freq  excess  depth  alt_depth  gene  aa_change  effect       n_samples  recurrent  p_value
-PURE_C  22102     A    T    0.3            0              0.3     120    36         S     E180D      missense     1          false      2.39e-42
-PURE_C  28802     A    T    0.18           0              0.18    100    18         N     R177*      stop_gained  1          false      1.41e-17
+sample  position  ref  alt  observed_freq  expected_freq  excess  depth  alt_depth  gene  aa_change  effect       n_samples  recurrent  p_value   in_dataset
+PURE_C  22102     A    T    0.3            0              0.3     120    36         S     E180D      missense     1          false      2.39e-42  false
+PURE_C  28802     A    T    0.18           0              0.18    100    18         N     R177*      stop_gained  1          false      1.41e-17  false
 ```
 
-| Column                                | Meaning                                                                                                                                                 |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `observed_freq`, `depth`, `alt_depth` | From the ivar variants (`ALT_FREQ`, `TOTAL_DP`, `ALT_DP`).                                                                                              |
-| `expected_freq`                       | What the demixed lineages predict: the sum over detected lineages of abundance times "carries the mutation".                                            |
-| `excess`                              | `observed_freq - expected_freq`.                                                                                                                        |
-| `gene`, `aa_change`, `effect`         | Annotation from the GFF3 (`NA` / `intergenic` outside coding sequence).                                                                                 |
-| `n_samples`, `recurrent`              | In how many samples the same position and alternate base are unexplained; `true` at `--unexplained_min_recurrence` samples or more.                     |
-| `p_value`                             | Binomial p-value of the alternate-read count against the expected frequency (or a small background rate), see [parameters.md](parameters.md#qc-checks). |
+| Column                                | Meaning                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `observed_freq`, `depth`, `alt_depth` | From the ivar variants (`ALT_FREQ`, `TOTAL_DP`, `ALT_DP`).                                                                                                                                                                                                                                                   |
+| `expected_freq`                       | What the demixed lineages predict: the sum over detected lineages of abundance times "carries the mutation".                                                                                                                                                                                                 |
+| `excess`                              | `observed_freq - expected_freq`.                                                                                                                                                                                                                                                                             |
+| `gene`, `aa_change`, `effect`         | Annotation from the GFF3 (`NA` / `intergenic` outside coding sequence).                                                                                                                                                                                                                                      |
+| `n_samples`, `recurrent`              | In how many samples the same position and alternate base are unexplained; `true` at `--unexplained_min_recurrence` samples or more.                                                                                                                                                                          |
+| `p_value`                             | Binomial p-value of the alternate-read count against the expected frequency (or a small background rate), see [parameters.md](parameters.md#qc-checks). Computed in log space and **floored at `1e-300`**: `1e-300` means "at most 1e-300" (never `0`).                                                      |
+| `in_dataset`                          | Last column. `true` when at least one lineage of the dataset (any lineage, not only the demixed ones) carries this exact mutation, `false` when none does (a blind spot of the dataset's mutation list, or a genuinely novel change: the table cannot tell which). It does not change the call or the order. |
 
 ### `summary/freyja_timeseries.tsv` and `summary/freyja_timeseries_lineages.tsv`
 
@@ -725,6 +737,47 @@ Metro_2026-W03  Metro           2026-W03  2026-01-12    3                 SiteA;
 In week 2026-W03 of the example, the XBB.1.5 abundance of `Metro` is 0.107045: the viral-load-weighted mean of the three sites' own XBB.1.5
 values (0.183810, 0.096653, 0.044999) with their mean loads as weights.
 
+### `summary/lineage_summary.xlsx`
+
+The lineage summary as a formatted Excel workbook (`--lineage_summary_xlsx`, on by default; written next to the CSV, same conditions).
+It opens in Excel, Numbers and LibreOffice without an import step. **The CSV is the source of truth; the workbook is a formatted
+copy for people.** No date or time is stored, so the file changes only when the results change.
+
+| Sheet                | Content                                                                                                                                                                                                         |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Lineage summary`    | The CSV, same columns in the same order. Group columns, `other`, `proportion_summary` and `genome_coverage_pct` are numeric cells; blank zeros are empty cells; the lineage lists and `status_reason` are text. |
+| `Ungrouped lineages` | `lineage_ungrouped_summary.tsv`.                                                                                                                                                                                |
+| `Site aggregates`    | `lineage_summary_site_aggregates.csv`; only with `--site_aggregation`.                                                                                                                                          |
+| `Groups used`        | The groups file: `group, include, exclude, in_total`.                                                                                                                                                           |
+| `About`              | The pipeline version, the Freyja dataset version, the groups-file checksum, the thresholds used and short notes on the columns.                                                                                 |
+
+Formatting: bold, filtered header row; header row and first column frozen; wrapped lineage lists; numbers right-aligned with
+`--lineage_summary_xlsx_decimals` (3) decimals (coverage 2); sample IDs and dates are always text (`007` stays `007`); group and
+`other` abundances are shaded in six fixed blue buckets (`0-0.05`, `<0.10`, `<0.20`, `<0.35`, `<0.50`, `>=0.50`; blank and zero cells are
+not shaded; the shading is static). A cell is never a formula, whatever the sample ID contains. If the workbook cannot be written the
+run still finishes with all the CSV and TSV files (a warning is in the process log).
+
+### `summary/sample_id_map.csv`
+
+Only with `--report_anonymize full` ([usage.md](usage.md#sharing-a-report)): the **private** table that translates the pseudonyms of
+the anonymised report back (`type,original,pseudonym`; types `sample`, `site`, `aggregate`):
+
+```
+type,original,pseudonym
+sample,MIX_A,S001
+sample,PURE_C,S002
+site,SiteA,SITE1
+site,SiteB,SITE2
+```
+
+Do not share it with the report. All other files in `summary/` keep the real IDs.
+
+### `summary/reanalysis_diff.csv` (re-analysis directories)
+
+Written by `bin/reanalyse_runs.py --execute` into the **new** `<run>_reanalysis_<barcodes>` directory ([reanalysis.md](reanalysis.md)): one
+row per sample and item comparing the old and the new run (`sample, level, item, old_abundance, new_abundance, change, flagged, note`), with a
+Markdown summary `reanalysis_diff.md` next to it. `flagged` is `yes` when the change is at least `--threshold` (0.05).
+
 ### `summary/samplesheet.csv`
 
 The samplesheet in effect, copied to the results so that a later `demix`/`aggregate`/`report` run on this directory
@@ -756,7 +809,7 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
 | `freyja/<s>.boot_status.json`                                                         | Only with `--freyja_boot`: `{sample, status, reason}`; `failed` with the reason when the bootstrap failed (never fatal).                                                                                                                                                                                                                                                                                                                         |
 | `coverage/<s>.primertrimmed.flagstat`                                                 | `samtools flagstat` of the final BAM (mode `full`); named `<s>.mapped.flagstat` when nothing was primer-trimmed.                                                                                                                                                                                                                                                                                                                                 |
 | `coverage/<s>.amplicon_coverage.tsv`                                                  | The sample's rows of `amplicon_coverage.tsv`.                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `coverage/<s>.primer_scheme_check.tsv`, `.primer_scheme_summary.tsv`                  | Mode `full`, amplicon protocol with trimming: the primer scheme check (one row per bundled scheme with hits, expected hits and enrichment; and the one-row verdict `ok`/`mismatch`/`uninformative`/`NA`).                                                                                                                                                                                                                                        |
+| `coverage/<s>.primer_scheme_check.tsv`, `.primer_scheme_summary.tsv`                  | Mode `full`, amplicon protocol with trimming: the primer scheme check (one row per bundled scheme with hits, expected hits and enrichment; and the one-row verdict `ok`/`mismatch`/`uninformative`/`NA`, with `declared_hit_fraction` and `best_hit_fraction`: the share of reads that start at the declared / the best scheme's primers, 0-1, 4 decimals).                                                                                      |
 | `coverage/<s>.qc_row.tsv`                                                             | The sample's row of `qc_summary.tsv`.                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `variants/<s>.unexplained_mutations.tsv`                                              | The sample's unexplained mutations (see `summary/unexplained_mutations.tsv`); header only when there are none. Not for negative controls.                                                                                                                                                                                                                                                                                                        |
 | `variants/<s>.ivar.vcf`                                                               | The variants TSV converted to VCF (all alleles; `FILTER` is ivar's p-value filter).                                                                                                                                                                                                                                                                                                                                                              |

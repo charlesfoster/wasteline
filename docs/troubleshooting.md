@@ -316,11 +316,11 @@ defaults to `0.0` ([migration_from_snakemake.md](migration_from_snakemake.md)).
 ### A sample is `skipped_low_coverage`
 
 **Symptom.** `summary/demix_status.tsv` has, for the sample,
-`skipped_low_coverage   less than 60% of the genome covered at >= 10x`; it has no `.demix` file and is absent from
+`skipped_low_coverage   less than 50% of the genome covered at >= 10x`; it has no `.demix` file and is absent from
 `freyja_aggregated.tsv` and the plots (and `qc_summary.tsv` shows `low_coverage` or `no_reads`). Negative controls with almost
 no reads are skipped by design and are fine.
 
-**Cause.** The coverage gate: fewer than `--min_genome_coverage_for_demix` (default 60) percent of the genome has depth >=
+**Cause.** The coverage gate: fewer than `--min_genome_coverage_for_demix` (default 50) percent of the genome has depth >=
 `--freyja_covcut` (default 10). Freyja would otherwise return a confident-looking lineage from far too little data.
 **Fix.** Look at `mean_depth` and `pct_genome_ge_10x` in `qc_summary.tsv` and the coverage track in the report. Usually the
 library needs resequencing, or amplicons dropped out (`amplicons_dropped`). If a lower coverage is acceptable for you, lower
@@ -428,6 +428,15 @@ datasets) leaves one, as does any run where you pointed `--db_dir` inside `--out
 for it). To avoid it, keep `--db_dir` outside `--outdir`, or list the samples yourself with `make_samplesheet.py --from-results`
 and delete the `db` row. (Reproduced with `--mode demix --previous_results` on a `-profile test` output made with
 `--compare_barcodes container`.)
+
+### The anonymised report still shows a real name, or the id map is missing
+
+`--report_anonymize` changes `report_data.json` and `report.html` only; the other files in `summary/` and the per-sample directories keep
+the real IDs, so share the report file, not the results folder. `summary/sample_id_map.csv` is written only with `full` (never with `paths`).
+A name that is not a sample ID or a site of this run (free text in a flag, a custom file name) is not replaced by `full`; `paths` handles
+paths, the user name and e-mail addresses. To anonymise a finished run, use `--mode report --results_dir <run> --outdir <new>
+--report_anonymize full`: the report data are rebuilt from the summary files even when `summary/report_data.json` exists. See
+[usage.md](usage.md#sharing-a-report).
 
 ### The report looks empty in places
 

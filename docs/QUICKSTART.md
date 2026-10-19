@@ -59,7 +59,7 @@ Things to notice:
   (one row: `NEG_CONTAM`, `BA.2` 1.0).
 - `Site_1_week_2` keeps its underscores: sample IDs are never rewritten.
 - `LOWCOV_D` would be demixed by Freyja to a confident single lineage if the coverage gate did not stop it; the gate
-  (`--min_genome_coverage_for_demix`, default 60%) is why it is `skipped_low_coverage` with a reason, not a result.
+  (`--min_genome_coverage_for_demix`, default 50%) is why it is `skipped_low_coverage` with a reason, not a result.
 - `NEG_CONTAM` raises a run-level error flag (`ntc_reads`, "5998 mapped reads, limit 1000") in the report: that is the
   negative-control check doing its job. Its demix status stays `ok`, and it has its own **Negative controls** section in the report.
 - `qc_summary.tsv` is complete: besides the coverage columns it carries `demix_status`, `demix_reason`, `consensus_length`,

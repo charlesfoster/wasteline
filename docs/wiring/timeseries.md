@@ -18,17 +18,17 @@ The Freyja ones use the pinned `freyja:2.0.6--pyhdfd78af_0` (so `bin/bump_freyja
   `abundance_load_weighted` = sum(a_i * load_i) / sum(load_i) over the samples that have a load (`NA` if none). `n_samples` counts every
   contributing sample; `mean_viral_load`/`total_viral_load` use those with a load. Rows sorted by site, date, abundance (desc), group.
 - Excluded, counted on stderr (`timeseries.py: 33 aggregate samples, 30 used; excluded: no_metadata=0, negative_control=1, no_date=1,
-  bad_date=0, low_coverage=1, unparsable_rows=0`): sample not in the metadata, `sample_type` negative (case-insensitive), blank or
+bad_date=0, low_coverage=1, unparsable_rows=0`): sample not in the metadata, `sample_type` negative (case-insensitive), blank or
   non-ISO `collection_date`, aggregate `coverage` < `--min-coverage` (percent; our gate is `>=`, Freyja's own is strictly `>`), rows whose
   groups cannot be parsed. Blank/non-numeric/zero/negative `viral_load` = unknown (counted as `invalid_viral_load` when non-blank).
   Empty `site` -> `NA`. Header-only output is valid (nothing usable); a missing `sample` column is exit 1.
 - Metadata columns are matched case-insensitively and every one except `sample` may be absent (a BOM is tolerated). A duplicate sample
   keeps the first row.
 - Helper mode used by the two Freyja modules: `--freyja-metadata-out m.csv --freyja-aggregated-out a.tsv [--freyja-summary-out s.json]
-  [--require-viral-load] [--window-days N]` writes Freyja's metadata CSV (`Sample,sample_collection_datetime[,viral_load]`; the load column
+[--require-viral-load] [--window-days N]` writes Freyja's metadata CSV (`Sample,sample_collection_datetime[,viral_load]`; the load column
   only when some kept sample has one), the aggregate cut to exactly those samples in the original order (Freyja raises a KeyError on a
   sample without metadata), and a JSON summary (`n_samples, n_dates, n_dates_window, window_span_days, n_with_viral_load, first_date, last_date,
-  span_days, viral_load_column`).
+span_days, viral_load_column`).
 
 ## Includes
 
@@ -41,11 +41,11 @@ include { FREYJA_DASH                                   } from '../modules/local
 
 ## Signatures
 
-| process | inputs | outputs (emit) |
-|---|---|---|
-| `TIMESERIES_TABLE` | `path aggregated` (`freyja_aggregated.tsv`); `path metadata` (samplesheet-like CSV, staged as `metadata.csv`) | `table` = `freyja_timeseries.tsv` |
-| `FREYJA_RELGROWTHRATE` | `path aggregated`; `path metadata` (staged as `metadata.csv`); `path dataset` (Freyja dataset dir, same channel as `FREYJA_AGGREGATE_PLOT`) | `growth_rates` = `freyja_growth_rates.csv` (optional); `failed` = `freyja_growth_rates.failed.txt` (optional); `inputs` = `freyja_growth_inputs.json` |
-| `FREYJA_DASH` | `path aggregated`; `path metadata`; `path dataset`; `val title`; `val intro` (both inserted as HTML, quotes are handled) | `dashboard` = `freyja_dashboard.html` (optional); `growth_rates` = `freyja_dashboard_rel_growth_rates.csv` (optional); `failed` = `freyja_dashboard.failed.txt` (optional); `inputs` = `freyja_dashboard_inputs.json` |
+| process                | inputs                                                                                                                                      | outputs (emit)                                                                                                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TIMESERIES_TABLE`     | `path aggregated` (`freyja_aggregated.tsv`); `path metadata` (samplesheet-like CSV, staged as `metadata.csv`)                               | `table` = `freyja_timeseries.tsv`                                                                                                                                                                                     |
+| `FREYJA_RELGROWTHRATE` | `path aggregated`; `path metadata` (staged as `metadata.csv`); `path dataset` (Freyja dataset dir, same channel as `FREYJA_AGGREGATE_PLOT`) | `growth_rates` = `freyja_growth_rates.csv` (optional); `failed` = `freyja_growth_rates.failed.txt` (optional); `inputs` = `freyja_growth_inputs.json`                                                                 |
+| `FREYJA_DASH`          | `path aggregated`; `path metadata`; `path dataset`; `val title`; `val intro` (both inserted as HTML, quotes are handled)                    | `dashboard` = `freyja_dashboard.html` (optional); `growth_rates` = `freyja_dashboard_rel_growth_rates.csv` (optional); `failed` = `freyja_dashboard.failed.txt` (optional); `inputs` = `freyja_dashboard_inputs.json` |
 
 Exactly one of `growth_rates`/`failed` (resp. `dashboard`/`failed`) is produced; a soft failure never fails the run and the failure note
 always says why. Run-level inputs must be single-item (value) channels: use `.first()` / `channel.value` for `ch_samplesheet`,
@@ -130,23 +130,23 @@ Notes: `--pathogen` and `--lineageyml` conflict only in that `--lineageyml` (set
 
 ## Params to add (nextflow.config + nextflow_schema.json)
 
-| param | default | meaning |
-|---|---|---|
-| `timeseries` | `true` | write `summary/freyja_timeseries.tsv` (+ `_lineages.tsv`) when >= 2 distinct collection dates exist |
-| `timeseries_min_abundance` | `0.0` | drop site-date groups below this mean abundance (0-1) |
-| `freyja_growth` | `false` | run `freyja relgrowthrate` -> `summary/freyja_growth_rates.csv` |
-| `freyja_growth_days` | `56` | Freyja `--days`: window (back from the latest date) used for the fit |
-| `freyja_growth_nboots` | `1000` | bootstrap replicates (the module fixes the RNG seed) |
-| `freyja_growth_seed` | `1` | numpy seed for the bootstrap (Freyja has no seed option; the module seeds numpy's global RNG before `cli()`) |
-| `freyja_growth_serial_interval` | `5.5` | days; the table is `exp(serial_interval * r) - 1` |
-| `freyja_growth_grthresh` | `0.001` | Freyja `--grthresh`: only lineages with a mean abundance above this over the window get a rate |
-| `freyja_growth_min_abundance` | `0.01` | per-sample abundance below which a lineage is lumped into `Other` (see the `--thresh` quirk below) |
-| `freyja_growth_min_dates` | `4` | fewer distinct dates in the window -> `freyja_growth_rates.failed.txt` |
-| `freyja_growth_min_span_days` | `14` | dates must span at least this many days |
-| `freyja_growth_scale_by_viral_load` | `false` | Freyja `--scale_by_viral_load` (needs `viral_load`; samples without one are dropped from the fit) |
-| `freyja_dash` | `false` | run `freyja dash` -> `summary/freyja_dashboard.html` (opt-in extra) |
-| `freyja_dash_title` | `'wasteline wastewater dashboard'` | HTML title |
-| `freyja_dash_intro` | `'Lineage prevalence over time from wasteline.'` | HTML introduction |
+| param                               | default                                          | meaning                                                                                                      |
+| ----------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `timeseries`                        | `true`                                           | write `summary/freyja_timeseries.tsv` (+ `_lineages.tsv`) when >= 2 distinct collection dates exist          |
+| `timeseries_min_abundance`          | `0.0`                                            | drop site-date groups below this mean abundance (0-1)                                                        |
+| `freyja_growth`                     | `false`                                          | run `freyja relgrowthrate` -> `summary/freyja_growth_rates.csv`                                              |
+| `freyja_growth_days`                | `56`                                             | Freyja `--days`: window (back from the latest date) used for the fit                                         |
+| `freyja_growth_nboots`              | `1000`                                           | bootstrap replicates (the module fixes the RNG seed)                                                         |
+| `freyja_growth_seed`                | `1`                                              | numpy seed for the bootstrap (Freyja has no seed option; the module seeds numpy's global RNG before `cli()`) |
+| `freyja_growth_serial_interval`     | `5.5`                                            | days; the table is `exp(serial_interval * r) - 1`                                                            |
+| `freyja_growth_grthresh`            | `0.001`                                          | Freyja `--grthresh`: only lineages with a mean abundance above this over the window get a rate               |
+| `freyja_growth_min_abundance`       | `0.01`                                           | per-sample abundance below which a lineage is lumped into `Other` (see the `--thresh` quirk below)           |
+| `freyja_growth_min_dates`           | `4`                                              | fewer distinct dates in the window -> `freyja_growth_rates.failed.txt`                                       |
+| `freyja_growth_min_span_days`       | `14`                                             | dates must span at least this many days                                                                      |
+| `freyja_growth_scale_by_viral_load` | `false`                                          | Freyja `--scale_by_viral_load` (needs `viral_load`; samples without one are dropped from the fit)            |
+| `freyja_dash`                       | `false`                                          | run `freyja dash` -> `summary/freyja_dashboard.html` (opt-in extra)                                          |
+| `freyja_dash_title`                 | `'wasteline wastewater dashboard'`               | HTML title                                                                                                   |
+| `freyja_dash_intro`                 | `'Lineage prevalence over time from wasteline.'` | HTML introduction                                                                                            |
 
 The existing `freyja_plot_mincov` (60) is reused for `--min-coverage`/`--mincov`.
 
@@ -216,12 +216,12 @@ chart (or the failure reason in a notice). The existing Mean-abundance time-seri
    and the fit gave XBB.1.5 +102.6% (truth about +73% for XBB.1.5 over BA.2; about +60% in the one-vs-rest model Freyja fits). The modules divide the per-sample cut-off
    (`min_abundance`, 0.01) by the number of kept samples unless `--thresh` is in `ext.args`.
 5. **Output semantics.** The table is per lineage against all others (logistic `1 / (1 + b * exp(-r t))` fitted to the lineage's share); `Estimated Advantage` =
-   `exp(serial_interval * r) - 1`, the bootstrap interval is `serial_interval * r` percentiles (a *different scale*: the estimate can lie outside its own
+   `exp(serial_interval * r) - 1`, the bootstrap interval is `serial_interval * r` percentiles (a _different scale_: the estimate can lie outside its own
    interval, e.g. `60.3%` vs `[44.74% , 49.89%]`). Treat the interval as a rough indication of uncertainty, not as a CI of the estimate.
 6. **Synthetic check** (`tests/data_timeseries`, 3 sites x 8 weekly dates, 30 usable samples; truth: XBB.1.5 over BA.2 log-odds slope 0.10/day = +73% per 5.5 days):
    Freyja gave XBB.1.5 +60.3%, BA.2 -35.1%, JN.1 (stable) -1.0%, BA.1 (noise lineage) -4.8%; with `--scale_by_viral_load` (26 samples with a load) +59.5% / -35.1% / -0.3%.
    Sign and order of magnitude are right; the magnitude is lower because of the one-vs-rest fit with a stable third lineage.
-7. **Dashboard.** `freyja dash` needs `agg`, `metadata`, and *files* for title and intro (the module writes them), writes `<output minus .html>_rel_growth_rates.csv`
+7. **Dashboard.** `freyja dash` needs `agg`, `metadata`, and _files_ for title and intro (the module writes them), writes `<output minus .html>_rel_growth_rates.csv`
    next to the HTML, and also fails on pandas 3. The HTML is 4.8 MB: Plotly is embedded, but the page loads Bootstrap CSS and JS from
    `cdn.jsdelivr.net` and a logo from `andersen-lab.com`, so **without internet the charts work but the layout is unstyled and the logo is missing**. It is an opt-in extra;
    the pipeline's own `report.html` stays offline. Title/intro are inserted as raw HTML. Dates with several samples at several sites are pooled by Freyja (it has no site notion).

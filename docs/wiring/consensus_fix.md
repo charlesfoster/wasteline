@@ -44,15 +44,19 @@ IVAR_VARIANTS_TO_VCF(ch_consensus_samples, ch_fasta)        // was: IVAR_VARIANT
 - `consensus_status.json` gains `warnings` (always present, array of strings, max 20 + a `(N more)` entry):
 
   ```json
-  {"sample": "S", "status": "ok",
-   "reason": "1 variant(s) not applied: skipped variant at NC_045512.2:11287 (REF mismatch)",
-   "warnings": ["skipped variant at NC_045512.2:11287 (REF mismatch)"]}
+  {
+    "sample": "S",
+    "status": "ok",
+    "reason": "1 variant(s) not applied: skipped variant at NC_045512.2:11287 (REF mismatch)",
+    "warnings": ["skipped variant at NC_045512.2:11287 (REF mismatch)"]
+  }
   ```
 
   Warning texts: `skipped variant at <contig>:<pos> (REF mismatch)` and
   `skipped variant at <contig>:<pos> (overlaps another variant)`. `reason` stays `""` for a clean `ok`, is the old
   "no variant passed ..." text when nothing was applied, and is `"<n> variant(s) not applied: <w1>; <w2>"` with warnings.
   `status` values are unchanged (`ok|empty|failed`).
+
 - Deletions are written as `-` (`--mark-del '-'`), genome length is kept: the 9-base deletion at 11287 gives
   `G` + 9 x `-` at 11287-11296.
 

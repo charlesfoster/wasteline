@@ -23,25 +23,25 @@ e2e run were treated as four sites: `MIX_A` (truth BA.2 0.7 / AY.4 0.3), `MIX_B`
 read count of a site by an integer (frequencies are unchanged, so the site's own result is unchanged; mean depths 55x,
 64x, 73x, 60x become 110x, 385x, 73x, 179x in the `unequal` rows). For each set:
 
-* (i) **aggregate**: each site demixed alone, combined by `bin/site_aggregate.py` (equal weights, and "depth-proportional"
+- (i) **aggregate**: each site demixed alone, combined by `bin/site_aggregate.py` (equal weights, and "depth-proportional"
   weights only to mimic what pooling does implicitly; the latter is **not** a recommended basis, see section 3);
-* (ii) **pooled variants**: ALT_DP / ALT_RV summed per (position, ref, alt) over the sites' ivar TSVs, TOTAL_DP and the depths
+- (ii) **pooled variants**: ALT_DP / ALT_RV summed per (position, ref, alt) over the sites' ivar TSVs, TOTAL_DP and the depths
   file summed over the sites' depths, ALT_FREQ recomputed, one `freyja demix` of the pooled files;
-* (iii) **truth**: the design fractions of `tests/data/truth.json` mixed with the same weights.
+- (iii) **truth**: the design fractions of `tests/data/truth.json` mixed with the same weights.
 
 "max |diff|" is the largest absolute difference in abundance over lineages. (Sites' own Freyja errors, for example 2% spurious
 BA.2 in `MIX_B`, are inside every number.)
 
-| sites | depths | aggregate (equal w) vs truth | pooled vs truth (equal w) | aggregate (depth w) vs truth (depth w) | pooled vs truth (depth w) | pooled vs aggregate (depth w) | lineage in pooled result, in no site |
-|---|---|---|---|---|---|---|---|
-| MIX_A + PURE_C | equal | 0.006 | 0.050 | 0.005 | 0.022 | 0.021 | B.1 1.8% |
-| MIX_A + PURE_C | unequal | 0.006 | 0.120 | 0.007 | 0.034 | 0.027 | B.1 0.7% |
-| MIX_A + MIX_B + PURE_C | equal | 0.011 | 0.045 | 0.011 | 0.041 | 0.030 | B.1 0.8% |
-| MIX_A + MIX_B + PURE_C | unequal | 0.011 | 0.201 | 0.017 | 0.051 | 0.033 | B.1 1.9% |
-| MIX_A + MIX_B + Site_1_week_2 | equal | 0.023 | 0.076 | 0.023 | 0.089 | 0.066 | B.1 0.8% |
-| MIX_A + MIX_B + Site_1_week_2 | unequal | 0.023 | 0.079 | 0.024 | 0.080 | 0.056 | B.1 1.2% |
-| all four | equal | 0.017 | 0.062 | 0.016 | 0.058 | 0.043 | B.1 0.9% |
-| all four | unequal | 0.017 | 0.152 | 0.021 | 0.068 | 0.047 | B.1 0.7% |
+| sites                         | depths  | aggregate (equal w) vs truth | pooled vs truth (equal w) | aggregate (depth w) vs truth (depth w) | pooled vs truth (depth w) | pooled vs aggregate (depth w) | lineage in pooled result, in no site |
+| ----------------------------- | ------- | ---------------------------- | ------------------------- | -------------------------------------- | ------------------------- | ----------------------------- | ------------------------------------ |
+| MIX_A + PURE_C                | equal   | 0.006                        | 0.050                     | 0.005                                  | 0.022                     | 0.021                         | B.1 1.8%                             |
+| MIX_A + PURE_C                | unequal | 0.006                        | 0.120                     | 0.007                                  | 0.034                     | 0.027                         | B.1 0.7%                             |
+| MIX_A + MIX_B + PURE_C        | equal   | 0.011                        | 0.045                     | 0.011                                  | 0.041                     | 0.030                         | B.1 0.8%                             |
+| MIX_A + MIX_B + PURE_C        | unequal | 0.011                        | 0.201                     | 0.017                                  | 0.051                     | 0.033                         | B.1 1.9%                             |
+| MIX_A + MIX_B + Site_1_week_2 | equal   | 0.023                        | 0.076                     | 0.023                                  | 0.089                     | 0.066                         | B.1 0.8%                             |
+| MIX_A + MIX_B + Site_1_week_2 | unequal | 0.023                        | 0.079                     | 0.024                                  | 0.080                     | 0.056                         | B.1 1.2%                             |
+| all four                      | equal   | 0.017                        | 0.062                     | 0.016                                  | 0.058                     | 0.043                         | B.1 0.9%                             |
+| all four                      | unequal | 0.017                        | 0.152                     | 0.021                                  | 0.068                     | 0.047                         | B.1 0.7%                             |
 
 Worked rows (abundances; `all four`, unequal depths): aggregate with depth weights BA.1 0.258, XBB.1.5 0.229, BA.5 0.145,
 BA.2 0.124, KP.3 0.103, JN.1 0.098, AY.4 0.042; pooled BA.1 0.232, XBB.1.5 0.204, BA.2 0.171, BA.5 0.145, KP.3 0.102, JN.1 0.098,
@@ -49,16 +49,16 @@ AY.4 0.041, **B.1 0.007**; truth (depth weights) BA.1 0.258, XBB.1.5 0.250, BA.5
 
 What this shows, honestly:
 
-* The result-level aggregate stays within 0.025 (absolute) of the weighted truth in all eight settings; that residual is
+- The result-level aggregate stays within 0.025 (absolute) of the weighted truth in all eight settings; that residual is
   the sites' own Freyja error carried through, as it should be. With equal weights it is unaffected by depth (0.006-0.023).
-* The pooled fit was 0.02-0.09 away from the depth-weighted truth and 0.05-0.20 away from the equal-weight truth when depths
+- The pooled fit was 0.02-0.09 away from the depth-weighted truth and 0.05-0.20 away from the equal-weight truth when depths
   differ: pooling cannot be told to weight sites equally (or by load), it weights by depth. This is the larger, systematic
   effect.
-* **In all eight pooled fits Freyja reported a lineage that no site contains** (`B.1`, 0.7-1.9%); the aggregate never does
+- **In all eight pooled fits Freyja reported a lineage that no site contains** (`B.1`, 0.7-1.9%); the aggregate never does
   (asserted in the tests over random inputs). This is the concern that motivated the feature, and it is confirmed here on
   synthetic data. The cause was not investigated further (the likely reason is a sparse non-negative fit of a mixture of
   mixtures, but that is a hypothesis).
-* Limits of the evidence: synthetic data with exactly known, linear lineage signatures and no real wastewater noise; four
+- Limits of the evidence: synthetic data with exactly known, linear lineage signatures and no real wastewater noise; four
   sites; one barcode set. It shows direction and rough size, not what real wastewater would give. The two approaches
   agree more closely than the truth-based columns suggest when depths are equal; the difference then is mostly small.
   The experiment driver is scratch work and is not committed.
@@ -74,24 +74,24 @@ Metro_Sites,Site2,120000
 Metro_Sites,Site3,80000
 ```
 
-| column | required | meaning |
-|---|---|---|
-| `aggregate_name` | yes | the name of the group; becomes part of the output row label (`Metro_Sites_2026-W41`). Use letters, digits, `_` and `-`; no tabs. |
-| `site_name` | yes | a site as written in the `site` column of your samplesheet. |
-| `weight` | no | a positive number, usually the population served (`250000`); plain digits, no units and no thousands separators. Only used when the weights basis says so (section 3). |
+| column           | required | meaning                                                                                                                                                                |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `aggregate_name` | yes      | the name of the group; becomes part of the output row label (`Metro_Sites_2026-W41`). Use letters, digits, `_` and `-`; no tabs.                                       |
+| `site_name`      | yes      | a site as written in the `site` column of your samplesheet.                                                                                                            |
+| `weight`         | no       | a positive number, usually the population served (`250000`); plain digits, no units and no thousands separators. Only used when the weights basis says so (section 3). |
 
 Rules and what the program does:
 
-* A site can be in several groups: repeat it on another row (`Metro_Sites,Site1` and `North,Site1`).
-* Site names are matched to the samplesheet `site` column **ignoring upper/lower case and extra spaces** (`site 1`, ` SITE 1 `
+- A site can be in several groups: repeat it on another row (`Metro_Sites,Site1` and `North,Site1`).
+- Site names are matched to the samplesheet `site` column **ignoring upper/lower case and extra spaces** (`site 1`, `SITE 1`
   and `Site 1` are the same site). `Site1` and `Site 1` are **not** the same.
-* A site name that no sample uses is reported once on stderr as a warning (probably a typo); the group still works with the
+- A site name that no sample uses is reported once on stderr as a warning (probably a typo); the group still works with the
   remaining sites.
-* A group name written with different capitals on different rows (`Metro`, `metro`) is treated as one group (a warning names the
+- A group name written with different capitals on different rows (`Metro`, `metro`) is treated as one group (a warning names the
   line).
-* A UTF-8 byte-order mark, Windows line endings, empty rows at the end, a semicolon- or tab-separated file (Excel in many
+- A UTF-8 byte-order mark, Windows line endings, empty rows at the end, a semicolon- or tab-separated file (Excel in many
   countries writes `;`), header names such as `Aggregate Name` and an extra empty column are all accepted.
-* Errors name the line and stop the run, for example:
+- Errors name the line and stop the run, for example:
   `sites.csv: line 7: site_name is blank (aggregate 'Metro_Sites')`,
   `sites.csv: line 5: site 'site1' is listed twice for aggregate 'Metro_Sites' (first on line 3)`,
   `sites.csv: line 1: unknown column 'site_names' (did you mean 'site_name'?)`,
@@ -145,13 +145,13 @@ For each aggregate and each period in which at least one member site has a contr
    samples therefore never counts double. The site's load is the **mean** of its samples' loads (only if all have one,
    else unknown); a mean, not a sum, so that the number of replicates does not change the site's weight.
 2. **Sites.** `--weights` chooses the basis (written to `weight_basis`):
-   * `viral_load`: the site's mean load. `site_weight`: the `weight` of the sites file. `equal`: 1 for each site.
-   * `auto` (default): `viral_load` if every contributing site has a load; else `site_weight` if every contributing site has a
+   - `viral_load`: the site's mean load. `site_weight`: the `weight` of the sites file. `equal`: 1 for each site.
+   - `auto` (default): `viral_load` if every contributing site has a load; else `site_weight` if every contributing site has a
      weight; else `equal`. In `auto` the label says when a better basis was only partly available: `viral_load`, `site_weight`,
      `site_weight (viral_load missing)`, `equal`, `equal (viral_load missing)`, `equal (site_weight missing)`.
-   * An explicit choice that cannot be met does not fail: it falls back to `equal` and says why
+   - An explicit choice that cannot be met does not fail: it falls back to `equal` and says why
      (`equal (viral_load missing)`, `equal (site_weight missing)`).
-   * The basis is decided per row, so it can change between periods (a missing load in one week only affects that week).
+   - The basis is decided per row, so it can change between periods (a missing load in one week only affects that week).
 3. **Average.** For every lineage, `abundance = sum_i(w_i * a_i) / sum_i(w_i)` over the contributing sites (a lineage a site lacks
    counts as 0). The same weights apply to Freyja's `summarized` groups, `resid` and `coverage`. Lineages are matched by name, so
    an aggregate can never contain a lineage that no member site detected (asserted in the tests over random inputs, also for
@@ -180,11 +180,11 @@ unless every missing site has a weight; `equal`: included sites / member sites; 
 
 ISO week `2026-W03` (Monday 2026-01-12). XBB.1.5 and loads of the six samples:
 
-| site | sample XBB.1.5 (load) | replicates by load | site load (mean) |
-|---|---|---|---|
-| SiteA | 0.16710542 (851825), 0.23093447 (301960) | 0.183810 | 576892.5 |
-| SiteB | 0.08106117 (1169960), 0.11608544 (938723) | 0.096653 | 1054341.5 |
-| SiteC | 0.05187679 (110143), 0.04421386 (964206) | 0.044999 | 537174.5 |
+| site  | sample XBB.1.5 (load)                     | replicates by load | site load (mean) |
+| ----- | ----------------------------------------- | ------------------ | ---------------- |
+| SiteA | 0.16710542 (851825), 0.23093447 (301960)  | 0.183810           | 576892.5         |
+| SiteB | 0.08106117 (1169960), 0.11608544 (938723) | 0.096653           | 1054341.5        |
+| SiteC | 0.05187679 (110143), 0.04421386 (964206)  | 0.044999           | 537174.5         |
 
 `Metro_2026-W03` XBB.1.5 = (0.183810 * 576892.5 + 0.096653 * 1054341.5 + 0.044999 * 537174.5) / 2168408.5 = **0.107045**
 (basis `viral_load`, 6 samples; equal site weights would give 0.108488). In `2026-W02` SiteC's only sample has no viral load, so
@@ -221,8 +221,8 @@ aggregated samples contributed; not contributing: negative_controls=1, not_ok=1,
 include { SITE_AGGREGATE } from '../modules/local/site_aggregate/main'
 ```
 
-| process | inputs | outputs (emit) |
-|---|---|---|
+| process          | inputs                                                                                                                                                                                  | outputs (emit)                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `SITE_AGGREGATE` | `path aggregated` (`freyja_aggregated.tsv`); `path demix_status` (staged as `demix_status.tsv`); `path samplesheet` (staged as `samplesheet.csv`); `path sites` (staged as `sites.csv`) | `aggregated` = `site_aggregates_freyja.tsv`; `meta` = `site_aggregates_meta.tsv`; `versions_python` (`topic: versions`) |
 
 All four inputs are single-item (value) channels. `ext.args` takes `--period`, `--weights`, `--min-sites`.
@@ -261,12 +261,12 @@ only reruns this step. For an early failure, call `site_aggregate.py --check-sit
 
 Params (`nextflow.config` + `nextflow_schema.json`; the report/summary group):
 
-| param | default | meaning |
-|---|---|---|
-| `site_aggregation` | `null` | path to the sites file (CSV); **giving it enables the feature** |
-| `site_aggregation_period` | `'week'` | `week` (ISO week, Monday-Sunday) or `day` |
-| `site_aggregation_weights` | `'auto'` | `auto`, `viral_load`, `equal` or `site_weight` |
-| `site_aggregation_min_sites` | `1` | omit aggregate-periods with fewer contributing sites |
+| param                        | default  | meaning                                                         |
+| ---------------------------- | -------- | --------------------------------------------------------------- |
+| `site_aggregation`           | `null`   | path to the sites file (CSV); **giving it enables the feature** |
+| `site_aggregation_period`    | `'week'` | `week` (ISO week, Monday-Sunday) or `day`                       |
+| `site_aggregation_weights`   | `'auto'` | `auto`, `viral_load`, `equal` or `site_weight`                  |
+| `site_aggregation_min_sites` | `1`      | omit aggregate-periods with fewer contributing sites            |
 
 ```groovy
 site_aggregation            = null     // sites file (CSV: aggregate_name,site_name[,weight]); enables result-level site aggregation
@@ -291,27 +291,27 @@ Published files (add to `docs/output.md`, `summary/` table, modes `full`/`demix`
 
 ## 6. Interaction with the lineage-group summary and the report
 
-* The parallel lineage-group work (`LINEAGE_SUMMARY`) consumes both files as its optional site-aggregate inputs
+- The parallel lineage-group work (`LINEAGE_SUMMARY`) consumes both files as its optional site-aggregate inputs
   (`ch_site_aggregates_freyja`, `ch_site_aggregates_meta`) and writes `lineage_summary_site_aggregates.csv`. It reads the
   aggregate in exactly the per-sample Freyja format, so each aggregate-period is treated like a sample; the meta table
   supplies `aggregate_name`, `period` and the completeness columns it needs.
-* **Report** (`build_report_data.py` / template; not implemented here): a "Site aggregates" section, shown only when the
+- **Report** (`build_report_data.py` / template; not implemented here): a "Site aggregates" section, shown only when the
   meta table exists. For every aggregate-period one stacked bar built like the per-sample bars from
   `site_aggregates_freyja.tsv` (Summarized groups / All lineages toggle), x axis = `period_start` ordered by time, one panel (or
   selector) per aggregate. Hover/table text from the meta table: `n_sites_included` of the member sites, `sites_missing` with
   `missing_reasons`, `weight_basis`, `weight_fraction_included`, `n_samples`. An **INFO** flag (a run-level flag, never an
   error) when any aggregate-period is incomplete (`sites_missing` non-empty) or its `weight_basis` starts with `equal (` or
   `site_weight (` (a weaker basis than requested was used). `report_data.json` can carry `site_aggregates: {enabled, period,
-  rows: [meta + {summarized, lineages}]}`.
+rows: [meta + {summarized, lineages}]}`.
 
 ## 7. Tests
 
-* `pixi run --frozen pytest tests/python/test_site_aggregate.py` (79 tests): replicates (load vs equal), `viral_load` / `site_weight` /
+- `pixi run --frozen pytest tests/python/test_site_aggregate.py` (79 tests): replicates (load vs equal), `viral_load` / `site_weight` /
   `equal` / `auto` incl. soft fallbacks and per-period basis, missing viral load, missing sites and every reason code,
   Sunday/Monday and year-boundary weeks (incl. `2026-W53`), `day` period, `--min-sites`, several aggregates sharing a site,
   case/space matching, negatives and non-ok exclusion, `summarized`/`resid`/`coverage` weighting, no renormalisation, output
   format, numpy/repr input forms, the sites-file quirks and every friendly error, empty inputs, `--check-sites`, the hand-computed
   fixture week, and the no-new-lineage / convex-combination property over random inputs (12 seeds x 4 weight modes).
-* `NFT_WORKDIR=<scratch> pixi run --frozen nf-test test modules/local/site_aggregate/tests/main.nf.test --profile docker`
+- `NFT_WORKDIR=<scratch> pixi run --frozen nf-test test modules/local/site_aggregate/tests/main.nf.test --profile docker`
   (stub; fixture week by hand with weights and the pair aggregate; `ext.args --weights equal --min-sites 3`; a bad sites file fails
   naming the line). `bin/*` is an nf-test trigger, so adding `bin/site_aggregate.py` triggers a full run in CI.

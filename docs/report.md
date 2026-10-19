@@ -64,37 +64,37 @@ A short list of things you should know before trusting the run, most severe firs
 `INFO` (blue). With no flags, a green "no flags" note is shown. Each flag has a machine code (shown at the right) and
 the affected samples where relevant. All codes:
 
-| Code                           | Level | Raised when                                                                                                                                 |
-| ------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ntc_reads`                    | error | A negative control has mapped reads above `--ntc_max_mapped_reads` (or QC reason `ntc_reads`): possible contamination.                      |
-| `ntc_fail`                     | error | A negative control failed QC for another reason.                                                                                            |
-| `demix_failed`                 | error | `freyja demix` failed for one or more (non-control) samples.                                                                                |
-| `all_samples_failed`           | error | Every non-control sample failed QC or has no usable lineage result.                                                                         |
-| `freyja_data_missing`          | error | Lineage results exist but `run_info.json` records no `freyja_data.barcode_version`: the barcode dataset is unknown.                         |
-| `mixed_barcode_versions`       | error | Samples were demixed with different barcode versions.                                                                                       |
-| `qc_fail`                      | warn  | One or more (non-control) samples have QC `FAIL`.                                                                                           |
-| `demix_skipped`                | warn  | Demixing was skipped for low genome coverage (`skipped_low_coverage`) for one or more samples.                                              |
-| `demix_missing`                | warn  | No demix result was found for one or more samples (status `missing`).                                                                       |
-| `barcode_compare_failed`       | warn  | With `--compare_barcodes`: the second demix (the other barcode dataset) failed for the listed samples; they have no rows in the comparison. |
-| `barcode_unknown`              | warn  | The barcode version is `unknown` (legacy Snakemake results).                                                                                |
-| `previous_run_barcode_unknown` | warn  | A previous run the results build on recorded no barcode version (legacy results).                                                           |
-| `no_samples`                   | warn  | No samples at all; the report is empty.                                                                                                     |
-| `input_problems`               | warn  | Some input rows or values could not be parsed (with the first messages).                                                                    |
-| `primer_scheme_mismatch`       | warn  | The read starts of the listed samples line up much better with another primer scheme than with the declared `--primer_scheme`; the message names the best match(es) (needs the primer-scheme QC columns). |
-| `dropout_affects_lineages`     | warn  | Amplicon dropout hides lineage-informative sites of lineages detected in the listed samples (see [dropout impact](#amplicon-dropout-impact)); abundance estimates may be biased. |
-| `unexplained_mutations`        | info  | At least one mutation that the demixed lineages do not explain recurs in several samples (see [unexplained mutations](#unexplained-mutations)); possible novel lineage. |
+| Code                           | Level | Raised when                                                                                                                                                                                                                                               |
+| ------------------------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ntc_reads`                    | error | A negative control has mapped reads above `--ntc_max_mapped_reads` (or QC reason `ntc_reads`): possible contamination.                                                                                                                                    |
+| `ntc_fail`                     | error | A negative control failed QC for another reason.                                                                                                                                                                                                          |
+| `demix_failed`                 | error | `freyja demix` failed for one or more (non-control) samples.                                                                                                                                                                                              |
+| `all_samples_failed`           | error | Every non-control sample failed QC or has no usable lineage result.                                                                                                                                                                                       |
+| `freyja_data_missing`          | error | Lineage results exist but `run_info.json` records no `freyja_data.barcode_version`: the barcode dataset is unknown.                                                                                                                                       |
+| `mixed_barcode_versions`       | error | Samples were demixed with different barcode versions.                                                                                                                                                                                                     |
+| `qc_fail`                      | warn  | One or more (non-control) samples have QC `FAIL`.                                                                                                                                                                                                         |
+| `demix_skipped`                | warn  | Demixing was skipped for low genome coverage (`skipped_low_coverage`) for one or more samples.                                                                                                                                                            |
+| `demix_missing`                | warn  | No demix result was found for one or more samples (status `missing`).                                                                                                                                                                                     |
+| `barcode_compare_failed`       | warn  | With `--compare_barcodes`: the second demix (the other barcode dataset) failed for the listed samples; they have no rows in the comparison.                                                                                                               |
+| `barcode_unknown`              | warn  | The barcode version is `unknown` (legacy Snakemake results).                                                                                                                                                                                              |
+| `previous_run_barcode_unknown` | warn  | A previous run the results build on recorded no barcode version (legacy results).                                                                                                                                                                         |
+| `no_samples`                   | warn  | No samples at all; the report is empty.                                                                                                                                                                                                                   |
+| `input_problems`               | warn  | Some input rows or values could not be parsed (with the first messages).                                                                                                                                                                                  |
+| `primer_scheme_mismatch`       | warn  | The read starts of the listed samples line up much better with another primer scheme than with the declared `--primer_scheme`; the message names the best match(es) (needs the primer-scheme QC columns).                                                 |
+| `dropout_affects_lineages`     | warn  | Amplicon dropout hides lineage-informative sites of lineages detected in the listed samples (see [dropout impact](#amplicon-dropout-impact)); abundance estimates may be biased.                                                                          |
+| `unexplained_mutations`        | info  | At least one mutation that the demixed lineages do not explain recurs in several samples (see [unexplained mutations](#unexplained-mutations)); possible novel lineage.                                                                                   |
 | `lineage_groups_warnings`      | warn  | The groups audit (`lineage_groups_resolved.tsv`) has warnings: a pattern that is not a lineage of the dataset, a group that matches nothing, or in-total groups that overlap; the first three are in the message (see [lineage groups](#lineage-groups)). |
-| `lineage_groups_ungrouped`     | info  | An `ok` sample has 2% or more (`--ungrouped-flag-threshold`) of its lineages outside every in-total group; the message names the top ungrouped lineages and says to add them to your lineage groups file (see `summary/lineage_ungrouped_summary.tsv`). |
-| `site_aggregate_incomplete`    | info  | Site aggregate periods are missing member sites or used a weaker weighting than requested (see [site aggregates](#site-aggregates)). |
-| `consensus_failed`             | warn  | The consensus genome failed for the listed samples (status `failed`, all-N sequence); the consensus table shows the reason, for example `bcftools consensus failed: The fasta sequence does not match the REF allele at NC_045512.2:11287:`. |
-| `consensus_warnings`           | info  | The consensus was built (`ok`) with warnings for the listed samples, for example `skipped variant at NC_045512.2:22942 (overlaps another variant)`. |
-| `qc_warn`                      | info  | One or more samples have QC `WARN`.                                                                                                         |
-| `barcode_custom`               | info  | A custom barcode file was used; its version is not tied to a Freyja release (use the checksum).                                             |
-| `barcode_container`            | info  | The snapshot bundled in the Freyja container was used; it may be older than the latest Freyja data.                                         |
-| `previous_run_barcode_differs` | info  | A previous run used a different barcode version than this run.                                                                              |
-| `no_ntc`                       | info  | The run has no negative-control sample.                                                                                                     |
-| `qc_not_available`             | info  | No QC summary was provided (for example `aggregate` mode).                                                                                  |
-| `input_note`                   | info  | Free-text notes from the report builder.                                                                                                    |
+| `lineage_groups_ungrouped`     | info  | An `ok` sample has 2% or more (`--ungrouped-flag-threshold`) of its lineages outside every in-total group; the message names the top ungrouped lineages and says to add them to your lineage groups file (see `summary/lineage_ungrouped_summary.tsv`).   |
+| `site_aggregate_incomplete`    | info  | Site aggregate periods are missing member sites or used a weaker weighting than requested (see [site aggregates](#site-aggregates)).                                                                                                                      |
+| `consensus_failed`             | warn  | The consensus genome failed for the listed samples (status `failed`, all-N sequence); the consensus table shows the reason, for example `bcftools consensus failed: The fasta sequence does not match the REF allele at NC_045512.2:11287:`.              |
+| `consensus_warnings`           | info  | The consensus was built (`ok`) with warnings for the listed samples, for example `skipped variant at NC_045512.2:22942 (overlaps another variant)`.                                                                                                       |
+| `qc_warn`                      | info  | One or more samples have QC `WARN`.                                                                                                                                                                                                                       |
+| `barcode_custom`               | info  | A custom barcode file was used; its version is not tied to a Freyja release (use the checksum).                                                                                                                                                           |
+| `barcode_container`            | info  | The snapshot bundled in the Freyja container was used; it may be older than the latest Freyja data.                                                                                                                                                       |
+| `previous_run_barcode_differs` | info  | A previous run used a different barcode version than this run.                                                                                                                                                                                            |
+| `no_ntc`                       | info  | The run has no negative-control sample.                                                                                                                                                                                                                   |
+| `qc_not_available`             | info  | No QC summary was provided (for example `aggregate` mode).                                                                                                                                                                                                |
+| `input_note`                   | info  | Free-text notes from the report builder.                                                                                                                                                                                                                  |
 
 In the example run: `ntc_reads` (the contaminated control `NEG_CONTAM`, 5998 mapped reads), `qc_fail` and `demix_skipped`
 (`LOWCOV_D`), `barcode_custom`, and `qc_warn` (`Site_1_week_2`). A negative control that demixed `ok` raises no demix flag
@@ -103,22 +103,24 @@ and is never counted as a failed sample.
 ## Quality control
 
 Counters first: how many samples PASS, WARN, FAIL, are "not assessed" (`NA`) and how many negative controls there are
-(the counters exclude negative controls). Then the sortable table, one row per sample:
+(the counters exclude negative controls). Then the sortable table, one row per sample. The table is wide: it scrolls
+horizontally inside its own box (the page itself never gets wider), the **Sample column stays in place** while you
+scroll, and column headings wrap so that more columns fit:
 
-| Column                   | Meaning                                                                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Sample, Type, Date, Site | From the samplesheet.                                                                                                                   |
-| QC                       | Badge: green `PASS`, amber `WARN`, red `FAIL`, grey `NA`. See [QC rules](output.md#summaryqc_summarytsv) for how the status is decided. |
-| Reasons                  | The `qc_reasons` tokens: `low_coverage`, `amplicon_dropout`, `no_reads`, `no_depths`, `ntc_reads`, `primer_scheme_mismatch`, `low_primer_trimming` (the last two are underlined and explain themselves on hover). |
-| Raw reads, Mapped %      | From fastp and `samtools flagstat` (`-` in `demix` mode without them).                                                                  |
-| Mean depth               | Mean depth over the whole genome (zeros included).                                                                                      |
-| >=10x %                  | % of the genome at depth >= 10.                                                                                                         |
-| >=min depth %            | % of the genome at depth >= `--consensus_min_depth` (what will not be masked in the consensus).                                         |
-| Amplicons dropped        | `dropped / total` amplicons.                                                                                                            |
-| Demix                    | Badge for the demix status: `ok` (green), `skipped_low_coverage` and `missing` (amber), `failed` (red).                                 |
-| Top group                | The most abundant summarized lineage group and its %.                                                                                   |
-| Consensus N %            | % `N` in the consensus.                                                                                                                 |
-| Primer trimmed %         | Only shown when at least one sample has a value. The share of mapped reads from which `ivar trim` removed primer sequence. **Informational**: calibration on the synthetic data showed it does not separate right from wrong primer schemes, so it is not a pass/fail signal; `low_primer_trimming` only appears when you set `--qc_min_primer_trimmed_pct`. |
+| Column                   | Meaning                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sample, Type, Date, Site | From the samplesheet.                                                                                                                                                                                                                                                                                                                                                       |
+| QC                       | Badge: green `PASS`, amber `WARN`, red `FAIL`, grey `NA`. See [QC rules](output.md#summaryqc_summarytsv) for how the status is decided.                                                                                                                                                                                                                                     |
+| Reasons                  | The `qc_reasons` tokens: `low_coverage`, `amplicon_dropout`, `no_reads`, `no_depths`, `ntc_reads`, `primer_scheme_mismatch`, `low_primer_trimming` (the last two are underlined and explain themselves on hover).                                                                                                                                                           |
+| Raw reads, Mapped %      | From fastp and `samtools flagstat` (`-` in `demix` mode without them).                                                                                                                                                                                                                                                                                                      |
+| Mean depth               | Mean depth over the whole genome (zeros included).                                                                                                                                                                                                                                                                                                                          |
+| >=10x %                  | % of the genome at depth >= 10.                                                                                                                                                                                                                                                                                                                                             |
+| >=min depth %            | % of the genome at depth >= `--consensus_min_depth` (what will not be masked in the consensus).                                                                                                                                                                                                                                                                             |
+| Amplicons dropped        | `dropped / total` amplicons.                                                                                                                                                                                                                                                                                                                                                |
+| Demix                    | Badge for the demix status: `ok` (green), `skipped_low_coverage` and `missing` (amber), `failed` (red).                                                                                                                                                                                                                                                                     |
+| Top group                | The most abundant summarized lineage group and its %.                                                                                                                                                                                                                                                                                                                       |
+| Consensus N %            | % `N` in the consensus.                                                                                                                                                                                                                                                                                                                                                     |
+| Primer trimmed %         | Only shown when at least one sample has a value. The share of mapped reads from which `ivar trim` removed primer sequence. **Informational**: calibration on the synthetic data showed it does not separate right from wrong primer schemes, so it is not a pass/fail signal; `low_primer_trimming` only appears when you set `--qc_min_primer_trimmed_pct`.                |
 | Primer scheme            | Only shown when at least one sample has a value. Badge from the primer-scheme check: green `ok` (read starts line up with the declared scheme), amber `mismatch` (hover: the best-matching scheme; also a run-level flag), grey `uninformative` (read starts line up with no scheme, for example tagmentation libraries, so no check is possible), blank when not assessed. |
 
 A negative control is judged differently from samples: it FAILS if it has real reads/coverage, and it never fails for
@@ -180,15 +182,25 @@ coverage, orange = dropped (< threshold), then light to dark blue for increasing
 ## Amplicon dropout impact
 
 Only when `summary/dropout_impact.tsv` / `dropout_impact_summary.tsv` exist (full and demix mode, amplicon protocol,
-`--dropout_impact`). A dropped amplicon hides every mutation inside it; this matters when those mutations are what tells
-the detected lineages apart. For each dropped amplicon the table shows its span, mean depth, the number of
-**lineage-informative sites** in it (mutations of the Freyja dataset carried by some but not nearly all lineages), how
-many of those belong to the lineages Freyja detected in that sample, and which lineages (`XBB.1.5 (9), BA.2 (3)`).
-Rows highlighted in amber with the badge "affects detected lineages" mean the abundance estimate of those lineages may be
-biased; such samples also raise the `dropout_affects_lineages` run flag. A per-sample summary above the table gives the
-% of the lineage-informative sites that the scheme can observe which are lost in dropped amplicons. Samples without a
-lineage estimate (skipped, failed, controls) say "no lineage estimate". The table is filterable and sortable like the
-others; long tables show the first 100 rows (500 at most) with a "Show all" button.
+`--dropout_impact`). A dropped amplicon hides every mutation inside it; what matters for the lineage estimate are the
+**defining mutations** of the detected lineages: the mutations a lineage has that its parent lineage lacks (hover the word
+in the report). Mutations inherited from ancestors do not tell a lineage from its parent, so hiding them does not move the
+estimate.
+
+- **Dropped amplicons table**: per dropped amplicon its span and mean depth, the number of **defining sites hidden**
+  (primary), which lineages lose them (`XBB.1.5 (2), BA.2 (1)`, defining-site counts), then the _differential_ sites
+  (carried by some but not all detected lineages; reported for context, not part of the warning) and the
+  lineage-informative sites (carried by some but not nearly all lineages of the Freyja dataset; secondary context).
+  Rows in amber with the badge "hides defining sites" mean a lineage detected at or above the affect threshold
+  (`--dropout_min_affect_abundance`, default 5%) loses defining mutations, so its abundance estimate may be biased; such
+  samples also raise the `dropout_affects_lineages` run flag. A lineage between 1% and the threshold is listed but does not
+  highlight the row.
+- **Per-sample summary** above it: defining sites lost / observable and the **% defining sites lost** (primary), the number
+  of dropouts hiding defining sites, and the share of lineage-informative sites lost as secondary context.
+- Samples without a lineage estimate (skipped, failed, controls) say "no lineage estimate". The tables are filterable
+  and sortable like the others; long tables show the first 100 rows (500 at most) with a "Show all" button.
+- Tables written before this refinement (without the `n_defining_sites`, `n_differential_sites` and
+  `defining_sites_*` columns) still render, with the older informative-sites layout.
 
 ## Negative controls
 
@@ -237,7 +249,11 @@ several samples (**recurrent**) is an early hint of a novel or cryptic lineage, 
 dropout all produce false hits, so check interesting rows on the reads. The table lists recurrent rows first with a
 "recurrent (n)" badge and an amber highlight, gene and amino-acid change, observed and expected frequency (hover the
 expected frequency for the excess), depth, alt reads and the p-value in scientific notation (a one-sided binomial tail
-probability of the alt read count under the expected frequency). The thresholds used are printed above the table. When
+probability of the alt read count under the expected frequency; p-values are floored at 1e-300 and shown as
+`<=1e-300`, meaning "at most"). A small **not in dataset** marker on a row (newer tables only, column `in_dataset`) means that
+no lineage in the Freyja dataset models this mutation: a dataset blind spot (for example masked sites) or a novel change;
+the info flag then says how many of the recurrent mutations are of this kind. The thresholds used are printed above the
+table. When
 the file exists but has no rows the section says "None found with the current thresholds"; when the analysis did not run
 there is no section. A recurrent mutation also raises the info flag `unexplained_mutations`.
 
@@ -248,7 +264,7 @@ HTML report: it lives in `summary/lineage_summary.csv` (and, for site aggregates
 `summary/lineage_summary_site_aggregates.csv`), where it opens in a spreadsheet. The report only mentions it:
 
 - **Provenance** (last section) has one line: `Lineage groups: <groups file name>, sha256 <first 12>, dataset <Freyja
-  dataset version>; table in summary/lineage_summary.csv`. The file name comes from `--lineage_groups` (otherwise
+dataset version>; table in summary/lineage_summary.csv`. The file name comes from `--lineage_groups` (otherwise
   "bundled default"); checksum and dataset version come from `summary/lineage_groups_resolved.tsv`, so the groups used
   can be identified later.
 - **Run-level flags**: `lineage_groups_warnings` (warn) lists the first warnings of the groups audit (a pattern that is
@@ -359,9 +375,9 @@ example `skipped variant at NC_045512.2:22942 (overlaps another variant)`. Faile
 | Coverage tracks                                  |              yes               |                                       yes                                       |                                                    no                                                    | as the original run |
 | Amplicon dropout                                 |              yes               |                   only with `--primer_scheme`/`--primer_bed`                    |                                                    no                                                    | as the original run |
 | Mutations of interest                            | with `--mutations_of_interest` |                         with `--mutations_of_interest`                          |                                                    no                                                    | as the original run |
-| Amplicon dropout impact                          |  with `--dropout_impact`       |                         with `--dropout_impact`                                 |                                                    no                                                    | as the original run |
+| Amplicon dropout impact                          |    with `--dropout_impact`     |                             with `--dropout_impact`                             |                                                    no                                                    | as the original run |
 | Unexplained mutations                            | with `--unexplained_mutations` |                         with `--unexplained_mutations`                          |                                                    no                                                    | as the original run |
-| Site aggregates                                  |   with `--site_aggregation`    |                           with `--site_aggregation`                             |                                      with `--site_aggregation`                                           | as the original run |
+| Site aggregates                                  |   with `--site_aggregation`    |                            with `--site_aggregation`                            |                                        with `--site_aggregation`                                         | as the original run |
 | Time series                                      |        when >= 2 dates         |                                 when >= 2 dates                                 | when >= 2 dates in the samplesheet in effect (`--input` or `--previous_results`; not with `--demix_dir`) | as the original run |
 | Negative controls                                |  when a control demixed `ok`   |                                      same                                       |                              same (a control `.demix` found in the inputs)                               | as the original run |
 | Barcode comparison                               |   with `--compare_barcodes`    |                            with `--compare_barcodes`                            |                                                    no                                                    | as the original run |
@@ -371,6 +387,22 @@ example `skipped variant at NC_045512.2:22942 (overlaps another variant)`. Faile
 Unavailable panels say "not available in mode '<mode>'". A report built by `--mode report` shows the mode label of
 the original run (it re-renders the original `report_data.json`); in the verified run the re-rendered `report.html` was
 byte-for-byte identical to the original.
+
+## Sharing a report: anonymisation
+
+A report normally contains local paths and the full command line (provenance block, "Key parameters"), the user name
+that appears in them, and your sample IDs and site names. Before sending it to someone outside the lab, build the report
+data with `--anonymize` (pipeline parameter `report_anonymize`, values `none`, `paths`, `full`):
+
+- `paths`: file system paths become `.../<file name>`, home directories `~`, the user name `<user>`, e-mail addresses
+  `<email>`; the command line keeps its shape with base names only. Sample IDs and site names stay.
+- `full`: additionally samples become `S001`, `S002`, ... and sites `SITE1`, ... (site-aggregate names `AGG1`, ...), the
+  same everywhere: QC table, charts, tooltips, flags, filters, links. The mapping is written to a separate file
+  (`--anonymize-map-out sample_id_map.csv`), never into the report; keep it private.
+
+The header shows a short "Anonymised for sharing" note. **Not anonymised**: collection dates, lineage names, barcode
+and software versions, QC values and every other number, and the other files in `summary/`. See
+[report_data.md](report_data.md#anonymisation) for the exact rules.
 
 ## Rebuilding the report
 

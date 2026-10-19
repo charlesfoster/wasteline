@@ -74,8 +74,8 @@ QC status (`--min-depth` is the depth used for the coverage test and is independ
 | sample_type | status | rule                                                                                                                                                     | reason tokens            |
 | ----------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
 | sample      | FAIL   | all depths 0 or `mapped_reads == 0`                                                                                                                      | `no_reads`               |
-| sample      | FAIL   | % genome >= min-depth is `< --fail-below-pct` (50)                                                                                                       | `low_coverage`           |
-| sample      | WARN   | below `--pass-min-pct` (80)                                                                                                                              | `low_coverage`           |
+| sample      | FAIL   | % genome >= min-depth is `< --fail-below-pct` (30; script and pipeline default since D17, it was 50)                                                     | `low_coverage`           |
+| sample      | WARN   | below `--pass-min-pct` (60; it was 80)                                                                                                                   | `low_coverage`           |
 | sample      | WARN   | `amplicons_dropped > --max-dropped` (script default 10; the pipeline passes `qc_max_dropped_amplicons`, default **1**), if PASS otherwise                | `amplicon_dropout`       |
 | sample      | WARN   | `primer_trimmed_pct < --min-primer-trimmed-pct` (script default **0 = rule off**), if PASS otherwise; never FAIL by itself, only when the value is known | `low_primer_trimming`    |
 | sample      | WARN   | `primer_scheme_check == mismatch` (always on, no threshold; the check's own `--min-enrichment`/`--window` are module `ext.args`); never FAIL by itself   | `primer_scheme_mismatch` |
@@ -148,7 +148,7 @@ fails on bad input (exit 0 with a note on stderr; 2 only for bad usage). `nan` (
 
 ```
 primer_scheme_check.py --starts S.read_starts.tsv --declared SCHEME_OR_BED --sample S [--beds-dir assets/primer_schemes]
-                       [--window 2] [--min-enrichment 5] [--min-reads 500] [--genome-length 29903]
+                       [--window 2] [--min-enrichment 5] [--min-hit-fraction 0.05] [--min-reads 500] [--genome-length 29903]
                        [--max-p-value 0.001] [--equivalence-jaccard 0.9]
                        -o S.primer_scheme_check.tsv --summary-out S.primer_scheme_summary.tsv
 ```
@@ -172,21 +172,25 @@ with what random read starts would give.
   `hit_fraction = hits / n_reads`, `p_value` = one-sided binomial `P(X >= hits)`, `X ~ Bin(n_reads, expected / n_reads)`
   (pooled over the strands, which is slightly conservative), computed exactly in log space (no normal approximation;
   floored at 1e-300).
-- A scheme **reaches the bar** when `enrichment >= --min-enrichment` (5) **and** `p_value <= --max-p-value` (0.001). The
-  p-value guard is an addition: with few expected hits a handful of chance hits gives a large ratio.
+- A scheme **reaches the bar** when `enrichment >= --min-enrichment` (5) **and** `p_value <= --max-p-value` (0.001) **and**
+  `hit_fraction >= --min-hit-fraction` (0.05). The p-value guard is an addition: with few expected hits a handful of chance hits
+  gives a large ratio. The hit-fraction floor is another: a sparse scheme (`eden`, 28 sites, window coverage 0.23 %) can reach an
+  enrichment of 6-8 with only 1.4-1.8 % of the reads at its sites, because its tiny expected count inflates the ratio; the fraction of
+  reads is an absolute signal that a small window set cannot inflate (`0` switches the floor off).
 - Schemes are **equivalent** when the Jaccard index of their (strand, 5' position) site sets is >= 0.9 (midnight vs
   midnightv2: 58/59; swift and xgen have identical sites). Reads cannot separate them; they are reported together
   (`best_scheme = midnight/midnightv2`).
 - Detail table, one row per scheme: `scheme, n_primer_5prime_sites, n_reads, hits, expected_hits, hit_fraction,
 enrichment, p_value, equivalent_to_declared`. Summary row: `sample, declared_scheme, declared_enrichment, best_scheme,
-best_enrichment, scheme_check, reason`.
+best_enrichment, scheme_check, reason, declared_hit_fraction, best_hit_fraction` (the last two appended, 4 decimals, `NA` when
+  not computable; `qc_summary.tsv` reads columns by name and is unchanged).
 
-| `scheme_check`  | meaning                                                                                                                   | `reason`                                               |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `ok`            | the declared scheme reaches the bar                                                                                       | `declared_enriched`                                    |
-| `mismatch`      | declared does not reach the bar; the best scheme does, is not equivalent to the declared one and has >= 3x its enrichment | `best_other_scheme`                                    |
-| `uninformative` | no scheme reaches the bar (e.g. fragmentation/tagmentation libraries), or the best other scheme is not decisively better  | `no_scheme_enriched`, `best_not_decisive`              |
-| `NA`            | fewer than `--min-reads` (500) reads, unreadable starts, or unknown declared scheme                                       | `too_few_reads`, `missing_input`, `declared_not_found` |
+| `scheme_check`  | meaning                                                                                                                                                                                                                                       | `reason`                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `ok`            | the declared scheme reaches the bar                                                                                                                                                                                                           | `declared_enriched`                                                   |
+| `mismatch`      | declared does not reach the bar; the best scheme does, is not equivalent to the declared one and has >= 3x its enrichment **or** >= 3x its hit fraction                                                                                       | `best_other_scheme`                                                   |
+| `uninformative` | no scheme reaches the bar (e.g. fragmentation/tagmentation libraries), the best other scheme is not decisively better, or the declared scheme passes enrichment and p-value but not the hit-fraction floor (a sparse scheme's inflated ratio) | `no_scheme_enriched`, `best_not_decisive`, `declared_sparse_inflated` |
+| `NA`            | fewer than `--min-reads` (500) reads, unreadable starts, or unknown declared scheme                                                                                                                                                           | `too_few_reads`, `missing_input`, `declared_not_found`                |
 
 Exit 0 always (2 only for unusable arguments); `uninformative` is not an error and does not warn.
 
@@ -226,9 +230,62 @@ declared `midnight` or `midnightv2` is `ok`. Randomly fragmented reads (the null
   `mismatch` needs the declared scheme below the bar AND the best at least 3x higher.
 - Genome length defaults to 29903 (SARS-CoV-2); pass `--genome-length` for another reference. Duplicate-marked reads are
   counted (PCR duplicates of anchored reads raise the fraction).
-- _QIAseq (planned default scheme)_: reads should be strongly anchored (single-primer extension), so a clear `ok` is
-  expected; the actual enrichment is unknown until a real QIAseq run is checked, and that run is the best calibration for
-  `--min-enrichment` (dense scheme, c about 4.5 %, so 5 may be strict for partially anchored runs).
+- _QIAseq (the default scheme)_, measured on 11 real samples declared `qiagenv1`: the right scheme has enrichment 12.7-17.4 and
+  **0.58-0.80** of the reads at its primers; the sparse `eden` reached enrichment 0.0-7.8 at 0.000-0.018 of the reads (the old rule gave
+  3 false `ok` for `eden` declared on QIAseq reads, the hit-fraction floor and the 3x hit-fraction alternative remove them); `articv*` 0.5-3.4
+  at 0.009-0.060, `swift`/`xgen` 1.0-2.0 at 0.056-0.116, `midnight*` 0.3-1.0 at 0.0015-0.005. Re-scoring all 11 samples against all
+  nine declared schemes (99 combinations) gives 11/11 `ok` for the right scheme and 88/88 `mismatch` (best `qiagenv1`) for the wrong
+  ones. Any floor between 0.019 and 0.19 gives the same matrix; 0.05 is the default.
+- _The hit-fraction floor costs Midnight-like libraries some sensitivity_: for a very sparse scheme (window coverage 0.49 %), enrichment 5
+  alone needs about 2.4 % of the reads at primer ends; with the floor it needs 5 % (enrichment about 10). A weakly anchored Midnight
+  library with 2.4-5 % anchored reads is therefore `uninformative` (`declared_sparse_inflated`) instead of `ok`. Never a false warning:
+  only `mismatch` warns. The synthetic Midnight-shaped samples have a hit fraction of about 0.20.
+
+## dropout_impact.py
+
+```
+dropout_impact.py --amplicons amplicon_coverage.tsv --aggregated freyja_aggregated.tsv --dataset <dataset dir | barcodes .csv>
+                  [--min-abundance 0.01] [--min-affect-abundance 0.05] [--informative-max-fraction 0.95]
+                  [--lineages-yml PATH] [--strict-roots] --out dropout_impact.tsv --summary-out dropout_impact_summary.tsv
+```
+
+Which dropped amplicons hide mutations that matter for the lineages detected in a sample. Output columns:
+[output.md](output.md#summarydropout_impacttsv-and-summarydropout_impact_summarytsv). Definitions:
+
+- an **informative** site is a single-nucleotide substitution carried by some but not nearly all lineages of the dataset (< 95 %);
+- a **defining** site of lineage `l` is an informative site that `l` carries and its **parent** does not
+  (`barcode(l) - barcode(parent(l))`). The parent is the `parent:` of `lineages.yml` (by name or alias, case-insensitive), the nearest
+  ancestor with a barcode if the parent has none; a root has all its informative sites as defining. **Recombinant roots**
+  (entries with `recombinant_parents:`, e.g. `XFG`, `XBB`) inherit the sites of their recombinant parents: those are not defining
+  (`--strict-roots` counts them as defining; it is a script option, not exposed as a pipeline parameter, and is only useful to compare
+  with the literal definition). Without `lineages.yml` (a bare barcodes `.csv`) the parent is guessed by dropping trailing `.N` name
+  components, with a warning: aliased names (`BA.5`) then act as roots and defining sites are over-counted;
+- a lineage is **detected** at abundance `>= --min-abundance` (0.01); `affects_detected_lineage` needs one at
+  `>= --min-affect-abundance` (0.05) with a defining site in the dropped span. `n_differential_sites` (carried by some but not all
+  detected lineages) is reported but is not part of the flag: with many detected lineages nearly every amplicon has one.
+
+Why defining and not informative: a Freyja barcode lists hundreds of mutations inherited from ancestors, so under the "any informative
+site" rule 24 of 29, 6 of 10, 17 of 22, 26 of 36 and 19 of 26 dropped amplicons of five real samples were flagged and the run-level
+warning fired on every sample; with the defining rule 12, 2, 5, 2 and 0 are. The 0.05 floor only stops lineages at 1-5 % from
+raising the flag; they are still listed. Runs in 0.2 s per run; the new columns are appended, the old ones keep name and position.
+
+## unexplained_mutations.py
+
+```
+unexplained_mutations.py --variants S.variants.tsv --dataset <dataset> --sample S [--demix S.demix] [--gff g.gff3 --reference r.fa]
+                         [--min-depth 20] [--min-alt-depth 10] [--min-freq 0.05] [--min-excess 0.05] [--max-pvalue 1.67e-6]
+                         [--max-rows 100] --output S.unexplained_mutations.tsv
+unexplained_mutations.py --concat S1.tsv S2.tsv ... [--min-recurrence 2] --output unexplained_mutations.tsv
+```
+
+Frequent variants that the demixed lineage mixture does not predict (method and columns: [usage.md](usage.md#unexplained-mutations),
+[output.md](output.md#summaryunexplained_mutationstsv)). Notes on the numbers: the binomial tail is summed in **log space**, so deep calls
+do not underflow to `0`; `p_value` is written with 3 significant digits and **floored at `1e-300`** (it means "at most 1e-300"; always a
+plain positive float), and `--max-pvalue` is compared in log space (`--max-pvalue 0` rejects everything). `in_dataset` (last column) says
+whether any lineage of the dataset carries the exact mutation. `--max-rows` (default 100; negative values are refused, `0` writes a header
+only) keeps the rows with the largest excess per sample and warns; the cut is made before `--concat`, so `n_samples` and `recurrent` count only
+the rows that survived it, and ties on excess (many `excess = 1`) are cut by position, not by evidence. `--concat` refuses per-sample tables
+with a different header (for example from before `in_dataset`).
 
 ## low_depth_mask.py
 

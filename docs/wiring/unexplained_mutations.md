@@ -35,13 +35,13 @@ excess(m)        = observed_freq(m) - expected_freq(m)
 
 A mutation is reported when ALL of (all inclusive; a 1e-9 tolerance so values exactly on a threshold are kept):
 
-| rule | option | default |
-|---|---|---|
-| `TOTAL_DP >=` | `--min-depth` | 20 |
-| `ALT_DP >=` | `--min-alt-depth` | 10 |
-| `ALT_QUAL >=` (if numeric) | `--min-alt-qual` | 20 |
-| observed `>=` | `--min-freq` | 0.05 |
-| observed - expected `>=` | `--min-excess` | 0.05 |
+| rule                                                                               | option                                        | default                      |
+| ---------------------------------------------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| `TOTAL_DP >=`                                                                      | `--min-depth`                                 | 20                           |
+| `ALT_DP >=`                                                                        | `--min-alt-depth`                             | 10                           |
+| `ALT_QUAL >=` (if numeric)                                                         | `--min-alt-qual`                              | 20                           |
+| observed `>=`                                                                      | `--min-freq`                                  | 0.05                         |
+| observed - expected `>=`                                                           | `--min-excess`                                | 0.05                         |
 | `P(X >= ALT_DP) <=` for `X ~ Binomial(TOTAL_DP, max(expected, --background-rate))` | `--max-pvalue` (1 = off), `--background-rate` | 0.05 / 29903 = 1.67e-6, 0.01 |
 
 **The binomial guard is an addition to the requested rules** and is on by default. Reason (measured, see below): at the
@@ -86,10 +86,10 @@ include { UNEXPLAINED_MUTATIONS        } from '../modules/local/unexplained_muta
 include { UNEXPLAINED_MUTATIONS_CONCAT } from '../modules/local/unexplained_mutations_concat/main'
 ```
 
-| process | inputs | outputs (emit) |
-|---|---|---|
-| `UNEXPLAINED_MUTATIONS` | `tuple val(meta), path(variants), path(demix)` (demix may be `[]`); `path dataset` (Freyja dataset dir or custom barcodes `.csv`); `path gff`; `path reference` (`[]` for both to skip annotation) | `tsv` = `[ meta, <id>.unexplained_mutations.tsv ]`; `versions_python` (topic `versions`) |
-| `UNEXPLAINED_MUTATIONS_CONCAT` | `path tables` (collected, staged as `unexplained/*`) | `tsv` = `unexplained_mutations.tsv`; `versions_python` (topic `versions`) |
+| process                        | inputs                                                                                                                                                                                             | outputs (emit)                                                                           |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `UNEXPLAINED_MUTATIONS`        | `tuple val(meta), path(variants), path(demix)` (demix may be `[]`); `path dataset` (Freyja dataset dir or custom barcodes `.csv`); `path gff`; `path reference` (`[]` for both to skip annotation) | `tsv` = `[ meta, <id>.unexplained_mutations.tsv ]`; `versions_python` (topic `versions`) |
+| `UNEXPLAINED_MUTATIONS_CONCAT` | `path tables` (collected, staged as `unexplained/*`)                                                                                                                                               | `tsv` = `unexplained_mutations.tsv`; `versions_python` (topic `versions`)                |
 
 Both honour `ext.args` (thresholds), `ext.prefix` (per-sample only) and `ext.when`. The three value-like inputs
 (`dataset`, `gff`, `reference`) are single items / value channels.
@@ -158,15 +158,15 @@ sample negative) emits nothing, so the concat does not run: hence `.ifEmpty([])`
 
 ## Params (suggested)
 
-| param | default | meaning |
-|---|---|---|
-| `unexplained_mutations` | `true` | run the analysis (only meaningful in `full` / `demix`); `false` skips it |
-| `unexplained_min_freq` | `0.05` | minimum observed frequency (0-1) |
-| `unexplained_min_excess` | `0.05` | minimum observed minus expected frequency (0-1) |
-| `unexplained_min_depth` | `20` | minimum total depth at the position |
-| `unexplained_min_alt_depth` | `10` | minimum alt-supporting reads |
-| `unexplained_min_recurrence` | `2` | samples with the same mutation unexplained for `recurrent = true` |
-| `unexplained_max_pvalue` | `1.67e-6` (= 0.05 / 29903) | binomial guard against depth noise, Bonferroni-style over the genome; `1` disables it (see Method) |
+| param                        | default                    | meaning                                                                                            |
+| ---------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `unexplained_mutations`      | `true`                     | run the analysis (only meaningful in `full` / `demix`); `false` skips it                           |
+| `unexplained_min_freq`       | `0.05`                     | minimum observed frequency (0-1)                                                                   |
+| `unexplained_min_excess`     | `0.05`                     | minimum observed minus expected frequency (0-1)                                                    |
+| `unexplained_min_depth`      | `20`                       | minimum total depth at the position                                                                |
+| `unexplained_min_alt_depth`  | `10`                       | minimum alt-supporting reads                                                                       |
+| `unexplained_min_recurrence` | `2`                        | samples with the same mutation unexplained for `recurrent = true`                                  |
+| `unexplained_max_pvalue`     | `1.67e-6` (= 0.05 / 29903) | binomial guard against depth noise, Bonferroni-style over the genome; `1` disables it (see Method) |
 
 `nextflow_schema.json`: a group "Unexplained mutations" (booleans/numbers with min/max: frequencies 0-1, depths
 integer >= 0, `unexplained_min_recurrence` integer >= 1, `unexplained_max_pvalue` 0-1). Declare the defaults in the
@@ -183,19 +183,19 @@ and in `docs/qc_scripts.md` (the script follows the `mutations_of_interest.py` p
    lineages do not predict; a hint of a novel lineage, not a variant call") and states the thresholds from
    `thresholds`.
 2. **Run-level flag** `unexplained_mutations`, level `info`: raised when any row has `recurrent == true`; `samples` =
-   the sorted IDs of the samples carrying a recurrent row; message e.g. *"N mutation(s) unexplained by the demixed
-   lineages recur in several samples (first: S:E180D in 3 samples); possible novel lineage."* Add the code to the
+   the sorted IDs of the samples carrying a recurrent row; message e.g. _"N mutation(s) unexplained by the demixed
+   lineages recur in several samples (first: S:E180D in 3 samples); possible novel lineage."_ Add the code to the
    `run_flags` list in `docs/report_data.md`.
 3. **`report_data.json` fields** (all new and optional):
    - `available.unexplained_mutations`: boolean.
    - `unexplained_mutations`: `null` = not run; `[]` = run with no rows; else the concat rows as
      `{sample, position, ref, alt, observed_freq, expected_freq, excess, depth, alt_depth, gene, aa_change, effect,
-     n_samples, recurrent, p_value}` (numbers as numbers, `NA` -> `null`, `recurrent` -> boolean), file order.
+n_samples, recurrent, p_value}` (numbers as numbers, `NA` -> `null`, `recurrent` -> boolean), file order.
    - `thresholds.unexplained_min_freq`, `unexplained_min_excess`, `unexplained_min_depth`, `unexplained_min_alt_depth`,
      `unexplained_min_recurrence`, `unexplained_max_pvalue` (from the run params). `p_value` is a float (`2.39e-42` -> 2.39e-42), or null.
    - optionally per sample in `samples[*]`: `n_unexplained` (integer, or null when the sample has no demix).
-   `BUILD_REPORT_DATA` takes a new `--unexplained-mutations` option, fed through `wrapItem(...)` like the other
-   optional tables; `report`-mode `optionalFile(results, 'unexplained_mutations.tsv')` picks it up from old results.
+     `BUILD_REPORT_DATA` takes a new `--unexplained-mutations` option, fed through `wrapItem(...)` like the other
+     optional tables; `report`-mode `optionalFile(results, 'unexplained_mutations.tsv')` picks it up from old results.
 4. Optional: `qc_summary.tsv` is unchanged (no new column is needed).
 
 ## What the real data showed (synthetic `tests/data`, Freyja 2.0.6 e2e run `out_full`)
@@ -206,13 +206,13 @@ re-running `freyja demix` of the same variants/depths with it in `quay.io/biocon
 (MIX_A then gets 9 lineages, e.g. `BA.2 0.692, AY.4 0.176, AY.1 0.071, ...`; Site_1_week_2 gets 9; PURE_C stays
 `JN.1 1.0`).
 
-| sample | custom CSV, default | bundled dataset, default | custom CSV, `--max-pvalue 1` | custom CSV, `--max-pvalue 0.001` (old default) |
-|---|---|---|---|---|
-| PURE_C | 0 rows | 0 rows | 0 | 0 |
-| MIX_A | 0 rows | 0 rows | 18 (all depth 35-86x, excess 0.05-0.15) | 0 |
-| MIX_B | 0 rows | 0 rows | 15 | 0 |
-| NEG_CONTAM | 0 rows | n/a | 0 | 0 |
-| Site_1_week_2 | 0 rows | 0 rows | 9 | 1 row: `9866 C>T` ORF1ab L3201F, 17/22 reads (0.77) vs expected 0.39 (XBB.1.5 + a spurious 3 % BA.2 both carry it), p = 3.3e-4 (8.0e-4 with the bundled dataset) |
+| sample        | custom CSV, default | bundled dataset, default | custom CSV, `--max-pvalue 1`            | custom CSV, `--max-pvalue 0.001` (old default)                                                                                                                   |
+| ------------- | ------------------- | ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PURE_C        | 0 rows              | 0 rows                   | 0                                       | 0                                                                                                                                                                |
+| MIX_A         | 0 rows              | 0 rows                   | 18 (all depth 35-86x, excess 0.05-0.15) | 0                                                                                                                                                                |
+| MIX_B         | 0 rows              | 0 rows                   | 15                                      | 0                                                                                                                                                                |
+| NEG_CONTAM    | 0 rows              | n/a                      | 0                                       | 0                                                                                                                                                                |
+| Site_1_week_2 | 0 rows              | 0 rows                   | 9                                       | 1 row: `9866 C>T` ORF1ab L3201F, 17/22 reads (0.77) vs expected 0.39 (XBB.1.5 + a spurious 3 % BA.2 both carry it), p = 3.3e-4 (8.0e-4 with the bundled dataset) |
 
 All five synthetic samples therefore give 0 rows with both datasets at the new default; every row that appears with
 `--max-pvalue 1` has `p_value` above the cut-off (test `test_real_samples_without_the_guard_show_the_noise`). The old
@@ -244,8 +244,8 @@ disappears (test `test_spike_explained_by_a_lineage_in_the_dataset_is_not_report
   ORF1ab P4715L, intergenic, start_lost, overlapping ORF7a/ORF7b), header-only for skipped samples, `--max-rows`, binomial
   tail values, the real-data checks above, concat (recurrence, order, `--min-recurrence`, zero rows, bad header).
 - Module nf-tests (docker): `nf-test test modules/local/unexplained_mutations/tests/main.nf.test --profile docker` (stub
-  + spiked PURE_C + MIX_A header-only + dataset-directory/no-GFF + no-demix) and
-  `.../unexplained_mutations_concat/tests/main.nf.test` (stub + 3-sample recurrence with a skipped sample +
-  header-only + `ext.args --min-recurrence 4` + wrong header rejected).
+  - spiked PURE_C + MIX_A header-only + dataset-directory/no-GFF + no-demix) and
+    `.../unexplained_mutations_concat/tests/main.nf.test` (stub + 3-sample recurrence with a skipped sample +
+    header-only + `ext.args --min-recurrence 4` + wrong header rejected).
 - Quality: `ruff check` and `ruff format --check` clean on the script and test file; `nextflow lint` on both modules
   has only the `when:` deprecation warning that every module in the repository has.

@@ -15,7 +15,7 @@ Contents: [1 Prerequisites](#1-prerequisites) | [2 Modes](#2-modes-at-a-glance) 
 [4 Reference and primer schemes](#4-reference-and-primer-schemes) | [5 Running each mode](#5-running-each-mode) |
 [6 Freyja data (barcodes)](#6-freyja-data-barcodes) | [7 Freyja settings](#7-freyja-settings) |
 [8 Consensus genomes](#8-consensus-genomes) | [9 Negative controls and QC](#9-negative-controls-and-qc-thresholds) |
-[10 Mutations of interest](#10-mutations-of-interest) | [Lineage groups](#lineage-groups) | [Site aggregation](#site-aggregation) | [11 Resuming](#11-resuming-a-run--resume) |
+[10 Mutations of interest](#10-mutations-of-interest) | [Lineage groups](#lineage-groups) | [Site aggregation](#site-aggregation) | [Sharing a report](#sharing-a-report) | [Re-analysing](#re-analysing-past-runs-with-newer-barcodes) | [11 Resuming](#11-resuming-a-run--resume) |
 [12 Profiles](#12-profiles) | [13 Resources](#13-resources) | [14 Parameter files](#14-parameter-files-and-boolean-flags) |
 [15 HPC](#15-running-on-an-hpc-cluster) | [16 Updating Freyja](#16-updating-the-freyja-version-of-the-pipeline) |
 [17 Not implemented](#17-not-implemented)
@@ -282,12 +282,12 @@ scheme against the reads, on the mapped BAM **before** trimming: it counts the m
 `--primer_check_window` (2) bp of a same-strand primer 5' end, for the declared scheme and for every bundled scheme, and reports
 the enrichment over chance (and a binomial p-value). Per sample, `summary/qc_summary.tsv` gets four columns:
 
-| Column                     | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `primer_scheme_check`      | `ok` (the declared scheme is enriched at least `--primer_check_min_enrichment` times, 5, and significantly), `mismatch` (the declared scheme is not, and another, non-equivalent scheme is enriched with at least 3 times its enrichment), `uninformative` (no scheme stands out, for example because the reads do not start at primers; or the best one is not decisively better) or `NA` (fewer than 500 usable reads, no pre-trimming BAM) |
-| `primer_scheme_best`       | the best-matching scheme(s), joined by `/` (`midnight/midnightv2` have identical coordinates)                                                                                                                                                                                                                                                                                                                                                 |
-| `primer_scheme_enrichment` | enrichment of the declared scheme (1 decimal)                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `primer_trimmed_pct`       | percentage of mapped reads from which `ivar trim` removed primer sequence (from the ivar log)                                                                                                                                                                                                                                                                                                                                                 |
+| Column                     | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `primer_scheme_check`      | `ok` (the declared scheme is enriched at least `--primer_check_min_enrichment` times, 5, significantly, and at least `--primer_check_min_hit_fraction`, 5 %, of the reads start at its primers), `mismatch` (the declared scheme is not, and another, non-equivalent scheme is enriched with at least 3 times its enrichment), `uninformative` (no scheme stands out, for example because the reads do not start at primers; or the best one is not decisively better) or `NA` (fewer than 500 usable reads, no pre-trimming BAM) |
+| `primer_scheme_best`       | the best-matching scheme(s), joined by `/` (`midnight/midnightv2` have identical coordinates)                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `primer_scheme_enrichment` | enrichment of the declared scheme (1 decimal)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `primer_trimmed_pct`       | percentage of mapped reads from which `ivar trim` removed primer sequence (from the ivar log)                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 A `mismatch` adds the WARN reason `primer_scheme_mismatch` to the sample and a run-level flag to the report; `uninformative` is
 not a warning. The per-scheme table is in `samples/<s>/coverage/<s>.primer_scheme_check.tsv` (one row per scheme) and the
@@ -301,7 +301,7 @@ Nextera) break amplicons at random positions, so read starts do not mark primers
 `ok`-with-low-enrichment even when the scheme is right. A scheme that is a subset of or very similar to another cannot be told
 apart (`midnight` and `midnightv2`). The method has been calibrated on the synthetic data only (it separates the right scheme
 by a factor of about 10 from all others there); on real runs watch the enrichment of known-good runs first and consider
-`--primer_check_min_enrichment` if your libraries are less strongly anchored. `--primer_scheme_check false` switches it off;
+`--primer_check_min_enrichment` if your libraries are less strongly anchored. The hit-fraction floor stops a sparse scheme (for example `eden`, 28 sites) from passing on its enrichment ratio alone: on real QIAseq data the right scheme has 0.58-0.80 of the reads at its primers and the sparse wrong one at most 0.018. The price: a Midnight library (very sparse scheme) needs at least 5 % of its reads at primer ends, so a weakly anchored one becomes `uninformative` (reason `declared_sparse_inflated`) instead of `ok`; never a warning. `--primer_scheme_check false` switches it off;
 `--qc_min_primer_trimmed_pct` (default 0, off) is a blunter WARN on the ivar trimming percentage alone. Details of the
 method are in [qc_scripts.md](qc_scripts.md#primer_scheme_checkpy).
 
@@ -338,10 +338,10 @@ results, `missing`) and a reason:
 
 ```
 sample         status                reason                                         genome_coverage_pct  barcode_version
-LOWCOV_D       skipped_low_coverage  less than 60% of the genome covered at >= 10x  0.0                  custom
+LOWCOV_D       skipped_low_coverage  less than 50% of the genome covered at >= 10x  0.0                  custom
 MIX_A          ok                                                                   99.3345              custom
 NEG_CONTAM     ok                                                                   94.5457              custom
-NEG_E          skipped_low_coverage  less than 60% of the genome covered at >= 10x  0.0                  custom
+NEG_E          skipped_low_coverage  less than 50% of the genome covered at >= 10x  0.0                  custom
 ```
 
 (`NEG_CONTAM` is a contaminated negative control: demixed, so you can see what it contains, but not in the aggregate; see
@@ -618,7 +618,7 @@ below.
 **Coverage gate.** Freyja will happily report a confident single lineage from a near-empty sample (the synthetic 0.6x
 sample demixes to 100% BA.2 with Freyja's `coverage` 0.0), and crashes on a header-only variants file. wasteline therefore
 computes the % of the genome covered at `--freyja_covcut`x from the depths file and, below `--min_genome_coverage_for_demix`,
-records `skipped_low_coverage` with a reason instead of demixing. Do not set it to 0 unless you want that: with the gate
+records `skipped_low_coverage` with a reason instead of demixing. The default is **50** (it was 60): it is the _high-confidence threshold_. In real QIAseq wastewater data the median sample has only about 58 % of the genome at >= 10x, mostly because amplicons drop out (half of the samples at 25-50 % had a mean depth above 200x), so 60 threw half of the samples away; below 50 % an estimate rests on too few lineage-defining sites to trust. Freyja's own plot still hides samples below `--freyja_plot_mincov` (60). Do not set it to 0 unless you want that: with the gate
 off the 0.0%-covered `LOWCOV_D` is reported as `ok`, and the near-empty `NEG_E` is recorded as `failed` with the Freyja
 traceback as its reason (the run still completes).
 
@@ -779,8 +779,10 @@ what contaminated it.
 
 QC for ordinary samples uses the depths file (bases with Q >= 20), samtools flagstat and the fastp JSON:
 
-- `--qc_min_depth` is the depth used for the coverage test; `PASS` needs at least `--qc_pass_min_pct` of the genome at that
-  depth, below `--qc_fail_below_pct` the sample is `FAIL` (`low_coverage`), in between `WARN`.
+- `--qc_min_depth` is the depth used for the coverage test; `PASS` needs at least `--qc_pass_min_pct` (60) of the genome at that
+  depth, below `--qc_fail_below_pct` (30) the sample is `FAIL` (`low_coverage`), in between `WARN`. These defaults come from real
+  wastewater data (they were 80 and 50 in the clinical Snakemake pipeline: only 3 of 28 real wastewater samples reached 80 %); a
+  clinical-style run can restore them with `--qc_pass_min_pct 80 --qc_fail_below_pct 50`.
 - An amplicon is _dropped_ when its mean depth is below `--amplicon_min_depth`; more than `--qc_max_dropped_amplicons`
   dropped amplicons gives `WARN` (`amplicon_dropout`). The default is strict for 96/99-amplicon ARTIC schemes: raise it
   (the schema suggests 10 for them).
@@ -795,18 +797,34 @@ stop a sample being demixed (only the coverage gate does).
 
 A dropped amplicon matters most when it hides mutations that tell the detected lineages apart. `summary/dropout_impact.tsv` has
 one row per dropped amplicon of each sample (modes `full`, and `demix` with an explicit primer scheme; `--dropout_impact false`
-turns it off). For every dropped amplicon it counts the _informative_ sites inside it (single-nucleotide substitutions carried
-by some but not nearly all lineages of the Freyja dataset: fixed mutations cannot separate lineages) and how many belong to
-lineages detected in that sample (abundance of at least `--dropout_min_abundance`, 0.01). `affects_detected_lineage` is `true`
-when a detected lineage carries at least one informative site in the dropped span, and `affected_lineages` names them with
-the number of sites (`XBB.1.5:9,BA.2:3`). `summary/dropout_impact_summary.tsv` has one row per sample: how many informative
-sites the scheme can see at all, how many were lost (`pct_informative_sites_lost`) and in how many dropped amplicons it matters.
-Real example (synthetic `Site_1_week_2`, XBB.1.5 + BA.5): amplicon `nCoV-2019_22` (spike) hides 28 informative sites, 10 of them
-in the detected lineages (`XBB.1.5:9,BA.2:3,BA.5:3`), so the abundance estimate may be biased; `nCoV-2019_7` hides 5 sites, none
-in a detected lineage, so it does not matter for the lineage estimate. The report lists the affected samples and raises the flag
-`dropout_affects_lineages`. Limits: only substitutions are considered (the dataset's mutation lists contain no indels);
-it needs the dataset's `lineage_mutations.json` or a barcodes `.csv`, so with a custom `.feather`-only `--barcodes` the table is
-skipped with one warning; it says which sites are hidden, not by how much the estimate moves.
+turns it off). Two kinds of sites are counted, per lineage of the Freyja dataset:
+
+- **informative** sites: single-nucleotide substitutions carried by some but not nearly all lineages (fixed mutations cannot
+  separate lineages; a barcode lists hundreds of mutations inherited from ancestors, so almost any amplicon hides some);
+- **defining** sites: the informative sites a lineage carries that its **parent** does not (`barcode(lineage) - barcode(parent)`;
+  the parent comes from the dataset's `lineages.yml`, the nearest ancestor with a barcode if the parent has none). These are the
+  mutations that separate a lineage from its parent and siblings, so hiding them is what makes an abundance estimate move. A
+  recombinant root (`XBB`, `XFG`, ...) does not count the sites of its recombinant parents as its own.
+
+`affects_detected_lineage` is `true` when a lineage detected at `--dropout_min_affect_abundance` (0.05) or more has at least one
+**defining** site inside the dropped span; `affected_lineages` names the detected lineages (at `--dropout_min_abundance`, 0.01 or
+more) with their number of defining sites there (`PJ.2.1:2,RS.1:1`). `n_defining_sites` is the number of distinct defining sites in
+the span and `n_differential_sites` the number carried by some but not all detected lineages (reported, not part of the flag: it
+would recreate the old noise). `summary/dropout_impact_summary.tsv` has one row per sample: how many informative sites the scheme can
+see (`informative_sites_total`) and lose (`pct_informative_sites_lost`), the same for **defining sites** of the detected lineages
+(`defining_sites_total`, `defining_sites_lost`, `pct_defining_sites_lost`) and in how many dropped amplicons the flag is `true`
+(`n_dropped_affecting_detected_lineages`). The report raises the flag `dropout_affects_lineages` for samples with a true
+`affects_detected_lineage`.
+
+The first version of this table counted any informative site; on real data that flagged 60-80 % of all dropped amplicons and the
+warning fired on every sample (for example 24 of 29 dropped amplicons in one sample, 12 with the defining rule). Real example
+(synthetic `Site_1_week_2`, XBB.1.5 + BA.5, test barcodes without a hierarchy, so every lineage is its own root): amplicon
+`nCoV-2019_22` (spike) hides 28 informative sites, 10 of them defining for the detected lineages (`XBB.1.5:9,BA.2:3,BA.5:3`), so the
+abundance estimate may be biased; `nCoV-2019_7` hides 5 sites, none in a detected lineage. Limits: only substitutions are
+considered (the dataset's mutation lists contain no indels); it needs the dataset's `lineage_mutations.json` or a barcodes `.csv`
+(with a custom `.feather`-only `--barcodes` the table is skipped with one warning), and a dataset directory with `lineages.yml` for
+the parents (a bare `.csv` makes the script guess the parent from the lineage name, with a warning, which treats aliased lineages
+such as `BA.5` as roots and over-counts defining sites); it says which sites are hidden, not by how much the estimate moves.
 
 ### Unexplained mutations
 
@@ -825,6 +843,14 @@ recurrent artefact. It is **not a variant caller** and says nothing about lineag
 effects, a lineage too rare to be demixed and mixtures that the barcodes represent badly all produce rows; confirm anything
 interesting on the reads. On the synthetic samples at the default thresholds the table is empty (a deliberately spiked sample
 in the test data is detected, with a p-value many orders of magnitude below the cut-off).
+
+Two columns help to read a row. `p_value` is computed in log space and **floored at `1e-300`**: a deep call whose true p-value is
+smaller is written `1e-300`, which means "at most 1e-300" (never `0`). `in_dataset` (the last column) is `true` when at least one
+lineage of the Freyja dataset (any lineage, not only the demixed ones) carries this exact mutation and `false` when none does: a
+recurrent hit with `in_dataset = false` is first a blind spot of the dataset's mutation list (for example 21987 G>A, S:G142D, which
+no lineage of Freyja 2.0.6 carries, although it is clean in the reads) and only second a candidate novel variant. Per sample at most
+`--max-rows` (100, a script option, not a pipeline parameter) rows are kept, the ones with the largest excess; the cut is made before
+the tables are combined, so `n_samples` and `recurrent` count only rows that survived it.
 
 ### Alignment format and aligner: `--bam_format`, `--aligner`
 
@@ -884,6 +910,16 @@ Outputs in `summary/`:
 
 `pipeline_info/run_info.json` records which list was used: `lineage_groups_file` (the file name, or `bundled default`),
 `lineage_groups_source` (`bundled` or `custom`) and `lineage_groups_sha256`.
+
+**Excel.** With `--lineage_summary_xlsx` (default `true`) the table is also written as a formatted workbook,
+`summary/lineage_summary.xlsx`, that opens in Excel, Numbers and LibreOffice without an import step: numbers are real numbers
+(shown with `--lineage_summary_xlsx_decimals`, 3, decimals; the stored values are the CSV values), the header row and first column
+are frozen, the header has a filter, long lineage lists wrap, and abundances are shaded by six fixed blue buckets (blank and zero
+cells are not shaded). Sheets: `Lineage summary` (the CSV), `Ungrouped lineages`, `Site aggregates` (only with `--site_aggregation`),
+`Groups used` and `About` (pipeline and dataset version, groups-file checksum, thresholds). Sample IDs and dates are always text, and a
+cell is never a formula, whatever it contains. The CSV stays the source of truth; the workbook is a formatted copy for people, with no
+date or time stored, so it only changes when the results change. `python bin/xlsx_writer.py --from-csv summary/qc_summary.tsv -o qc.xlsx`
+converts any other table.
 
 ### The groups file
 
@@ -1046,6 +1082,36 @@ Metro_2026-W03	Metro	2026-W03	2026-01-12	3	SiteA;SiteB;SiteC			viral_load	1.0000
 when it cannot be computed) and `n_samples` counts the samples. A row with a missing site or a weaker basis than requested is not an
 error, but read it with that in mind. With the lineage summary on, `lineage_summary_site_aggregates.csv` has the lineage-group
 columns for each aggregate row.
+
+## Sharing a report
+
+`summary/report.html` shows sample IDs, site names, file paths and your user name (the run's command line and parameters are part of
+the provenance). To share it, for example with a collaborator or in a publication, remove the identifying strings with
+`--report_anonymize`:
+
+| Value            | What it removes                                                                                                                                                               |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none` (default) | Nothing; the output is exactly as before.                                                                                                                                     |
+| `paths`          | File paths (shortened to the file name), your user name and home directory, e-mail addresses.                                                                                 |
+| `full`           | Everything in `paths`, and sample IDs (`S001`, `S002`, ...), site names (`SITE1`, ...) and site-aggregate names (`AGG1`, ...), in every table, flag, chart label and tooltip. |
+
+`full` also writes `summary/sample_id_map.csv` (`type,original,pseudonym`) so that you can translate back. **That file is private:
+do not share it with the report.** The run log says so. Collection dates, lineage names, versions, QC values and parameter values
+that are not paths are not changed. Only `report_data.json` and `report.html` are anonymised: the other files in `summary/` (for
+example `qc_summary.tsv`, `lineage_summary.csv`) and the per-sample directories keep the real IDs, so share the report file, not the
+results folder.
+
+To anonymise the report of a finished run, use mode `report`: `--mode report --results_dir results --outdir results_shared
+--report_anonymize full`. With `--report_anonymize` other than `none` the report data are rebuilt from the summary files, even
+when `summary/report_data.json` exists (the renderer cannot anonymise on its own). The pseudonyms depend only on the set of names,
+so the same samples always get the same ones.
+
+## Re-analysing past runs with newer barcodes
+
+Freyja's barcodes change almost daily. `bin/reanalyse_runs.py` re-runs recent results with a newer dataset in `--mode demix` (no
+mapping) into new `_reanalysis_*` directories and writes `summary/reanalysis_diff.csv`, which lists what changed. It is a dry run
+unless you give `--execute`, and never touches the original results. See [reanalysis.md](reanalysis.md) for the options, what carries
+over, how to read the difference table and a weekly routine.
 
 ## 11. Resuming a run: `-resume`
 

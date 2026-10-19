@@ -2,18 +2,18 @@
 
 Three small features, all delivered as new files only. Nothing below is wired in yet.
 
-| Feature             | New files                                                                                                                                                                  |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--bam_format cram` | `modules/local/samtools_cram/{main.nf,environment.yml,tests/main.nf.test,tests/main.nf.test.snap,tests/roundtrip.nf,tests/roundtrip.nf.test}`                              |
+| Feature             | New files                                                                                                                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--bam_format cram` | `modules/local/samtools_cram/{main.nf,environment.yml,tests/main.nf.test,tests/main.nf.test.snap,tests/roundtrip.nf,tests/roundtrip.nf.test}`                                                      |
 | `--aligner`         | `modules/local/minibwa_mem/{main.nf,environment.yml,tests/main.nf.test,tests/main.nf.test.snap,tests/mapping.nf,tests/mapping.nf.test}`, `tests/compare_aligners.sh`, `docs/aligner_evaluation.md` |
-| replay              | `bin/replay_run.py`, `tests/python/test_replay_run.py`, `tests/fixtures/replay/**`                                                                                         |
+| replay              | `bin/replay_run.py`, `tests/python/test_replay_run.py`, `tests/fixtures/replay/**`                                                                                                                 |
 
 ## 1. CRAM output (`--bam_format`)
 
 ### Parameter
 
-| Param        | Type   | Default | Enum         |
-| ------------ | ------ | ------- | ------------ |
+| Param        | Type   | Default | Enum          |
+| ------------ | ------ | ------- | ------------- |
 | `bam_format` | string | `'bam'` | `bam`, `cram` |
 
 `nextflow.config` (typed params block, next to `save_bam`):
@@ -111,9 +111,9 @@ Evidence and verdict: [../aligner_evaluation.md](../aligner_evaluation.md). `bwa
 
 ### Parameter
 
-| Param     | Type   | Default | Enum              |
-| --------- | ------ | ------- | ----------------- |
-| `aligner` | string | `'bwa'` | `bwa`, `minibwa`  |
+| Param     | Type   | Default | Enum             |
+| --------- | ------ | ------- | ---------------- |
+| `aligner` | string | `'bwa'` | `bwa`, `minibwa` |
 
 ```groovy
     aligner                    = 'bwa'       // bwa | minibwa (experimental, see docs/aligner_evaluation.md)

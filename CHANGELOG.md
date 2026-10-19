@@ -11,6 +11,20 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Added`
 
+- Report privacy: `--report_anonymize none|paths|full` removes file paths, user names (`paths`) and also sample IDs and site names (`full`) from
+  `report_data.json` and `report.html`; `full` writes the private `summary/sample_id_map.csv`. In mode `report` the report data are rebuilt
+  from the summary files when it is not `none`.
+- `summary/lineage_summary.xlsx`: the lineage summary as a formatted Excel workbook (`--lineage_summary_xlsx`, `--lineage_summary_xlsx_decimals`);
+  `bin/xlsx_writer.py` converts any other table.
+- Primer scheme check: `--primer_check_min_hit_fraction` (0.05) so that a sparse scheme (`eden`) can no longer pass on its enrichment ratio alone;
+  `primer_scheme_summary.tsv` gains `declared_hit_fraction` and `best_hit_fraction`; new reason `declared_sparse_inflated`.
+- Dropout impact now uses **defining** sites (what separates a lineage from its parent) instead of any informative site, so the flag no longer
+  fires on nearly every dropped amplicon; `--dropout_min_affect_abundance` (0.05); new columns `n_defining_sites`, `n_differential_sites`,
+  `defining_sites_total`, `defining_sites_lost`, `pct_defining_sites_lost`.
+- Unexplained mutations: p-values are computed in log space and floored at `1e-300` (never `0`); new last column `in_dataset`; `--max-rows` rejects
+  negative values.
+- `bin/reanalyse_runs.py` and `docs/reanalysis.md`: re-analyse past runs with newer Freyja barcodes without re-mapping and see what changed
+  (`summary/reanalysis_diff.csv`).
 - Lineage groups: `summary/lineage_summary.csv` with one row per sample and one column per user-defined group of lineages
   (patterns `JN.1*`, `NB.1.8.1`, `RECOMBINANT*`, with `exclude` and `in_total`), resolved against the lineage hierarchy of the Freyja
   dataset. On by default with the bundled list `assets/lineage_groups.csv`; `--lineage_groups my.csv` replaces it and
@@ -98,6 +112,8 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Changed`
 
+- **QC defaults for wastewater** (calibrated on 28 real QIAseq samples): `--qc_pass_min_pct` 80 -> 60, `--qc_fail_below_pct` 50 -> 30,
+  `--min_genome_coverage_for_demix` 60 -> 50 (now described as the high-confidence threshold). The old values remain available as options.
 - **The default primer scheme is now `qiagenv1`** (QIAseq Direct SARS-CoV-2) in mode `full`; the Snakemake pipeline defaulted to
   `midnight`. Give `--primer_scheme` explicitly if you use another protocol (the test profiles do). The effective scheme is
   recorded in `run_info.json`.

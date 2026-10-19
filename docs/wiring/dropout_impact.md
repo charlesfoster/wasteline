@@ -59,8 +59,8 @@ gets `0`, `false`, `NA` and `0`. Aggregate rows for samples absent from the ampl
 include { DROPOUT_IMPACT } from '../modules/local/dropout_impact/main'   // path relative to workflows/wasteline.nf
 ```
 
-| process | inputs | outputs (emit) |
-|---|---|---|
+| process          | inputs                                                                                                                                                          | outputs (emit)                                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `DROPOUT_IMPACT` | `path amplicons` (`amplicon_coverage.tsv`); `path aggregated` (`freyja_aggregated.tsv`); `path dataset` (a Freyja dataset directory, or a single barcodes file) | `impact` = `dropout_impact.tsv`; `summary` = `dropout_impact_summary.tsv`; `versions_python` (topic `versions`) |
 
 All three inputs are value-like (single file/dir, queue channels of one item or value channels).
@@ -116,10 +116,10 @@ only if a user needs it.
 
 ## Params (suggested)
 
-| param | default | meaning |
-|---|---|---|
-| `dropout_impact` | `true` | run the analysis whenever an amplicon table exists (it is simply skipped otherwise); `false` disables it |
-| `dropout_min_abundance` | `0.01` | a lineage counts as detected at abundance `>=` this (same value as the script default) |
+| param                   | default | meaning                                                                                                  |
+| ----------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `dropout_impact`        | `true`  | run the analysis whenever an amplicon table exists (it is simply skipped otherwise); `false` disables it |
+| `dropout_min_abundance` | `0.01`  | a lineage counts as detected at abundance `>=` this (same value as the script default)                   |
 
 `nextflow_schema.json`: both under the QC/amplicon group (`dropout_impact` boolean, `dropout_min_abundance` number,
 min 0, max 1). Document in `docs/parameters.md`, and the two outputs in `docs/output.md` (`summary/dropout_impact.tsv`,
@@ -142,15 +142,15 @@ and log why. Warnings (skipped indel notations, unknown detected lineages, label
    with `affects_detected_lineage = true` get a warn highlight; samples with `NA` (no aggregate row) say "no lineage
    estimate".
 2. **Run-level flag** `dropout_affects_lineages`, level `warn`: raised when any sample has
-   `affects_detected_lineage == true`. `samples` = those sample IDs (sorted), message e.g. *"Amplicon dropout hides
-   lineage-informative sites for detected lineages in N sample(s); abundance estimates may be biased."* Add the code to
+   `affects_detected_lineage == true`. `samples` = those sample IDs (sorted), message e.g. _"Amplicon dropout hides
+   lineage-informative sites for detected lineages in N sample(s); abundance estimates may be biased."_ Add the code to
    the `run_flags` codes list in `docs/report_data.md`.
 3. **`report_data.json` fields** (new, all optional, `{}`/absent when the table is absent):
    - `available.dropout_impact`: boolean.
    - `dropout_impact`: object `sample -> {summary: {n_dropped_amplicons, informative_sites_total,
-     informative_sites_in_dropped, pct_informative_sites_lost, n_dropped_affecting_detected_lineages}, amplicons:
-     [{amplicon, start, end, mean_depth, n_informative_sites, n_sites_in_detected_lineages,
-     affects_detected_lineage, affected_lineages}]}`, `NA` -> `null`, `affects_detected_lineage` -> boolean,
+informative_sites_in_dropped, pct_informative_sites_lost, n_dropped_affecting_detected_lineages}, amplicons:
+[{amplicon, start, end, mean_depth, n_informative_sites, n_sites_in_detected_lineages,
+affects_detected_lineage, affected_lineages}]}`, `NA` -> `null`, `affects_detected_lineage` -> boolean,
      `affected_lineages` -> list of `{lineage, n_sites}`, amplicons sorted by start. Every sample of the summary appears
      (empty `amplicons` list when nothing dropped).
    - `thresholds.dropout_min_abundance` (from the run params).
@@ -164,10 +164,10 @@ Using the container's bundled `lineage_mutations.json` (10_06_2026-05-25) with t
 
 `Site_1_week_2` (truth: dropped `nCoV-2019_7` and `nCoV-2019_22`; detected `BA.5` 0.607, `XBB.1.5` 0.359, `BA.2` 0.034):
 
-| amplicon | span | informative sites | in detected lineages | affected lineages |
-|---|---|---|---|---|
-| `nCoV-2019_7` | 6284-7401 | 318 | 0 | none (`NA`) |
-| `nCoV-2019_22` | 21533-22612 | 532 | 10 | `XBB.1.5:9,BA.2:3,BA.5:3` (affects: true) |
+| amplicon       | span        | informative sites | in detected lineages | affected lineages                         |
+| -------------- | ----------- | ----------------- | -------------------- | ----------------------------------------- |
+| `nCoV-2019_7`  | 6284-7401   | 318               | 0                    | none (`NA`)                               |
+| `nCoV-2019_22` | 21533-22612 | 532               | 10                   | `XBB.1.5:9,BA.2:3,BA.5:3` (affects: true) |
 
 Summary: 2 dropped amplicons, 850 of 8006 informative sites lost (10.62%), 1 dropped amplicon affecting detected
 lineages. Hand check against `lineage_mutations.json` (counting carriers over all 5,977 lineages):
