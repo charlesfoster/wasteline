@@ -811,6 +811,9 @@ def test_dropout_impact_structure(tmp_path):
         "informative_sites_in_dropped": 850,
         "pct_informative_sites_lost": 10.62,
         "n_dropped_affecting_detected_lineages": 1,
+        "defining_sites_total": None,
+        "defining_sites_lost": None,
+        "pct_defining_sites_lost": None,
     }
     assert [x["amplicon"] for x in a["amplicons"]] == ["nCoV-2019_7", "nCoV-2019_22"]  # by start
     hit = a["amplicons"][1]
@@ -1404,4 +1407,425 @@ def test_lineage_group_params_and_thresholds(tmp_path):
     assert (
         data["thresholds"]["lineage_major_threshold"] == 0.1
         and data["thresholds"]["lineage_min_abundance"] == 0.001
+    )
+
+
+# =============================================================================================
+# Anonymisation for sharing (--anonymize none|paths|full)
+# =============================================================================================
+A = FIX / "i_anonymize"
+A_OPTIONS = {
+    "--qc": "qc_summary.tsv",
+    "--demix-status": "demix_status.tsv",
+    "--aggregated": "freyja_aggregated.tsv",
+    "--consensus": "consensus_stats.tsv",
+    "--samplesheet": "samplesheet.csv",
+    "--site-aggregates": "site_aggregates_freyja.tsv",
+    "--site-aggregates-meta": "site_aggregates_meta.tsv",
+}
+A_IDS = ["NTC_Central_01", "WW_Central_001", "WW_Central_002", "WW_North_001", "WW_North_002.rep1"]
+A_SITES = ["Central_WWTP", "North_Plant"]
+A_LEAKS = [
+    "jdoe",
+    "j.doe",
+    "example.org",
+    "/Users",
+    "/home",
+    "C:\\",
+    "Run 1 Plate A",
+    "My Results",
+    "~/",
+]
+
+
+def build_a(mode, extra_files=None, run_info=None, map_out=None, out=None):
+    args = ["--run-info", str(run_info or A / "run_info.json")]
+    for option, name in (extra_files or A_OPTIONS).items():
+        args += [option, str(A / name)]
+    args += ["--anonymize", mode]
+    if map_out:
+        args += ["--anonymize-map-out", str(map_out)]
+    args += ["--out", str(out)]
+    assert brd.main(args) == 0
+    return Path(out).read_text()
+
+
+def numbers_only(obj):
+    """The same structure with every string replaced by a marker: numbers, bools, nulls and shape only."""
+    if isinstance(obj, dict):
+        return {"#keys": len(obj), "#vals": [numbers_only(v) for v in obj.values()]}
+    if isinstance(obj, list):
+        return [numbers_only(v) for v in obj]
+    return "s" if isinstance(obj, str) else obj
+
+
+def test_default_is_unchanged_and_has_no_anonymized_marker(tmp_path):
+    plain = json.loads(build_a("none", out=tmp_path / "n.json"))
+    assert "anonymized" not in plain
+    raw = (tmp_path / "n.json").read_text()
+    assert "/Users/jdoe" in raw and "Central_WWTP" in raw  # nothing was touched
+    # the same bytes as a build that never heard of the option
+    args = ["--run-info", str(A / "run_info.json")]
+    for option, name in A_OPTIONS.items():
+        args += [option, str(A / name)]
+    out2 = tmp_path / "n2.json"
+    assert brd.main(args + ["--out", str(out2)]) == 0
+    a, b = json.loads(raw), json.loads(out2.read_text())
+    a.pop("generated"), b.pop("generated")
+    assert a == b
+
+
+def test_paths_mode_removes_paths_users_and_emails_only(tmp_path):
+    raw = build_a("paths", out=tmp_path / "p.json")
+    data = json.loads(raw)
+    for leak in A_LEAKS:
+        assert leak not in raw, leak
+    assert data["anonymized"] == "paths"
+    prov = data["provenance"]
+    assert prov["command_line"].startswith(
+        "nextflow run .../main.nf -profile docker --input '.../samplesheet.csv'"
+    )
+    assert (
+        "--outdir '.../wasteline_out'" in prov["command_line"]
+        and "--barcodes container -resume" in prov["command_line"]
+    )
+    assert (
+        prov["params"]["input"] == ".../samplesheet.csv"
+        and prov["params"]["outdir"] == ".../wasteline_out"
+    )
+    assert (
+        prov["params"]["genome"] == ".../NC_045512.2.fasta" and prov["params"]["db_dir"] == ".../db"
+    )
+    assert prov["params"]["email"] == "<email>" and prov["run_name"] == "<user>_run"
+    assert prov["freyja_data"]["dataset_path"] == ".../2026-10-06T05-25"
+    assert [p["path"] for p in prov["previous_runs"]] == [".../run1", ".../run0"]
+    assert data["params_summary"]["primer_bed"] == ".../midnight.bed"
+    # not paths: container names, URLs, enums, hashes, versions survive
+    assert prov["containers"]["FREYJA_DEMIX"] == "quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0"
+    assert (
+        prov["params"]["barcodes"] == "container"
+        and prov["freyja_data"]["barcode_version"] == "10_06_2026-05-25"
+    )
+    assert prov["input_checksums"]["samplesheet"]["sha256"] == "f" * 64
+    # free text in the data: reasons lose their paths and the user name, IDs stay in `paths`
+    assert data["demix"]["WW_North_002.rep1"]["reason"] == (
+        "freyja demix failed for WW_North_002.rep1 in .../WW_North_002.rep1.variants.tsv (<user>)"
+    )
+    cons = {r["sample"]: r for r in data["consensus"]}
+    assert cons["WW_Central_002"]["reason"].endswith(
+        "at NC_045512.2:11287: (.../WW_Central_002.consensus.fa)"
+    )
+    assert (
+        cons["WW_North_001"]["reason"]
+        == "skipped variant at NC_045512.2:22942 (overlaps another variant) in WW_North_001"
+    )
+    for sid in A_IDS:
+        assert sid in raw
+    assert "Central_WWTP" in raw and "Metro_Region" in raw
+
+
+def test_paths_mode_changes_no_number_and_no_structure(tmp_path):
+    plain = json.loads(build_a("none", out=tmp_path / "n.json"))
+    paths = json.loads(build_a("paths", out=tmp_path / "p.json"))
+    full = json.loads(build_a("full", out=tmp_path / "f.json"))
+    for data in (paths, full):
+        data.pop("anonymized")
+    for other in (paths, full):
+        assert numbers_only(plain) == numbers_only(other)
+        assert (
+            plain["available"] == other["available"] and plain["thresholds"] == other["thresholds"]
+        )
+        assert [f["code"] for f in plain["run_flags"]] == [f["code"] for f in other["run_flags"]]
+        assert (
+            plain["demix"]["WW_Central_001"]["lineages"]
+            == other["demix"]["S002" if other is full else "WW_Central_001"]["lineages"]
+        )
+
+
+def test_full_mode_pseudonymises_everywhere_and_leaves_lineages_alone(tmp_path):
+    raw = build_a("full", out=tmp_path / "f.json", map_out=tmp_path / "map.csv")
+    data = json.loads(raw)
+    for leak in A_LEAKS + A_IDS + A_SITES + ["Metro_Region", "Central", "North_", "WW_", "NTC_"]:
+        assert leak not in raw, leak
+    assert data["anonymized"] == "full"
+    # sorted-order pseudonyms, consistent across tables
+    assert [s["sample"] for s in data["samples"]] == ["S001", "S002", "S003", "S004", "S005"]
+    assert [s["site"] for s in data["samples"]] == ["SITE1", "SITE1", "SITE1", "SITE2", "SITE2"]
+    assert set(data["demix"]) == {f"S00{i}" for i in range(1, 6)}
+    assert [r["sample"] for r in data["consensus"]] == ["S002", "S003", "S004"]
+    assert data["samples"][0]["sample_type"] == "negative"
+    flags = {f["code"]: f for f in data["run_flags"]}
+    assert (
+        flags["demix_failed"]["samples"] == ["S005"] and "S005" in flags["demix_failed"]["message"]
+    )
+    assert flags["consensus_failed"]["samples"] == ["S003"]
+    assert flags["primer_scheme_mismatch"]["samples"] == ["S005"]
+    assert (
+        data["demix"]["S005"]["reason"]
+        == "freyja demix failed for S005 in .../S005.variants.tsv (<user>)"
+    )
+    # site aggregates: aggregate name, sites, row labels
+    agg = data["site_aggregates"]
+    assert [a["row_label"] for a in agg] == ["AGG1_2026-W02", "AGG1_2026-W03"]
+    assert agg[1]["sites_included"] == ["SITE1"] and agg[1]["sites_missing"] == ["SITE2"]
+    assert (
+        agg[1]["missing_reasons"] == {"SITE2": "not_ok:failed"}
+        and agg[0]["aggregate_name"] == "AGG1"
+    )
+    inc = next(f for f in data["run_flags"] if f["code"] == "site_aggregate_incomplete")
+    assert "AGG1 2026-W03 (missing SITE2)" in inc["message"]
+    # the time series panel
+    assert {x["site"] for x in data["time_series"]["sites"]} == {"SITE1", "SITE2"}
+    # untouched: lineage names, numbers, dates, barcode versions, QC values
+    assert data["demix"]["S002"]["groups"][1] == ["XBB.1.5* [Omicron (XBB.1.5.X)]", 0.3]
+    assert data["demix"]["S002"]["lineages"] == [["BA.2", 0.7], ["XBB.1.5", 0.3]]
+    assert [s["collection_date"] for s in data["samples"]][:2] == ["2026-01-05", "2026-01-05"]
+    assert (
+        data["samples"][4]["primer_scheme_best"] == "articv4.1"
+        and data["samples"][4]["qc_status"] == "WARN"
+    )
+    assert data["provenance"]["freyja_data"]["barcode_version"] == "10_06_2026-05-25"
+    assert data["provenance"]["command_line"].count(".../sites_AGG1.csv") == 1
+    assert data["params_summary"]["primer_scheme"] == "midnight"
+
+
+def test_pseudonym_map_file_is_correct_sorted_and_deterministic(tmp_path):
+    build_a("full", out=tmp_path / "f1.json", map_out=tmp_path / "m1.csv")
+    build_a("full", out=tmp_path / "f2.json", map_out=tmp_path / "m2.csv")
+    text = (tmp_path / "m1.csv").read_text()
+    assert text == (tmp_path / "m2.csv").read_text()
+    assert text.splitlines() == [
+        "type,original,pseudonym",
+        "sample,NTC_Central_01,S001", "sample,WW_Central_001,S002", "sample,WW_Central_002,S003",
+        "sample,WW_North_001,S004", "sample,WW_North_002.rep1,S005",
+        "site,Central_WWTP,SITE1", "site,North_Plant,SITE2",
+        "aggregate,Metro_Region,AGG1",
+    ]  # fmt: skip
+    a, b = (
+        json.loads((tmp_path / "f1.json").read_text()),
+        json.loads((tmp_path / "f2.json").read_text()),
+    )
+    a.pop("generated"), b.pop("generated")
+    assert a == b
+    # the map never leaks into the report data
+    assert "NTC_Central_01" not in (tmp_path / "f1.json").read_text()
+
+
+def test_map_is_only_written_for_full(tmp_path, capsys):
+    build_a("paths", out=tmp_path / "p.json", map_out=tmp_path / "m.csv")
+    build_a("none", out=tmp_path / "n.json", map_out=tmp_path / "m2.csv")
+    assert not (tmp_path / "m.csv").exists() and not (tmp_path / "m2.csv").exists()
+    assert "only used with --anonymize full" in capsys.readouterr().err
+
+
+def test_pseudonym_width_grows_with_the_number_of_samples():
+    names = {f"x{i:04d}" for i in range(1200)}
+    mapping = brd.Anonymizer._pseudonyms(names, "S", 3)
+    assert (
+        mapping["x0000"] == "S0001"
+        and mapping["x1199"] == "S1200"
+        and len(set(mapping.values())) == 1200
+    )
+
+
+def test_qc_table_tsv_keeps_real_ids_even_when_anonymised(tmp_path):
+    merged = tmp_path / "qc.merged.tsv"
+    args = ["--run-info", str(A / "run_info.json"), "--qc", str(A / "qc_summary.tsv"), "--anonymize", "full",
+            "--write-qc-tsv", str(merged), "--out", str(tmp_path / "f.json")]  # fmt: skip
+    assert brd.main(args) == 0
+    assert "WW_Central_001" in merged.read_text()
+    assert "WW_Central_001" not in (tmp_path / "f.json").read_text()
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("see /Users/jdoe/Data/run 1/x.csv here", "see .../x.csv here"),
+        ("'/Users/jdoe/Data/Run 1 Plate A/s.csv'", "'.../s.csv'"),
+        ("--out 'C:\\Users\\Jane Doe\\My Docs\\out.txt' -resume", "--out '.../out.txt' -resume"),
+        ("C:\\Users\\Jane Doe\\My Docs\\out.txt --x", ".../out.txt --x"),
+        ("\\\\server\\share\\data\\f.csv", ".../f.csv"),
+        ("~/db/x.bed", ".../x.bed"),
+        ("--a ./local/dir/f.tsv", "--a .../f.tsv"),
+        ("in /home/jdoe now", "in ~ now"),
+        ("mail me: j.doe@example.org", "mail me: <email>"),
+        # untouched
+        (
+            "https://depot.galaxyproject.org/singularity/freyja:2.0.6--pyhdfd78af_0",
+            "https://depot.galaxyproject.org/singularity/freyja:2.0.6--pyhdfd78af_0",
+        ),
+        (
+            "quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0",
+            "quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0",
+        ),
+        ("A / B / C", "A / B / C"),
+        ("pct/x and a/b", "pct/x and a/b"),
+        ("XBB.1.5* [Omicron (XBB.1.5.X)]", "XBB.1.5* [Omicron (XBB.1.5.X)]"),
+        (
+            "bcftools consensus failed at NC_045512.2:11287:",
+            "bcftools consensus failed at NC_045512.2:11287:",
+        ),
+    ],
+)
+def test_scrub_text_cases(text, expected):
+    anon = brd.Anonymizer("paths", {"x": "/Users/jdoe/q /home/jdoe C:\\Users\\Jane Doe\\z"})
+    assert anon.users == ["Jane Doe", "jdoe"]
+    assert anon.scrub_text(text) == expected
+
+
+def test_user_name_variants_and_substrings_in_file_names():
+    anon = brd.Anonymizer("paths", {"p": "/home/alice_b/data/x"})
+    assert anon.users == ["alice_b"]
+    assert (
+        anon.scrub_text("owner alice_b wrote alice_b_samples.csv")
+        == "owner <user> wrote alice_b_samples.csv"
+    )
+    assert anon.path_value("input", "/data/alice_b_samples.csv") == ".../<user>_samples.csv"
+    assert anon.path_value("barcodes", "container") == "container"
+    assert anon.path_value("genome", "assets/refs/x.fa") == ".../x.fa"
+    assert anon.path_value("container", "quay.io/biocontainers/x:1") == "quay.io/biocontainers/x:1"
+    assert anon.path_value("input", "https://x.org/a/b.csv") == "https://x.org/a/b.csv"
+
+
+def test_hostile_ids_are_replaced_in_full_and_stay_inert_in_paths(tmp_path):
+    evil = "<script>alert(1)</script>"
+    qc = tmp_path / "qc.tsv"
+    qc.write_text(
+        "sample\tsample_type\tcollection_date\tsite\tqc_status\n"
+        f"{evil}\tsample\t2026-01-01\tSite<b>\tFAIL\nWW_1\tsample\t2026-01-08\tSite<b>\tPASS\n"
+    )
+    out = tmp_path / "o.json"
+    for mode, gone in (("full", True), ("paths", False)):
+        assert (
+            brd.main(
+                [
+                    "--run-info",
+                    str(A / "run_info.json"),
+                    "--qc",
+                    str(qc),
+                    "--anonymize",
+                    mode,
+                    "--out",
+                    str(out),
+                ]
+            )
+            == 0
+        )
+        raw = out.read_text()
+        assert (evil not in raw) is gone and ("Site<b>" not in raw) is gone
+
+
+def test_anonymize_option_validates_choices():
+    with pytest.raises(SystemExit):
+        brd.parse_args(["--run-info", "x", "--out", "y", "--anonymize", "partial"])
+
+
+# =============================================================================================
+# Dropout refinement (defining sites) and the unexplained `in_dataset` column
+# =============================================================================================
+J = FIX / "j_defining_sites"
+
+
+def build_j(tmp_path, old_dropout=False, old_unexplained=False):
+    """g_new_analyses inputs with the refined dropout / unexplained tables of j_defining_sites."""
+    args = ["--run-info", str(J / "run_info.json")]
+    for option, name in G_OPTIONS.items():
+        if option in ("--dropout-impact", "--dropout-summary") and not old_dropout:
+            args += [
+                option,
+                str(J / name.replace("dropout_impact_summary", "dropout_impact_summary")),
+            ]
+        elif option == "--unexplained" and not old_unexplained:
+            args += [option, str(J / name)]
+        else:
+            args += [option, str(G / name)]
+    out = tmp_path / "j.json"
+    assert brd.main(args + ["--out", str(out)]) == 0
+    return json.loads(out.read_text())
+
+
+def test_dropout_defining_columns_are_read(tmp_path):
+    data = build_j(tmp_path)
+    impact = data["dropout_impact"]
+    a = impact["SiteA_W03_1"]
+    assert a["summary"]["defining_sites_total"] == 120 and a["summary"]["defining_sites_lost"] == 3
+    assert a["summary"]["pct_defining_sites_lost"] == 2.5
+    hit = a["amplicons"][1]
+    assert hit["n_defining_sites"] == 3 and hit["n_differential_sites"] == 6
+    assert hit["affected_lineages"] == [
+        {"lineage": "XBB.1.5", "n_sites": 2},
+        {"lineage": "BA.2", "n_sites": 1},
+    ]
+    assert (
+        a["amplicons"][0]["n_defining_sites"] == 0
+        and a["amplicons"][0]["n_differential_sites"] == 0
+    )
+    low = impact["LOWCOV_1"]
+    assert (
+        low["amplicons"][0]["n_defining_sites"] is None
+        and low["summary"]["pct_defining_sites_lost"] is None
+    )
+    # a lineage below the affect threshold is listed but does not raise the flag
+    quiet = impact["SiteB_W05_1"]["amplicons"][1]
+    assert (
+        quiet["affected_lineages"] == [{"lineage": "PQ.2.1.17", "n_sites": 1}]
+        and quiet["affects_detected_lineage"] is False
+    )
+    s = {x["sample"]: x for x in data["samples"]}
+    assert (
+        s["SiteA_W03_1"]["dropout_pct_defining_lost"] == 2.5
+        and s["SiteA_W03_1"]["dropout_pct_informative_lost"] == 10.62
+    )
+    assert s["LOWCOV_1"]["dropout_pct_defining_lost"] is None
+
+
+def test_old_dropout_tables_without_the_new_columns_still_load(tmp_path):
+    data = build_g(tmp_path)  # g_new_analyses holds the old-format tables
+    a = data["dropout_impact"]["SiteA_W03_1"]
+    assert (
+        a["amplicons"][1]["n_defining_sites"] is None
+        and a["amplicons"][1]["n_differential_sites"] is None
+    )
+    assert (
+        a["summary"]["defining_sites_total"] is None
+        and a["summary"]["pct_defining_sites_lost"] is None
+    )
+    assert data["samples"][0]["dropout_pct_defining_lost"] is None
+    assert "input_problems" not in flag_codes(data)
+
+
+def test_dropout_flag_text_names_defining_mutations_and_the_threshold(tmp_path):
+    data = build_j(tmp_path)
+    (flag,) = [f for f in data["run_flags"] if f["code"] == "dropout_affects_lineages"]
+    assert flag["samples"] == ["SiteA_W03_1", "SiteB_W05_1"]
+    assert flag["message"].startswith(
+        "Amplicon dropout hides defining mutations (those that separate a lineage from its parent) of lineages detected at >= 5% in 2 sample(s)"
+    )
+    assert "abundance estimates for those lineages may be biased" in flag["message"]
+    assert data["thresholds"]["dropout_min_affect_abundance"] == 0.05
+    assert data["params_summary"]["dropout_min_affect_abundance"] == 0.05
+    # default threshold text when the run did not record the param
+    plain = build_g(tmp_path)
+    assert (
+        "detected at >= 5%"
+        in next(f for f in plain["run_flags"] if f["code"] == "dropout_affects_lineages")["message"]
+    )
+
+
+def test_unexplained_in_dataset_and_the_floored_p_value(tmp_path):
+    data = build_j(tmp_path)
+    rows = data["unexplained_mutations"]
+    assert [r["in_dataset"] for r in rows] == [False, False, False, True, True, True, False]
+    assert rows[0]["p_value"] == 1e-300
+    (flag,) = [f for f in data["run_flags"] if f["code"] == "unexplained_mutations"]
+    assert (
+        "2 mutation(s) unexplained by the demixed lineages recur in several samples (1 of them at sites no lineage in the dataset models) (first: S:E180D in 3 samples)"
+        in flag["message"]
+    )
+    # the older table without the column: unknown, never false, and no blind-spot wording
+    old = build_g(tmp_path)
+    assert all(r["in_dataset"] is None for r in old["unexplained_mutations"])
+    assert (
+        "no lineage in the dataset models"
+        not in next(f for f in old["run_flags"] if f["code"] == "unexplained_mutations")["message"]
     )

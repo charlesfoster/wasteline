@@ -86,6 +86,65 @@ nextflow_process {
         }
     }
 
+    test("defining sites from a lineage hierarchy (lineages.yml) - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/dropout_impact/hier"
+                input[0] = file("\$d/amplicon_coverage.tsv")
+                input[1] = file("\$d/freyja_aggregated.tsv")
+                input[2] = file("\$d")
+                """
+            }
+        }
+
+        then {
+            def d = "${projectDir}/tests/fixtures/dropout_impact/hier"
+            def impact = new File(process.out.impact[0].toString()).readLines()
+            def summary = new File(process.out.summary[0].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert impact == new File("${d}/expected_dropout_impact.tsv").readLines() },
+                { assert summary == new File("${d}/expected_dropout_impact_summary.tsv").readLines() },
+                { assert impact[0].endsWith('\tn_defining_sites\tn_differential_sites') },
+                { assert summary[0].endsWith('\tdefining_sites_total\tdefining_sites_lost\tpct_defining_sites_lost') },
+                { assert snapshot(process.out.impact, process.out.summary).match() }
+            )
+        }
+    }
+
+    test("min-affect-abundance and strict-roots through ext.args - real") {
+
+        tag "docker"
+        config "./ext_min_affect.config"
+
+        when {
+            process {
+                """
+                def d = "\$projectDir/tests/fixtures/dropout_impact/hier"
+                input[0] = file("\$d/amplicon_coverage.tsv")
+                input[1] = file("\$d/freyja_aggregated.tsv")
+                input[2] = file("\$d")
+                """
+            }
+        }
+
+        then {
+            // Z sits at exactly 0.05; at --min-affect-abundance 0.06 it is still listed but no longer flags (H2/a4);
+            // --strict-roots makes the inherited sites of recombinant root X defining again (H3/a1)
+            def rows = new File(process.out.impact[0].toString()).readLines().drop(1).collect { it.split('\t') as List }
+            def h2 = rows.find { it[0] == 'H2' && it[1] == 'a4' }
+            def h3 = rows.find { it[0] == 'H3' && it[1] == 'a1' }
+            assertAll(
+                { assert process.success },
+                { assert h2[7] == 'false' && h2[8] == 'Z:1' && h2[9] == '1' },
+                { assert h3[7] == 'true' && h3[9] == '2' && h3[8] == 'X:2' }
+            )
+        }
+    }
+
     test("min abundance passed through ext.args - real") {
 
         tag "docker"

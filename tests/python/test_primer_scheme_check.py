@@ -57,6 +57,16 @@ def run(tmp_path, starts, declared, *extra, beds_dir=None, sample="S"):
     assert d_lines[0].split("\t") == DETAIL_COLUMNS
     s_lines = summary.read_text().splitlines()
     assert s_lines[0].split("\t") == SUMMARY_COLUMNS
+    assert SUMMARY_COLUMNS[:7] == [
+        "sample",
+        "declared_scheme",
+        "declared_enrichment",
+        "best_scheme",
+        "best_enrichment",
+        "scheme_check",
+        "reason",
+    ]  # the first seven keep their positions; the hit fractions are appended
+    assert SUMMARY_COLUMNS[7:] == ["declared_hit_fraction", "best_hit_fraction"]
     details = {
         r["scheme"]: r for r in (dict(zip(DETAIL_COLUMNS, ln.split("\t"))) for ln in d_lines[1:])
     }
@@ -362,6 +372,8 @@ def test_best_not_decisive_when_less_than_three_times_declared(tmp_path):
         "5",
         "--max-p-value",
         "1",
+        "--min-hit-fraction",
+        "0",  # toy schemes with ~1 % hit fractions: this test is about the 3x enrichment rule only
     )
     _, summary = run(tmp_path, starts, "a", *opts, beds_dir=beds)
     assert (summary["scheme_check"], summary["reason"]) == ("uninformative", "best_not_decisive")
@@ -379,7 +391,16 @@ def test_p_value_guard_blocks_ratio_only_hits(tmp_path):
     # expected 0.5 hits (n=500, 1/1000 of the genome); 3 hits = enrichment 6 but p ~ 0.014 > 0.001
     starts = write_starts(tmp_path / "s.tsv", [("+", 100, 3), ("+", 700, 497)])
     details, summary = run(
-        tmp_path, starts, "tiny", "--window", "0", "--genome-length", "1000", beds_dir=beds
+        tmp_path,
+        starts,
+        "tiny",
+        "--window",
+        "0",
+        "--genome-length",
+        "1000",
+        "--min-hit-fraction",
+        "0",  # isolate the p-value guard (hit fraction here is 0.6 %)
+        beds_dir=beds,
     )
     assert float(details["tiny"]["enrichment"]) == pytest.approx(6.0)
     assert float(details["tiny"]["p_value"]) > 0.001
@@ -394,6 +415,8 @@ def test_p_value_guard_blocks_ratio_only_hits(tmp_path):
         "1000",
         "--max-p-value",
         "0.05",
+        "--min-hit-fraction",
+        "0",
         beds_dir=beds,
     )
     assert relaxed["scheme_check"] == "ok"
@@ -469,3 +492,171 @@ def test_real_unanchored_read_starts_fixture(tmp_path):
     details, summary = run(tmp_path, starts, "midnight", sample="UNANCHORED")
     assert summary["scheme_check"] == "uninformative"
     assert max(float(r["enrichment"]) for r in details.values()) < 2
+
+
+# ---- hit-fraction floor: sparse schemes cannot reach the bar on a ratio alone ----------------------------
+
+
+def test_sparse_scheme_inflation_fixture(tmp_path):
+    """QIAseq-like starts (72 % at qiagenv1 5' ends) plus 48 reads on the 28-site eden scheme: eden's tiny
+    expected count gives enrichment 6.8 (above the bar of 5, p ~ 1e-47) at a hit fraction of 1.6 %."""
+    starts = str(FIX / "QIAGEN_LIKE_EDEN.read_starts.tsv")
+    details, ok = run(tmp_path, starts, "qiagenv1")
+    assert float(details["eden"]["enrichment"]) > 5
+    assert float(details["eden"]["p_value"]) < 1e-30
+    assert float(details["eden"]["hit_fraction"]) == pytest.approx(0.016, abs=0.001)
+    assert (ok["scheme_check"], ok["reason"], ok["best_scheme"]) == (
+        "ok",
+        "declared_enriched",
+        "qiagenv1",
+    )
+    assert ok["declared_hit_fraction"] == ok["best_hit_fraction"] == "0.7170"
+    # declared eden: enrichment 6.8 is NOT enough; qiagenv1 has only 2.3x the enrichment, but 45x the hit fraction
+    _, eden = run(tmp_path, starts, "eden")
+    assert float(eden["declared_enrichment"]) > 5
+    assert float(eden["best_enrichment"]) < 3 * float(eden["declared_enrichment"])
+    assert (eden["scheme_check"], eden["reason"], eden["best_scheme"]) == (
+        "mismatch",
+        "best_other_scheme",
+        "qiagenv1",
+    )
+    assert eden["declared_hit_fraction"] == "0.0160"
+    # the pre-refinement rule (no floor): eden "reaches the bar" and qiagenv1 is not 3x better: not a mismatch
+    _, old = run(tmp_path, starts, "eden", "--min-hit-fraction", "0")
+    assert old["scheme_check"] == "ok"
+    assert old["best_scheme"] == "qiagenv1"  # the top scheme was always qiagenv1
+
+
+def test_sparse_declared_alone_is_declared_sparse_inflated(tmp_path):
+    """48 reads at eden sites among 6000 otherwise random starts: eden reads as enriched (ratio ~7) but only
+    ~1.6 % of reads are at its sites and no other scheme reaches the bar: uninformative, not ok."""
+    starts = starts_from_sites(tmp_path, "eden", 90, 6000)
+    details, summary = run(tmp_path, starts, "eden")
+    assert float(details["eden"]["enrichment"]) > 5
+    assert float(details["eden"]["hit_fraction"]) < 0.05
+    assert (summary["scheme_check"], summary["reason"]) == (
+        "uninformative",
+        "declared_sparse_inflated",
+    )
+    assert summary["best_scheme"] == "NA"
+    assert summary["best_enrichment"] == "NA" and summary["best_hit_fraction"] == "NA"
+    _, off = run(tmp_path, starts, "eden", "--min-hit-fraction", "0")
+    assert off["scheme_check"] == "ok"  # floor disabled: the old verdict
+
+
+def test_hit_fraction_boundary_is_inclusive(tmp_path):
+    beds = tmp_path / "beds"
+    beds.mkdir()
+    (beds / "a.bed").write_text("c\t99\t120\tx_F\t1\t+\n")  # site 100
+    # W=0, G=10000, n=1000: expected 0.1 hits; 50 hits = hit fraction exactly 0.05, enrichment 500
+    starts = write_starts(tmp_path / "s.tsv", [("+", 100, 50), ("+", 700, 950)])
+    common = ("--window", "0", "--genome-length", "10000")
+    details, summary = run(tmp_path, starts, "a", *common, beds_dir=beds)
+    assert details["a"]["hit_fraction"] == "0.0500"
+    assert summary["scheme_check"] == "ok"
+    _, above = run(tmp_path, starts, "a", *common, "--min-hit-fraction", "0.0501", beds_dir=beds)
+    assert above["scheme_check"] == "uninformative"
+    assert above["reason"] == "declared_sparse_inflated"
+    starts = write_starts(tmp_path / "s2.tsv", [("+", 100, 49), ("+", 700, 951)])  # 0.049
+    _, below = run(tmp_path, starts, "a", *common, beds_dir=beds)
+    assert (below["scheme_check"], below["reason"]) == ("uninformative", "declared_sparse_inflated")
+    assert below["declared_hit_fraction"] == "0.0490"
+
+
+def two_scheme_beds(tmp_path):
+    beds = tmp_path / "beds"
+    beds.mkdir()
+    (beds / "a.bed").write_text("c\t99\t120\tx_F\t1\t+\n")  # site 100
+    (beds / "b.bed").write_text("c\t499\t520\ty_F\t1\t+\n")  # site 500
+    return beds
+
+
+COMMON = ("--window", "0", "--genome-length", "10000", "--max-p-value", "1", "--min-reads", "100")
+
+
+def test_mismatch_best_hit_fraction_must_reach_the_floor(tmp_path):
+    beds = two_scheme_beds(tmp_path)
+    # 1000 reads, G=10000: expected 0.1 each. a (declared): 2 hits (hf 0.002); b: 40 hits (hf 0.04 < 0.05)
+    starts = write_starts(tmp_path / "s.tsv", [("+", 100, 2), ("+", 500, 40), ("+", 700, 958)])
+    _, summary = run(tmp_path, starts, "a", *COMMON, beds_dir=beds)
+    # a's ratio (20) looks fine but 0.2 % of reads is far below the floor; b is below the floor too
+    assert (summary["scheme_check"], summary["reason"]) == (
+        "uninformative",
+        "declared_sparse_inflated",
+    )
+    assert summary["best_scheme"] == "NA"
+    _, relaxed = run(tmp_path, starts, "a", *COMMON, "--min-hit-fraction", "0.04", beds_dir=beds)
+    assert (relaxed["scheme_check"], relaxed["best_scheme"]) == ("mismatch", "b")
+    assert relaxed["best_hit_fraction"] == "0.0400"
+
+
+def test_mismatch_via_hit_fraction_when_enrichment_is_not_3x(tmp_path):
+    beds = two_scheme_beds(tmp_path)
+    # a (declared, sparse) has the larger enrichment ratio; b wins on hit fraction only
+    (beds / "a.bed").write_text("c\t99\t120\tx_F\t1\t+\n")
+    (beds / "b.bed").write_text(
+        "".join(f"c\t{k}\t{k + 20}\ty{k}_F\t1\t+\n" for k in range(499, 1099, 100))
+    )  # six b sites: 500, 600, ..., 1000 (window 0)
+    # n=1000, G=10000. a: expected 0.1; 4 hits -> enrichment 40, hf 0.004 (below the floor: not at the bar).
+    # b: expected 0.6; 60 hits -> enrichment 100 (> 3 x 40 would be 120: not 3x), hf 0.06 = 15 x declared
+    starts = write_starts(
+        tmp_path / "s.tsv",
+        [("+", 100, 4)] + [("+", 500 + 100 * i, 10) for i in range(6)] + [("+", 5000, 936)],
+    )
+    details, summary = run(tmp_path, starts, "a", *COMMON, beds_dir=beds)
+    assert float(details["a"]["enrichment"]) == pytest.approx(40)
+    assert float(details["b"]["enrichment"]) < 3 * float(details["a"]["enrichment"])
+    assert (summary["scheme_check"], summary["reason"], summary["best_scheme"]) == (
+        "mismatch",
+        "best_other_scheme",
+        "b",
+    )
+    # floor disabled: a reaches the bar by ratio alone (the pre-refinement verdict)
+    _, off = run(tmp_path, starts, "a", *COMMON, "--min-hit-fraction", "0", beds_dir=beds)
+    assert off["scheme_check"] == "ok"
+
+
+def test_best_not_decisive_needs_both_ratios_below_3x(tmp_path):
+    beds = two_scheme_beds(tmp_path)
+    # a: 30 hits (hf 0.03), enrichment 300; b: 80 hits (hf 0.08), enrichment 800. Floor 0.05: a is below it.
+    # best b: 800 < 3 x 300? 800 < 900 yes; hf 0.08 < 3 x 0.03 = 0.09 yes -> not decisive.
+    starts = write_starts(tmp_path / "s.tsv", [("+", 100, 30), ("+", 500, 80), ("+", 700, 890)])
+    _, summary = run(tmp_path, starts, "a", *COMMON, beds_dir=beds)
+    assert (summary["scheme_check"], summary["reason"]) == ("uninformative", "best_not_decisive")
+    assert summary["best_scheme"] == "b"
+    # 85 hits at b: enrichment 850 < 900 and hf 0.085 < 0.09 -> still not decisive
+    starts = write_starts(tmp_path / "s2.tsv", [("+", 100, 30), ("+", 500, 85), ("+", 700, 885)])
+    _, still = run(tmp_path, starts, "a", *COMMON, beds_dir=beds)
+    assert still["reason"] == "best_not_decisive"
+    # 95 hits: enrichment 950 > 900 (and hf 0.095 > 0.09): decisive
+    starts = write_starts(tmp_path / "s3.tsv", [("+", 100, 30), ("+", 500, 95), ("+", 700, 875)])
+    _, decisive = run(tmp_path, starts, "a", *COMMON, beds_dir=beds)
+    assert (decisive["scheme_check"], decisive["reason"]) == ("mismatch", "best_other_scheme")
+
+
+def test_equivalent_best_is_never_a_mismatch_with_hit_fractions(tmp_path):
+    starts = starts_from_sites(tmp_path, "midnight", 1000, 5000)
+    _, summary = run(tmp_path, starts, "midnightv2")
+    assert summary["scheme_check"] == "ok"
+    assert float(summary["declared_hit_fraction"]) > 0.15
+
+
+def test_synthetic_midnight_data_stays_ok_at_the_default_floor(tmp_path):
+    """Synthetic midnight fixtures have hit fractions of ~0.20 (> the 0.05 default)."""
+    _, summary = run(tmp_path, str(FIX / "PURE_C.read_starts.tsv"), "midnight", sample="PURE_C")
+    assert summary["scheme_check"] == "ok"
+    assert 0.15 < float(summary["declared_hit_fraction"]) < 0.25
+    # a 20 % floor would flip it, a default of 0.05 does not: the default sits 4x below the synthetic data
+    _, strict = run(
+        tmp_path, str(FIX / "PURE_C.read_starts.tsv"), "midnight", "--min-hit-fraction", "0.25"
+    )
+    assert strict["scheme_check"] == "uninformative"
+
+
+def test_summary_hit_fractions_na_when_not_scored(tmp_path):
+    starts = starts_from_sites(tmp_path, "midnight", 200, 400)
+    _, summary = run(tmp_path, starts, "midnight")  # too few reads
+    assert summary["best_hit_fraction"] == "NA"
+    assert float(summary["declared_hit_fraction"]) > 0.4  # still reported where it can be computed
+    _, unknown = run(tmp_path, starts, "no_such_scheme")
+    assert unknown["declared_hit_fraction"] == unknown["best_hit_fraction"] == "NA"

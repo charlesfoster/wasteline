@@ -25,7 +25,7 @@ process QC_SAMPLE {
 
     script:
     // ext.args: thresholds, e.g. --min-depth 10 --consensus-min-depth 10 --pass-min-pct 80
-    //   --fail-below-pct 50 --max-dropped 10 --ntc-max-mapped-reads 1000 --ntc-max-genome-coverage-pct 10
+    //   --fail-below-pct 30 --max-dropped 10 --ntc-max-mapped-reads 1000 --ntc-max-genome-coverage-pct 10
     //   --min-primer-trimmed-pct 0 (0 = the low_primer_trimming rule is off)
     def args = task.ext.args ?: ''
     prefix = task.ext.prefix ?: "${meta.id}"

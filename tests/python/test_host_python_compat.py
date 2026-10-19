@@ -8,7 +8,7 @@ import ast
 from pathlib import Path
 
 BIN = Path(__file__).resolve().parents[2] / "bin"
-HOST_SCRIPTS = ["make_samplesheet.py", "check_samplesheet.py", "replay_run.py"]
+HOST_SCRIPTS = ["make_samplesheet.py", "check_samplesheet.py", "replay_run.py", "reanalyse_runs.py"]
 NEWER_ATTRIBUTES = {"UTC", "removeprefix", "removesuffix", "is_relative_to"}
 
 

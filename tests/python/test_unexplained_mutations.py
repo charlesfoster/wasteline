@@ -1,6 +1,7 @@
 import gzip
 import json
 import math
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -272,6 +273,278 @@ def test_max_rows_cap(tmp_path, capsys):
     assert "30 unexplained mutations; reporting the top 5" in capsys.readouterr().err
 
 
+def test_max_rows_edge_cases(tmp_path, capsys):
+    dataset = tmp_path / "ds"
+    dataset.mkdir()
+    (dataset / "lineage_mutations.json").write_text(json.dumps({"L": ["C1T"]}))
+    demix = write_demix(tmp_path, ["L"], ["1.0"])
+    # 6 calls with distinct excess (0.20 .. 0.15), plus two that tie at the cut-off excess 0.15
+    rows = [vrow(1000 + i, "A", "C", 1000, 200 - 10 * i) for i in range(6)]
+    rows += [vrow(2000, "A", "C", 1000, 150), vrow(2001, "A", "C", 1000, 150)]
+    variants = write_variants(tmp_path, rows)
+    base = (tmp_path, variants, demix, str(dataset))
+    # exactly at the cap: nothing cut, no warning
+    rc, lines = run(*base, "--max-rows", "8")
+    assert rc == 0 and len(table(lines)) == 8
+    assert "reporting the top" not in capsys.readouterr().err
+    # one over: the lowest-excess row goes; the tie at the cut is resolved by position
+    rc, lines = run(*base, "--max-rows", "7")
+    assert "8 unexplained mutations; reporting the top 7 by excess" in capsys.readouterr().err
+    got = [r["position"] for r in table(lines)]
+    assert got == ["1000", "1001", "1002", "1003", "1004", "1005", "2000"]  # 2001 (tie, later) cut
+    # 0 = header only (with the warning), a cap above the row count is a no-op
+    rc, lines = run(*base, "--max-rows", "0")
+    assert rc == 0 and lines == [OUT_HEADER]
+    assert "reporting the top 0 by excess" in capsys.readouterr().err
+    rc, lines = run(*base, "--max-rows", "1000")
+    assert rc == 0 and len(table(lines)) == 8
+    # negative would silently slice off the last rows: refused
+    with pytest.raises(SystemExit):
+        um.main(["--variants", variants, "--sample", "S", "--max-rows", "-1"])
+
+
+def test_binom_logsf_matches_exact_sums_and_survives_underflow():
+    for n, k, p in [(10, 5, 0.5), (100, 95, 0.8), (100, 40, 0.01), (2000, 1700, 0.7), (50, 3, 0.2)]:
+        q = Fraction(str(p))
+        exact = sum(math.comb(n, i) * q**i * (1 - q) ** (n - i) for i in range(k, n + 1))
+        assert math.exp(um.binom_logsf(k, n, p)) == pytest.approx(float(exact), rel=1e-9)
+        assert um.binom_sf(k, n, p) == pytest.approx(float(exact), rel=1e-9)
+    assert um.binom_logsf(0, 10, 0.5) == 0.0
+    assert um.binom_logsf(11, 10, 0.5) == -math.inf
+    # k = n: exactly p**n, i.e. ln = n ln p, far below the float range of p itself
+    assert um.binom_logsf(407, 407, 0.01) == pytest.approx(407 * math.log(0.01), rel=1e-12)
+    assert um.binom_sf(407, 407, 0.01) == 0.0  # the plain probability underflows ...
+    assert um.binom_logsf(407, 407, 0.01) < -1800  # ... the log does not
+    # a tail far out in the wings (900 of 1000 at p = 0.01, ~1e-1500) against an exact rational sum
+    exact = sum(
+        math.comb(1000, i) * Fraction(1, 100) ** i * Fraction(99, 100) ** (1000 - i)
+        for i in range(900, 1001)
+    )
+    exact_ln = math.log10(exact.numerator) * math.log(10) - math.log10(
+        exact.denominator
+    ) * math.log(10)
+    assert um.binom_logsf(900, 1000, 0.01) == pytest.approx(exact_ln, rel=1e-9)
+
+
+@pytest.mark.parametrize(
+    ("log_p", "text"),
+    [
+        (math.log(1.2345e-7), "1.23e-07"),
+        (math.log(1e-299), "1e-299"),
+        (math.log(1e-300), "1e-300"),
+        (math.log(1e-301), "1e-300"),  # below the floor
+        (-1874.3, "1e-300"),
+        (-math.inf, "1e-300"),
+        (0.0, "1"),
+    ],
+)
+def test_format_pvalue_floor(log_p, text):
+    assert um.format_pvalue(log_p) == text
+    assert float(um.format_pvalue(log_p)) >= 1e-300  # always a plain, positive float
+
+
+def test_deep_call_reports_the_floor_not_zero(tmp_path):
+    dataset = tmp_path / "ds"
+    dataset.mkdir()
+    (dataset / "lineage_mutations.json").write_text(json.dumps({"L": ["C100T"]}))
+    demix = write_demix(tmp_path, ["L"], ["1.0"])
+    # observed 1.0, expected 0 at depth 407 (the real WW-1285E case): 0.01^407 underflows
+    variants = write_variants(
+        tmp_path,
+        [
+            vrow(200, "A", "C", 407, 407),  # ln p = -1874: floored
+            vrow(300, "A", "C", 120, 120),  # 0.01^120 = 1e-240: reported as is
+            vrow(310, "A", "C", 149, 149),  # 0.01^149 = 1e-298: reported as is
+            vrow(320, "A", "C", 150, 150),  # 0.01^150 = 1e-300: the floor itself
+            vrow(330, "A", "C", 151, 151),  # 1e-302 -> floored
+        ],
+    )
+    rc, lines = run(tmp_path, variants, demix, str(dataset))
+    assert rc == 0
+    by_pos = {r["position"]: r["p_value"] for r in table(lines)}
+    assert by_pos == {
+        "200": "1e-300",
+        "300": "1e-240",
+        "310": "1e-298",
+        "320": "1e-300",
+        "330": "1e-300",
+    }
+    assert all(float(v) > 0 for v in by_pos.values())
+
+
+def test_threshold_uses_the_log_p_value(tmp_path):
+    dataset = tmp_path / "ds"
+    dataset.mkdir()
+    (dataset / "lineage_mutations.json").write_text(json.dumps({"L": ["C100T"]}))
+    demix = write_demix(tmp_path, ["L"], ["1.0"])
+    variants = write_variants(
+        tmp_path, [vrow(200, "A", "C", 407, 407), vrow(300, "A", "C", 100, 12)]
+    )
+    # 12/100 at a 0.01 background: p ~ 4e-11; ln p of the first is far below any threshold, incl. 1e-320
+    assert (
+        len(table(run(tmp_path, variants, demix, str(dataset), "--max-pvalue", "1e-320")[1])) == 1
+    )
+    assert len(table(run(tmp_path, variants, demix, str(dataset), "--max-pvalue", "1e-12")[1])) == 1
+    assert len(table(run(tmp_path, variants, demix, str(dataset), "--max-pvalue", "1e-9")[1])) == 2
+    assert table(run(tmp_path, variants, demix, str(dataset), "--max-pvalue", "0")[1]) == []
+    assert len(table(run(tmp_path, variants, demix, str(dataset), "--max-pvalue", "1")[1])) == 2
+
+
+def test_concat_passes_the_floored_p_value_through_and_sorts_by_excess(tmp_path):
+    def per_sample(name, rows):
+        path = tmp_path / f"{name}.tsv"
+        path.write_text(OUT_HEADER + "\n" + "".join("\t".join(r) + "\n" for r in rows))
+        return str(path)
+
+    row = [
+        "S1",
+        "22102",
+        "A",
+        "T",
+        "1",
+        "0",
+        "1",
+        "407",
+        "407",
+        "S",
+        "E180D",
+        "missense",
+        "1e-300",
+        "false",
+    ]
+    other = [
+        *row[:1],
+        "28802",
+        "A",
+        "T",
+        "0.3",
+        "0",
+        "0.3",
+        "100",
+        "30",
+        "N",
+        "R177*",
+        "stop_gained",
+        "1.2e-30",
+        "true",
+    ]
+    a = per_sample("S1", [row, other])
+    b = per_sample("S2", [["S2", *row[1:]]])
+    out = tmp_path / "all.tsv"
+    assert um.main(["--concat", a, b, "-o", str(out)]) == 0
+    lines = out.read_text().splitlines()
+    got = [dict(zip(um.CONCAT_COLUMNS, line.split("\t"))) for line in lines[1:]]
+    assert [(r["sample"], r["position"], r["recurrent"], r["p_value"]) for r in got] == [
+        ("S1", "22102", "true", "1e-300"),
+        ("S2", "22102", "true", "1e-300"),
+        ("S1", "28802", "false", "1.2e-30"),
+    ]
+    assert all(float(r["p_value"]) > 0 for r in got)
+    assert [r["in_dataset"] for r in got] == [
+        "false",
+        "false",
+        "true",
+    ]  # carried through, last column
+    assert lines[0].split("\t")[-2:] == ["p_value", "in_dataset"]
+
+
+def test_concat_column_lists():
+    assert um.COLUMNS[-2:] == ["p_value", "in_dataset"] and len(um.COLUMNS) == 14
+    assert um.CONCAT_COLUMNS[12:] == ["n_samples", "recurrent", "p_value", "in_dataset"]
+    assert len(um.CONCAT_COLUMNS) == 16
+
+
+def test_concat_rejects_tables_from_before_in_dataset(tmp_path, capsys):
+    old = tmp_path / "old.tsv"
+    old.write_text("\t".join(um.COLUMNS[:-1]) + "\nS\t1\tA\tT\t1\t0\t1\t50\t50\tNA\tNA\tNA\t1e-9\n")
+    assert um.main(["--concat", str(old), "-o", str(tmp_path / "o.tsv")]) == 2
+    err = capsys.readouterr().err
+    assert "in_dataset" in err and "regenerated" in err
+    # a concat table (16 columns) is not a per-sample table either
+    merged = tmp_path / "m.tsv"
+    merged.write_text("\t".join(um.CONCAT_COLUMNS) + "\n")
+    assert um.main(["--concat", str(merged), "-o", str(tmp_path / "o.tsv")]) == 2
+
+
+def test_in_dataset_marks_sites_no_lineage_models(tmp_path, mini):
+    # mini dataset carries C100T, G200A, T300C, A400G, A500C (+ UNUSED C1T, which is not demixed);
+    # an unexplained mutation at C1T (carried only by a lineage that is NOT in the mixture) is in the dataset,
+    # one at a site nobody carries is not, and the same position with another alt is not.
+    tmp_path, dataset, demix = mini
+    variants = write_variants(
+        tmp_path,
+        [
+            vrow(
+                1, "C", "T", 100, 50
+            ),  # carried by UNUSED only: in_dataset true, still unexplained
+            vrow(100, "C", "T", 100, 99),  # explained-ish but excess 0.19: in_dataset true
+            vrow(100, "C", "A", 100, 40),  # same position, other alt: false
+            vrow(520, "A", "C", 100, 40),  # no lineage anywhere: false
+            vrow(
+                600, "A", "C", 100, 30
+            ),  # the barcode A600- is a deletion token, not an SNV: false
+        ],
+    )
+    rc, lines = run(tmp_path, variants, demix, dataset, "--max-pvalue", "1")
+    assert rc == 0
+    got = {(r["position"], r["alt"]): r["in_dataset"] for r in table(lines)}
+    assert got == {
+        ("1", "T"): "true",
+        ("100", "T"): "true",
+        ("100", "A"): "false",
+        ("520", "C"): "false",
+        ("600", "C"): "false",
+    }
+
+
+@pytest.mark.parametrize("form", ["json_dir", "json_file", "csv_file", "csv_dir"])
+def test_in_dataset_for_every_dataset_form(tmp_path, form):
+    muts = {"L1": ["C100T"], "L2": ["G200A", "C100T"], "L3": ["T300C"]}  # L3 is not demixed
+    cols = ["C100T", "G200A", "T300C", "A400G"]  # A400G: a column no lineage carries
+    csv_text = (
+        ","
+        + ",".join(cols)
+        + "\n"
+        + "".join(
+            f"{n}," + ",".join("1" if c in m else "0" for c in cols) + "\n" for n, m in muts.items()
+        )
+    )
+    if form == "json_dir":
+        d = tmp_path / "d"
+        d.mkdir()
+        (d / "lineage_mutations.json").write_text(json.dumps(muts))
+        dataset = str(d)
+    elif form == "json_file":
+        (tmp_path / "x.json").write_text(json.dumps(muts))
+        dataset = str(tmp_path / "x.json")
+    elif form == "csv_file":
+        (tmp_path / "x.csv").write_text(csv_text)
+        dataset = str(tmp_path / "x.csv")
+    else:
+        d = tmp_path / "d"
+        d.mkdir()
+        (d / "usher_barcodes.csv").write_text(csv_text)
+        dataset = str(d)
+    demix = write_demix(tmp_path, ["L1"], ["1.0"])
+    variants = write_variants(
+        tmp_path,
+        [
+            vrow(200, "G", "A", 100, 60),  # carried by L2 (not demixed): in dataset
+            vrow(300, "T", "C", 100, 60),  # carried by L3 (not demixed): in dataset
+            vrow(400, "A", "G", 100, 60),  # all-zero column: nobody carries it
+            vrow(500, "A", "C", 100, 60),
+        ],
+    )
+    rc, lines = run(tmp_path, variants, demix, dataset, "--max-pvalue", "1")
+    assert rc == 0
+    assert {r["position"]: r["in_dataset"] for r in table(lines)} == {
+        "200": "true",
+        "300": "true",
+        "400": "false",
+        "500": "false",
+    }
+
+
 # ---------------------------------------------------------------------------------- demix parsing
 
 
@@ -540,9 +813,9 @@ def test_pure_c_with_spiked_snvs_reports_exactly_the_spikes(tmp_path):
     )
     assert rc == 0
     assert lines[1:] == [
-        "PURE_C\t22102\tA\tT\t0.3\t0\t0.3\t120\t36\tS\tE180D\tmissense\t2.39e-42",
-        "PURE_C\t28802\tA\tT\t0.18\t0\t0.18\t100\t18\tN\tR177*\tstop_gained\t1.41e-17",
-        "PURE_C\t29800\tG\tA\t0.12\t0\t0.12\t150\t18\tNA\tNA\tintergenic\t2.28e-14",
+        "PURE_C\t22102\tA\tT\t0.3\t0\t0.3\t120\t36\tS\tE180D\tmissense\t2.39e-42\tfalse",
+        "PURE_C\t28802\tA\tT\t0.18\t0\t0.18\t100\t18\tN\tR177*\tstop_gained\t1.41e-17\tfalse",
+        "PURE_C\t29800\tG\tA\t0.12\t0\t0.12\t150\t18\tNA\tNA\tintergenic\t2.28e-14\tfalse",
     ]
     # JN.1's own mutations (C241T, S:N501Y = A23063T) are in the input at ~100 % and are not reported
     text = read_gz(FIX / "PURE_C_spiked.variants.tsv.gz")
@@ -603,17 +876,17 @@ def test_concat_recurrence_and_order(tmp_path):
 def test_concat_min_recurrence_option(tmp_path):
     rc, lines = concat(tmp_path, ["S_ONE", "S_TWO"], "--min-recurrence", "3")
     assert rc == 0
-    assert [line.split("\t")[-3:-1] for line in lines[1:]] == [["2", "false"]] * 2 + [
+    assert [line.split("\t")[-4:-2] for line in lines[1:]] == [["2", "false"]] * 2 + [
         ["1", "false"]
     ] * 2
     rc, lines = concat(tmp_path, ["S_ONE", "S_TWO"], "--min-recurrence", "1")
-    assert {line.split("\t")[-2] for line in lines[1:]} == {"true"}
+    assert {line.split("\t")[-3] for line in lines[1:]} == {"true"}
 
 
 def test_concat_same_sample_twice_does_not_count_as_recurrence(tmp_path):
     rc, lines = concat(tmp_path, ["S_ONE", "S_ONE"])
     assert rc == 0
-    assert {line.split("\t")[-3] for line in lines[1:]} == {"1"}
+    assert {line.split("\t")[-4] for line in lines[1:]} == {"1"}
 
 
 def test_concat_zero_rows(tmp_path):
@@ -648,5 +921,5 @@ def test_end_to_end_three_spiked_samples_are_recurrent(tmp_path):
     assert um.main(["--concat", *outs, "-o", str(merged)]) == 0
     rows = [line.split("\t") for line in merged.read_text().splitlines()[1:]]
     assert len(rows) == 9
-    assert {r[-3] for r in rows} == {"3"} and {r[-2] for r in rows} == {"true"}
+    assert {r[-4] for r in rows} == {"3"} and {r[-3] for r in rows} == {"true"}
     assert [r[1] for r in rows[:3]] == ["22102"] * 3  # highest excess first

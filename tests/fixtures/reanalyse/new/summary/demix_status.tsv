@@ -1,0 +1,6 @@
+sample	status	reason	genome_coverage_pct	barcode_version	barcode_version_iso
+A	ok		90.0	10_20_2026-04-10	2026-10-20T04-10
+B	ok		90.0	10_20_2026-04-10	2026-10-20T04-10
+D	ok		90.0	10_20_2026-04-10	2026-10-20T04-10
+E	ok		90.0	10_20_2026-04-10	2026-10-20T04-10
+C	skipped_low_coverage	less than 60% of the genome covered at >= 10x	12.0	10_20_2026-04-10	2026-10-20T04-10

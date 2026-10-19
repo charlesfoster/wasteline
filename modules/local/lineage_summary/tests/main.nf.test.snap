@@ -2,12 +2,13 @@
     "stub": {
         "content": [
             "lineage_summary.csv",
-            "lineage_groups_resolved.tsv"
+            "lineage_groups_resolved.tsv",
+            "lineage_summary.xlsx"
         ],
-        "timestamp": "2026-10-19T12:18:30.298078",
+        "timestamp": "2026-10-19T21:25:50.198172",
         "meta": {
             "nf-test": "0.9.5",
-            "nextflow": "26.04.6"
+            "nextflow": "26.10.0"
         }
     },
     "stub with site aggregates": {

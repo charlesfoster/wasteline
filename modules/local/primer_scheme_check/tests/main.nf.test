@@ -89,6 +89,35 @@ nextflow_process {
         }
     }
 
+    test("QIAseq-like reads plus sparse eden hits: declared eden is a mismatch (hit-fraction floor) - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                input[0] = [ [ id:'QIAGEN_LIKE_EDEN' ], file("\$projectDir/tests/fixtures/qc/QIAGEN_LIKE_EDEN.read_starts.tsv") ]
+                input[1] = 'eden'
+                input[2] = file("\$projectDir/assets/primer_schemes")
+                input[3] = []
+                """
+            }
+        }
+
+        then {
+            def summ = new File(process.out.summary[0][1].toString()).readLines()
+            def row = [summ[0].split('\t') as List, summ[1].split('\t', -1) as List].transpose().collectEntries { k, v -> [(k): v] }
+            assertAll(
+                { assert process.success },
+                { assert (row.declared_enrichment as double) > 5 },          // the ratio alone would say ok
+                { assert (row.declared_hit_fraction as double) < 0.05 },
+                { assert row.scheme_check == 'mismatch' },
+                { assert row.reason == 'best_other_scheme' },
+                { assert row.best_scheme == 'qiagenv1' },
+                { assert (row.best_hit_fraction as double) > 0.5 }
+            )
+        }
+    }
+
     test("randomly fragmented reads (no primer anchoring): uninformative, not an error - real") {
 
         tag "docker"

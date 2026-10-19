@@ -1,0 +1,50 @@
+- name: O
+  alias: O
+  children:
+      - O
+- name: R
+  alias: R
+  children:
+      - R
+      - R.1
+      - R.1.1
+      - R.2
+      - Z
+- name: R.1
+  alias: AA.1
+  children:
+      - R.1
+      - R.1.1
+  parent: R
+- name: R.1.1
+  alias: AA.1.1
+  children:
+      - R.1.1
+  parent: AA.1
+- name: R.2
+  alias: R.2
+  children:
+      - R.2
+      - Z
+  parent: R
+- name: X
+  alias: X
+  children:
+      - X
+  recombinant_parents: R.1,R.2
+- name: GONE
+  alias: GONE
+  children:
+      - GONE
+      - Z
+  parent: R.2
+- name: Z
+  alias: Z
+  children:
+      - Z
+  parent: GONE
+- name: W
+  alias: W
+  children:
+      - W
+  parent: NOPE

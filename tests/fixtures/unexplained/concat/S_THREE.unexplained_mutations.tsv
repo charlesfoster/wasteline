@@ -1,2 +1,2 @@
-sample	position	ref	alt	observed_freq	expected_freq	excess	depth	alt_depth	gene	aa_change	effect	p_value
-S_THREE	22102	A	T	0.12	0	0.12	500	60	S	E180D	missense	3.37e-44
+sample	position	ref	alt	observed_freq	expected_freq	excess	depth	alt_depth	gene	aa_change	effect	p_value	in_dataset
+S_THREE	22102	A	T	0.12	0	0.12	500	60	S	E180D	missense	3.37e-44	false

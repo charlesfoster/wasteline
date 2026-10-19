@@ -30,12 +30,34 @@ def run(tmp_path, depths, *extra, sample="S", sample_type="sample"):
         dep,
         "-o",
         str(out),
+        # the thresholds most tests were written for (the script's own defaults changed with D17: 80/50 -> 60/30);
+        # an option in `extra` wins
+        "--pass-min-pct",
+        "80",
+        "--fail-below-pct",
+        "50",
         *extra,
     ]
     assert qc.main(argv) == 0
     header, row = out.read_text().splitlines()
     assert header.split("\t") == qc.COLUMNS
     return dict(zip(qc.COLUMNS, row.split("\t")))
+
+
+def run_defaults(tmp_path, depths):
+    """The script with ITS OWN thresholds (no overrides)."""
+    dep = write_depths(tmp_path / "d.depths", depths)
+    out = tmp_path / "row.tsv"
+    assert qc.main(["--sample", "S", "--depths", dep, "-o", str(out)]) == 0
+    header, row = out.read_text().splitlines()
+    return dict(zip(header.split("\t"), row.split("\t")))
+
+
+def test_default_thresholds_are_the_wastewater_ones(tmp_path):
+    """D17: PASS from 60 % of the genome at the depth, FAIL below 30 %, WARN in between (was 80 / 50)."""
+    assert run_defaults(tmp_path, depth_profile(ge10=65))["qc_status"] == "PASS"
+    assert run_defaults(tmp_path, depth_profile(ge10=45))["qc_status"] == "WARN"
+    assert run_defaults(tmp_path, depth_profile(ge10=20))["qc_status"] == "FAIL"
 
 
 def amplicon_file(tmp_path, dropped, total=20, sample="S"):

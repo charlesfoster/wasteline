@@ -28,6 +28,6 @@ process UNEXPLAINED_MUTATIONS_CONCAT {
 
     stub:
     """
-    printf 'sample\\tposition\\tref\\talt\\tobserved_freq\\texpected_freq\\texcess\\tdepth\\talt_depth\\tgene\\taa_change\\teffect\\tn_samples\\trecurrent\\tp_value\\n' > unexplained_mutations.tsv
+    printf 'sample\\tposition\\tref\\talt\\tobserved_freq\\texpected_freq\\texcess\\tdepth\\talt_depth\\tgene\\taa_change\\teffect\\tn_samples\\trecurrent\\tp_value\\tin_dataset\\n' > unexplained_mutations.tsv
     """
 }

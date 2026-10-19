@@ -1,0 +1,6 @@
+sample,site,collection_date,status,genome_coverage_pct,JN.1*,BA.2*,XFG*,other,proportion_summary,major_lineages,major_abundances,minor_lineages,minor_abundances,ungrouped_lineages,status_reason
+A,,,ok,90.00,0.900000,,0.100000,,1.000000,JN.1 KP.3,0.55 0.35,,,,
+B,,,ok,90.00,,0.690000,,0.310000,1.000000,BA.2 AY.4,0.69 0.31,,,,
+C,,,skipped_low_coverage,12.00,,,,,,,,,,,less than 60% of the genome covered at >= 10x
+D,,,ok,90.00,0.999100,,,0.000900,1.000000,JN.1,0.9991,,,,
+E,,,ok,90.00,,,1.000000,,1.000000,XFG.1,1.0,,,,

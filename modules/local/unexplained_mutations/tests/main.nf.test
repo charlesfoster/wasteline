@@ -52,12 +52,40 @@ nextflow_process {
             def lines = new File(process.out.tsv[0][1].toString()).readLines()
             assertAll(
                 { assert process.success },
-                { assert lines[0] == 'sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tp_value' },
+                { assert lines[0] == 'sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tp_value\tin_dataset' },
                 { assert lines.drop(1) == [
-                    'PURE_C\t22102\tA\tT\t0.3\t0\t0.3\t120\t36\tS\tE180D\tmissense\t2.39e-42',
-                    'PURE_C\t28802\tA\tT\t0.18\t0\t0.18\t100\t18\tN\tR177*\tstop_gained\t1.41e-17',
-                    'PURE_C\t29800\tG\tA\t0.12\t0\t0.12\t150\t18\tNA\tNA\tintergenic\t2.28e-14'
+                    'PURE_C\t22102\tA\tT\t0.3\t0\t0.3\t120\t36\tS\tE180D\tmissense\t2.39e-42\tfalse',
+                    'PURE_C\t28802\tA\tT\t0.18\t0\t0.18\t100\t18\tN\tR177*\tstop_gained\t1.41e-17\tfalse',
+                    'PURE_C\t29800\tG\tA\t0.12\t0\t0.12\t150\t18\tNA\tNA\tintergenic\t2.28e-14\tfalse'
                 ] }
+            )
+        }
+    }
+
+    test("deep calls: p-values below 1e-300 are floored, never 0 - real") {
+
+        tag "docker"
+        when {
+            process {
+                """
+                input[0] = [ [ id:'DEEP_C' ], file("\$projectDir/tests/fixtures/unexplained/DEEP_C.variants.tsv"), file("\$projectDir/tests/fixtures/unexplained/PURE_C.demix") ]
+                input[1] = file("\$projectDir/tests/data/barcodes_test.csv")
+                input[2] = file("\$projectDir/assets/references/NC_045512.gff3")
+                input[3] = file("\$projectDir/assets/references/NC_045512.fasta")
+                """
+            }
+        }
+
+        then {
+            def lines = new File(process.out.tsv[0][1].toString()).readLines()
+            assertAll(
+                { assert process.success },
+                { assert lines.drop(1) == [
+                    'DEEP_C\t22102\tA\tT\t1\t0\t1\t407\t407\tS\tE180D\tmissense\t1e-300\tfalse',   // 0.01^407 underflows a plain sum: floored
+                    'DEEP_C\t28802\tA\tT\t1\t0\t1\t120\t120\tN\tR177*\tstop_gained\t1e-240\tfalse', // 0.01^120: real value kept
+                    'DEEP_C\t29800\tG\tA\t0.12\t0\t0.12\t150\t18\tNA\tNA\tintergenic\t2.28e-14\tfalse'
+                ] },
+                { assert lines.drop(1).every { it.split('\t')[-1] != '0' } }
             )
         }
     }
@@ -132,7 +160,7 @@ nextflow_process {
             def lines = new File(process.out.tsv[0][1].toString()).readLines()
             assertAll(
                 { assert process.success },
-                { assert lines == ['sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tp_value'] }
+                { assert lines == ['sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tp_value\tin_dataset'] }
             )
         }
     }

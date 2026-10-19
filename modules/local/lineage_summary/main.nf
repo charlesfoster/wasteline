@@ -21,6 +21,7 @@ process LINEAGE_SUMMARY {
     path "lineage_groups_used.csv", emit: used                                             // byte-identical copy of the groups file used: a starting point for the next edit
     path "lineage_ungrouped_summary.tsv", emit: ungrouped                                  // lineages in no in_total group (`other`), biggest first, with a suggested pattern
     path "lineage_summary_site_aggregates.csv", optional: true, emit: sites                // only with the site-aggregate inputs
+    path "lineage_summary.xlsx", optional: true, emit: xlsx                                // formatted workbook; only when ext.args carries `--xlsx-out lineage_summary.xlsx`
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:
@@ -28,6 +29,8 @@ process LINEAGE_SUMMARY {
 
     script:
     // ext.args: --major-threshold <fraction> --min-abundance <fraction> --decimals <n> --zeros blank|zero
+    //           [--xlsx-out lineage_summary.xlsx [--xlsx-decimals <n>] [--wasteline-version <v>]]
+    //           (the xlsx is written from the same tables as the CSVs; xlsx_writer.py ships next to lineage_groups.py in bin/)
     def args = task.ext.args ?: ''
     def status_arg = demix_status ? '--demix-status demix_status.tsv' : ''
     def sheet_arg = samplesheet ? '--samplesheet samplesheet.csv' : ''
@@ -51,6 +54,8 @@ process LINEAGE_SUMMARY {
     """
 
     stub:
+    // an empty placeholder is enough for a stub run (no python needed); the real run writes a valid workbook
+    def xlsx_stub = (task.ext.args ?: '').contains('--xlsx-out') ? 'touch lineage_summary.xlsx' : ''
     def sites_stub = aggregated_sites ? "printf 'aggregate_name,period,period_start,n_sites_included,sites_included,sites_missing,weight_basis,other,proportion_summary,major_lineages,major_abundances,minor_lineages,minor_abundances,ungrouped_lineages\\n' > lineage_summary_site_aggregates.csv" : ''
     """
     printf 'sample,site,collection_date,status,genome_coverage_pct,other,proportion_summary,major_lineages,major_abundances,minor_lineages,minor_abundances,ungrouped_lineages,status_reason\\n' > lineage_summary.csv
@@ -58,5 +63,6 @@ process LINEAGE_SUMMARY {
     printf 'lineage\\tn_samples\\tmean_abundance\\tmax_abundance\\tsuggested_pattern\\n' > lineage_ungrouped_summary.tsv
     cp groups.csv lineage_groups_used.csv
     ${sites_stub}
+    ${xlsx_stub}
     """
 }

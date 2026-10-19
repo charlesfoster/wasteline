@@ -117,6 +117,7 @@ SUMMARY_PARAMS = (
     "qc_min_primer_trimmed_pct",
     "dropout_impact",
     "dropout_min_abundance",
+    "dropout_min_affect_abundance",
     "unexplained_mutations",
     "unexplained_min_freq",
     "unexplained_min_excess",
@@ -150,6 +151,7 @@ SUMMARY_PARAMS = (
 OPTIONAL_THRESHOLDS = (
     "qc_min_primer_trimmed_pct",
     "dropout_min_abundance",
+    "dropout_min_affect_abundance",
     "unexplained_min_freq",
     "unexplained_min_excess",
     "unexplained_min_depth",
@@ -615,6 +617,12 @@ def load_dropout_impact(impact_path, summary_path, problems):
                         "n_dropped_affecting_detected_lineages": to_int(
                             row.get("n_dropped_affecting_detected_lineages")
                         ),
+                        # appended columns: absent in older tables -> null
+                        "defining_sites_total": to_int(row.get("defining_sites_total")),
+                        "defining_sites_lost": to_int(row.get("defining_sites_lost")),
+                        "pct_defining_sites_lost": round_or_none(
+                            to_float(row.get("pct_defining_sites_lost")), 2
+                        ),
                     },
                     "amplicons": [],
                 }
@@ -635,6 +643,9 @@ def load_dropout_impact(impact_path, summary_path, problems):
                     "n_sites_in_detected_lineages": to_int(row.get("n_sites_in_detected_lineages")),
                     "affects_detected_lineage": to_bool(row.get("affects_detected_lineage")),
                     "affected_lineages": _parse_affected(row.get("affected_lineages")),
+                    # appended columns: absent in older tables -> null
+                    "n_defining_sites": to_int(row.get("n_defining_sites")),
+                    "n_differential_sites": to_int(row.get("n_differential_sites")),
                 }
             except ValueError as err:
                 problems.add("dropout_impact.tsv", f"line {number}: {err}")
@@ -670,6 +681,10 @@ def load_unexplained(path, problems):
                     "n_samples": to_int(row.get("n_samples")),
                     "recurrent": to_bool(row.get("recurrent")),
                     "p_value": to_float(row.get("p_value")),
+                    # last column of newer tables: does any lineage of the dataset model this site?
+                    "in_dataset": None
+                    if is_na(row.get("in_dataset"))
+                    else to_bool(row.get("in_dataset")),
                 }
             )
         except ValueError as err:
@@ -1519,11 +1534,14 @@ def build_run_flags(ctx):
         if any(a["affects_detected_lineage"] for a in entry["amplicons"])
     )
     if affected:
+        floor = thr.get("dropout_min_affect_abundance")
+        floor = 0.05 if floor is None else floor
         flag(
             "warn",
             "dropout_affects_lineages",
-            f"Amplicon dropout hides lineage-informative sites for detected lineages in "
-            f"{len(affected)} sample(s): {_ids(affected)}; abundance estimates may be biased.",
+            "Amplicon dropout hides defining mutations (those that separate a lineage from its "
+            f"parent) of lineages detected at >= {floor * 100:g}% in {len(affected)} sample(s): "
+            f"{_ids(affected)}; abundance estimates for those lineages may be biased.",
             affected,
         )
 
@@ -1538,11 +1556,15 @@ def build_run_flags(ctx):
             else f"{first['position']}{first['ref'] or ''}>{first['alt'] or ''}"
         )
         n_first = first["n_samples"] if first["n_samples"] is not None else "several"
+        blind = {(r["position"], r["alt"]) for r in recurrent if r.get("in_dataset") is False}
+        blind_text = (
+            f" ({len(blind)} of them at sites no lineage in the dataset models)" if blind else ""
+        )
         flag(
             "info",
             "unexplained_mutations",
-            f"{len(keys)} mutation(s) unexplained by the demixed lineages recur in several samples "
-            f"(first: {label} in {n_first} samples); possible novel lineage.",
+            f"{len(keys)} mutation(s) unexplained by the demixed lineages recur in several samples"
+            f"{blind_text} (first: {label} in {n_first} samples); possible novel lineage.",
             {r["sample"] for r in recurrent},
         )
 
@@ -1557,6 +1579,337 @@ def build_run_flags(ctx):
     order = {"error": 0, "warn": 1, "info": 2}
     flags.sort(key=lambda f: order[f["level"]])
     return flags
+
+
+# ---------------------------------------------------------------------------------------------
+# Anonymisation for sharing (--anonymize paths|full)
+# ---------------------------------------------------------------------------------------------
+ANONYMIZE_MODES = ("none", "paths", "full")
+_HOME_ROOTS = r"(?:/Users|/home|/Volumes|/mnt|/media|/root|~)"
+# a path token: quoted (may hold spaces), a home-rooted path (spaces allowed inside directories),
+# a Windows drive/UNC path, or a plain absolute / ./ / ../ path without spaces
+_PATH_RES = (
+    re.compile(r"""(?P<q>['"])(?P<body>(?:(?!(?P=q)).)*[\\/](?:(?!(?P=q)).)*)(?P=q)"""),
+    re.compile(rf"""(?<![\w.:~/-]){_HOME_ROOTS}(?:/(?:(?!\s-)[^/'"\n;])+)*/[^\s/'"\n;]+"""),
+    re.compile(r"""(?<![\w.:-])[A-Za-z]:[\\/](?:(?:(?!\s-)[^\\/'"\n;])+[\\/])*[^\s\\/'"\n;]*"""),
+    re.compile(r"""(?<![\w.:-])\\\\[^\s\\/'"\n;]+(?:\\[^\\/'"\n;]+)*"""),
+    re.compile(r"""(?<![\w.:~/<>-])(?:\.{1,2})?/(?=[^\s/])[^\s'"\n;,)\]]*"""),
+)
+_USER_RES = (
+    re.compile(r"(?:/Users|/home)/([^/\\\s'\"]+)"),
+    re.compile(r"[A-Za-z]:[\\/]Users[\\/]([^\\/'\"\n;]+)", re.IGNORECASE),
+    re.compile(r"(?<![\w.])~([A-Za-z][\w.-]*)/"),
+)
+_PATH_KEY_RE = re.compile(
+    r"(dir|path|file|input|bed|fasta|genome|sheet|results|groups|sites|gff|bam|reads|command|outdir)",
+    re.IGNORECASE,
+)
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def _basename(text):
+    return re.split(r"[\\/]", text.rstrip("\\/"))[-1] or text
+
+
+class Anonymizer:
+    """Rewrites an assembled report_data dict in place (paths; and sample / site names for `full`)."""
+
+    def __init__(self, mode, data, extra_ids=()):
+        self.mode = mode
+        self.users = self._find_users(data)
+        self.ids, self.sites, self.aggs = {}, {}, {}
+        self._text_re = self._loose_re = None
+        self._lookup = {}
+        if mode == "full":
+            ids, sites, aggs = self._collect(data)
+            ids |= {str(i) for i in extra_ids}
+            self.ids = self._pseudonyms(ids, "S", 3)
+            self.sites = self._pseudonyms(sites, "SITE", 1)
+            self.aggs = self._pseudonyms(aggs, "AGG", 1)
+            names = sorted({**self.ids, **self.sites, **self.aggs}, key=lambda n: (-len(n), n))
+            if names:
+                alt = "|".join(re.escape(n) for n in names)
+                self._text_re = re.compile(
+                    rf"(?<![A-Za-z0-9_-])(?:{alt})(?![A-Za-z0-9_-]|\.[A-Za-z0-9])"
+                )
+            self._lookup = {**self.aggs, **self.sites, **self.ids}
+            self._loose_re = re.compile("|".join(re.escape(n) for n in names)) if names else None
+
+    # ---- discovery ----------------------------------------------------------------------
+    @staticmethod
+    def _iter_strings(obj):
+        if isinstance(obj, str):
+            yield obj
+        elif isinstance(obj, dict):
+            for key, value in obj.items():
+                yield from Anonymizer._iter_strings(str(key))
+                yield from Anonymizer._iter_strings(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                yield from Anonymizer._iter_strings(item)
+
+    def _find_users(self, data):
+        users = set()
+        for text in self._iter_strings(data):
+            for rx in _USER_RES:
+                users.update(m.group(1).strip() for m in rx.finditer(text))
+        users.discard("")
+        return sorted(users, key=lambda u: (-len(u), u))
+
+    @staticmethod
+    def _collect(data):
+        ids, sites, aggs = set(), set(), set()
+
+        def rows(key):
+            return [r for r in (data.get(key) or []) if isinstance(r, dict)]
+
+        for key in ("samples", "mutations_of_interest", "consensus", "negative_controls",
+                    "unexplained_mutations"):  # fmt: skip
+            ids |= {str(r["sample"]) for r in rows(key) if r.get("sample") is not None}
+        comparison = data.get("barcode_comparison") or {}
+        ids |= {str(r["sample"]) for r in comparison.get("rows", []) if isinstance(r, dict)}
+        for key in ("demix", "amplicons", "dropout_impact"):
+            ids |= {str(k) for k in (data.get(key) or {})}
+        ids |= {str(k) for k in ((data.get("coverage_tracks") or {}).get("samples") or {})}
+        for flag in rows("run_flags"):
+            ids |= {str(x) for x in flag.get("samples", [])}
+        sites |= {str(r["site"]) for r in rows("samples") if r.get("site")}
+        for r in rows("negative_controls"):
+            pass
+        ts = data.get("time_series") or {}
+        sites |= {
+            str(x["site"]) for x in ts.get("sites", []) if isinstance(x, dict) and x.get("site")
+        }
+        t2 = data.get("timeseries") or {}
+        sites |= {str(x) for x in t2.get("sites", [])}
+        for level in ("summarized", "lineages"):
+            sites |= {
+                str(r["site"]) for r in t2.get(level, []) if isinstance(r, dict) and r.get("site")
+            }
+        for agg in data.get("site_aggregates") or []:
+            if not isinstance(agg, dict):
+                continue
+            if agg.get("aggregate_name"):
+                aggs.add(str(agg["aggregate_name"]))
+            for key in ("sites_included", "sites_missing"):
+                sites |= {str(x) for x in agg.get(key, [])}
+        return ids, sites, aggs
+
+    @staticmethod
+    def _pseudonyms(names, prefix, width):
+        names = sorted(names)
+        width = max(width, len(str(len(names))))
+        return {n: f"{prefix}{i:0{width}d}" for i, n in enumerate(names, start=1)}
+
+    # ---- strings ------------------------------------------------------------------------
+    def scrub_text(self, text, substring=False):
+        """Paths -> `.../basename`; home directories -> `~`; the user name -> `<user>`."""
+
+        def path(match):
+            if re.fullmatch(
+                r"(?:/Users|/home)(?:/[^/]+)?|/root|[A-Za-z]:[\\/]Users(?:[\\/][^\\/]+)?",
+                match.group(0),
+                re.IGNORECASE,
+            ):
+                return "~"  # a bare home directory
+            token = (
+                match.group("body")
+                if "body" in match.groupdict() and match.group("body")
+                else match.group(0)
+            )
+            quote = match.group("q") if "q" in match.groupdict() and match.group("q") else ""
+            if quote and not self._looks_like_path(token):
+                return match.group(0)
+            return f"{quote}.../{self._safe_base(_basename(token))}{quote}"
+
+        for rx in _PATH_RES:
+            text = rx.sub(path, text)
+        text = _EMAIL_RE.sub("<email>", text)
+        for user in self.users:
+            if len(user) >= 1:
+                text = re.sub(rf"(?<![\w.-]){re.escape(user)}(?![\w-])", "<user>", text)
+            if substring and len(user) >= 4:
+                text = re.sub(re.escape(user), "<user>", text, flags=re.IGNORECASE)
+        text = re.sub(r"(?<![\w.:-])(?:/Users|/home)(?=$|[\s'\";,)\]])", "~", text)
+        text = re.sub(
+            r"(?<![\w.:-])[A-Za-z]:[\\/]Users(?=$|[\s'\";,)\]])", "~", text, flags=re.IGNORECASE
+        )
+        return text
+
+    @staticmethod
+    def _looks_like_path(token):
+        return bool(
+            re.match(r"^(?:~|/|\.{1,2}/|[A-Za-z]:[\\/]|\\\\)", token)
+            or ("/" in token and " " not in token and not re.search(r"://", token))
+        )
+
+    def _safe_base(self, base):
+        """A basename may still contain the user name (`jdoe_samples.csv`): mask long names there too."""
+        for user in self.users:
+            if len(user) >= 4:
+                base = re.sub(re.escape(user), "<user>", base, flags=re.IGNORECASE)
+        if self._loose_re:  # file names may embed a sample / site name (`sites_Metro_Region.csv`)
+            base = self._loose_re.sub(lambda m: self._lookup[m.group(0)], base)
+        return base
+
+    def path_value(self, key, value):
+        """A whole config / provenance value: absolute paths (and relative ones under path-like keys)
+        are reduced to the base name, everything else goes through `scrub_text`."""
+        stripped = value.strip()
+        if "://" in stripped and " " not in stripped:
+            return value  # URL (container depot, ...)
+        absolute = bool(re.match(r"^(?:~|/|\.{1,2}/|[A-Za-z]:[\\/]|\\\\)", stripped))
+        relative = (
+            ("/" in stripped or "\\" in stripped)
+            and key is not None
+            and bool(_PATH_KEY_RE.search(str(key)))
+        )
+        if (absolute or relative) and not (key and "command" in str(key).lower()):
+            if (
+                " " in stripped
+                and absolute
+                and not stripped.startswith(
+                    ("/Users/", "/home/", "~", "/Volumes/", "/mnt/", "C:", "c:", "\\\\")
+                )
+            ):
+                return self.scrub_text(value)
+            return f".../{self._safe_base(_basename(stripped))}"
+        return self.scrub_text(value, substring=True)
+
+    def names(self, text):
+        """Replace known sample / site / aggregate names inside free text (boundary aware)."""
+        if not self._text_re or not isinstance(text, str):
+            return text
+        return self._text_re.sub(lambda m: self._lookup[m.group(0)], text)
+
+    # ---- walk ---------------------------------------------------------------------------
+    def _walk_paths(self, obj, key=None, config=False):
+        """Scrub every string leaf; `config` subtrees get the whole-value path rule."""
+        if isinstance(obj, str):
+            return self.path_value(key, obj) if config else self.scrub_text(obj)
+        if isinstance(obj, dict):
+            return {
+                self.scrub_text(str(k)) if isinstance(k, str) else k: self._walk_paths(v, k, config)
+                for k, v in obj.items()
+            }
+        if isinstance(obj, list):
+            return [self._walk_paths(v, key, config) for v in obj]
+        return obj
+
+    def apply(self, data):
+        out = dict(data)
+        for key in data:
+            out[key] = self._walk_paths(
+                data[key], key, config=key in ("provenance", "params_summary", "header")
+            )
+        if self.mode == "full":
+            self._apply_names(out)
+        out["anonymized"] = self.mode
+        return out
+
+    def _apply_names(self, d):
+        i, st, ag, nm = self.ids, self.sites, self.aggs, self.names
+        for r in d.get("samples") or []:
+            r["sample"] = i.get(r["sample"], r["sample"])
+            if r.get("site"):
+                r["site"] = st.get(r["site"], r["site"])
+            for k in ("demix_reason", "consensus_reason"):
+                if k in r:
+                    r[k] = nm(r[k])
+        for key in ("demix", "amplicons", "dropout_impact"):
+            if d.get(key):
+                d[key] = {i.get(k, k): v for k, v in d[key].items()}
+        for v in (d.get("demix") or {}).values():
+            v["reason"] = nm(v.get("reason"))
+        if d.get("coverage_tracks"):
+            d["coverage_tracks"]["samples"] = {
+                i.get(k, k): v for k, v in d["coverage_tracks"]["samples"].items()
+            }
+        for key in (
+            "mutations_of_interest",
+            "consensus",
+            "negative_controls",
+            "unexplained_mutations",
+        ):
+            for r in d.get(key) or []:
+                if isinstance(r, dict) and r.get("sample") is not None:
+                    r["sample"] = i.get(r["sample"], r["sample"])
+                if isinstance(r, dict) and "reason" in r:
+                    r["reason"] = nm(r["reason"])
+        for r in (d.get("barcode_comparison") or {}).get("rows", []):
+            r["sample"] = i.get(r["sample"], r["sample"])
+        for f in d.get("run_flags") or []:
+            f["message"] = nm(f.get("message"))
+            if "samples" in f:
+                f["samples"] = sorted(i.get(x, x) for x in f["samples"])
+        lg = d.get("lineage_groups")
+        if lg and lg.get("samples_above_threshold"):
+            lg["samples_above_threshold"] = sorted(
+                i.get(x, x) for x in lg["samples_above_threshold"]
+            )
+        for x in (d.get("time_series") or {}).get("sites", []):
+            if x.get("site"):
+                x["site"] = st.get(x["site"], x["site"])
+        t2 = d.get("timeseries")
+        if t2:
+            t2["sites"] = [st.get(x, x) for x in t2.get("sites", [])]
+            for level in ("summarized", "lineages"):
+                for r in t2.get(level, []):
+                    if r.get("site"):
+                        r["site"] = st.get(r["site"], r["site"])
+        for a in d.get("site_aggregates") or []:
+            old = a.get("aggregate_name")
+            new = ag.get(old, old)
+            if old and a.get("row_label", "").startswith(old):
+                a["row_label"] = new + a["row_label"][len(old) :]
+            a["aggregate_name"] = new
+            for k in ("sites_included", "sites_missing"):
+                a[k] = [st.get(x, x) for x in a.get(k, [])]
+            a["missing_reasons"] = {
+                st.get(k, k): nm(v) for k, v in a.get("missing_reasons", {}).items()
+            }
+        for key in ("growth_rates",):
+            if d.get(key) and d[key].get("reason"):
+                d[key]["reason"] = nm(d[key]["reason"])
+        for w in (lg or {}).get("warnings", []):
+            w["text"] = nm(w["text"])
+        # provenance: only the command line and path-derived strings can carry names
+        prov = d.get("provenance")
+        if isinstance(prov, dict):
+            self._names_in_provenance(prov)
+        for k, v in list((d.get("params_summary") or {}).items()):
+            if isinstance(v, str) and v.startswith(".../"):
+                d["params_summary"][k] = nm(v)
+
+    def _names_in_provenance(self, prov):
+        nm = self.names
+
+        def walk(obj, key=None):
+            if isinstance(obj, str):
+                if key == "command_line" or obj.startswith(".../") or " .../" in obj:
+                    return nm(obj)
+                return obj
+            if isinstance(obj, dict):
+                return {k: walk(v, k) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [walk(v, key) for v in obj]
+            return obj
+
+        for k in list(prov):
+            prov[k] = walk(prov[k], k)
+
+    def mapping_rows(self):
+        rows = [("sample", k, v) for k, v in self.ids.items()]
+        rows += [("site", k, v) for k, v in self.sites.items()]
+        rows += [("aggregate", k, v) for k, v in self.aggs.items()]
+        return rows
+
+
+def write_anonymize_map(path, rows):
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["type", "original", "pseudonym"])
+        writer.writerows(rows)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1594,10 +1947,13 @@ def build(
     mode=None,
     now=None,
     problems=None,
+    anonymize="none",
+    anonymize_map=None,
 ):
     """Assemble report_data from already-loaded pieces. See `main` for the file-based entry."""
     problems = problems or Problems()
     notes = []
+    stray_ids = set()
     mode = mode or run_info.get("mode") or dig(run_info, "params.mode") or "unknown"
     freyja_data = (
         run_info.get("freyja_data") if isinstance(run_info.get("freyja_data"), dict) else None
@@ -1647,6 +2003,7 @@ def build(
         ("depths", depths and depths["samples"]),
     ):
         stray = sorted(set(source or {}) - known)
+        stray_ids.update(stray)
         if stray:
             notes.append(
                 f"{label}: ignored data for sample(s) not in the sample table: {_ids(stray)}."
@@ -1725,6 +2082,7 @@ def build(
     if dropout_impact is not None:
         dropout_out = {sid: v for sid, v in dropout_impact.items() if sid in known}
         stray = sorted(set(dropout_impact) - known)
+        stray_ids.update(stray)
         if stray:
             notes.append(
                 f"dropout impact: ignored data for sample(s) not in the sample table: {_ids(stray)}."
@@ -1735,6 +2093,7 @@ def build(
             rec["dropout_pct_informative_lost"] = (
                 summ["pct_informative_sites_lost"] if summ else None
             )
+            rec["dropout_pct_defining_lost"] = summ["pct_defining_sites_lost"] if summ else None
             n_affecting = summ["n_dropped_affecting_detected_lineages"] if summ else None
             if (
                 n_affecting is None
@@ -1864,7 +2223,7 @@ def build(
             }
         )
     now = now or datetime.now(UTC)
-    return {
+    data = {
         "schema_version": SCHEMA_VERSION,
         "generated": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "mode": mode,
@@ -1891,6 +2250,12 @@ def build(
         "lineage_groups": lineage_groups,
         "site_aggregates": site_aggregates,
     }
+    if anonymize != "none":
+        anonymizer = Anonymizer(anonymize, data, extra_ids=stray_ids)
+        data = anonymizer.apply(data)
+        if anonymize_map is not None:
+            anonymize_map.extend(anonymizer.mapping_rows())
+    return data
 
 
 def consensus_by_sample(rows):
@@ -1973,6 +2338,17 @@ def parse_args(argv=None):
         type=float,
         default=UNGROUPED_FLAG_THRESHOLD,
         help="an ok sample whose `other` share is at least this raises lineage_groups_ungrouped",
+    )
+    parser.add_argument(
+        "--anonymize",
+        choices=ANONYMIZE_MODES,
+        default="none",
+        help="none (default): as is. paths: local paths, home directories and the user name are removed. "
+        "full: additionally sample IDs and site names become stable pseudonyms (S001, SITE1, ...)",
+    )
+    parser.add_argument(
+        "--anonymize-map-out",
+        help="with --anonymize full: write the original -> pseudonym table here (never into the report)",
     )
     parser.add_argument("--mode", help="override the mode recorded in run_info.json")
     parser.add_argument("--out", required=True, help="report_data.json")
@@ -2097,12 +2473,33 @@ def main(argv=None):
     except (OSError, UnicodeDecodeError, csv.Error) as err:
         print(f"build_report_data.py: {err}", file=sys.stderr)
         return 2
-    data = build(run_info, mode=args.mode, problems=problems, **inputs)
+    mapping = []
+    data = build(
+        run_info,
+        mode=args.mode,
+        problems=problems,
+        anonymize=args.anonymize,
+        anonymize_map=mapping,
+        **inputs,
+    )
+    if args.anonymize_map_out:
+        if args.anonymize == "full":
+            write_anonymize_map(args.anonymize_map_out, mapping)
+        else:
+            print(
+                "build_report_data.py: --anonymize-map-out is only used with --anonymize full "
+                "(no map written)",
+                file=sys.stderr,
+            )
     Path(args.out).write_text(
         json.dumps(data, indent=None, separators=(",", ":")) + "\n", encoding="utf-8"
     )
     if args.write_qc_tsv and qc_path:
-        write_merged_qc(qc_path, data["samples"], args.write_qc_tsv)
+        # the published QC table is a pipeline result, not part of the shared report: it keeps the real IDs
+        merged = data["samples"]
+        if args.anonymize != "none":
+            merged = build(run_info, mode=args.mode, problems=problems, **inputs)["samples"]
+        write_merged_qc(qc_path, merged, args.write_qc_tsv)
     return 0
 
 

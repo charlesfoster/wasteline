@@ -1,0 +1,5 @@
+	summarized	lineages	abundances	resid	coverage	pathogen
+A	[('JN.1* (JN.1.X)', 0.9), ('XFG* (XFG.X)', 0.1)]	JN.1 KP.3 XFG.1	0.60000000 0.30000000 0.10000000	1.5	90.0	SARS-CoV-2
+B.variants.tsv	[('BA.2* (BA.2.X)', 0.7), ('Delta', 0.3)]	BA.2 AY.4	0.70000000 0.30000000	1.5	90.0	SARS-CoV-2
+C	[('JN.1* (JN.1.X)', 1.0)]	JN.1	1.00000000	1.5	90.0	SARS-CoV-2
+D	[('JN.1* (JN.1.X)', 0.9995), ('Other', 0.0005)]	JN.1 ZZ.1	0.99950000 0.00050000	1.5	90.0	SARS-CoV-2

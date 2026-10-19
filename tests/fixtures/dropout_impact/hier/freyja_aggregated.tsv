@@ -1,0 +1,9 @@
+	summarized	lineages	abundances	resid	coverage	pathogen
+H0	[]	R.1.1 R.2	0.6 0.4	1.0	99.0	HIER
+H1	[]	R.1.1 R.2 R Z O	0.40 0.30 0.20 0.05 0.05	1.0	99.0	HIER
+H2	[]	R Z	0.95 0.05	1.0	99.0	HIER
+H3	[]	X	1.0	1.0	99.0	HIER
+H4	[]	W O	0.7 0.3	1.0	99.0	HIER
+H5	[]	Q.9	1.0	1.0	99.0	HIER
+H7	[]	Z R.2	0.7 0.3	1.0	99.0	HIER
+H8	[]	AA.1.1 R.2 O	0.5 0.4 0.0099	1.0	99.0	HIER

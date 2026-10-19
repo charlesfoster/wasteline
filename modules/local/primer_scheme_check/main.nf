@@ -23,7 +23,7 @@ process PRIMER_SCHEME_CHECK {
 
     script:
     // ext.args: --window 2 --min-enrichment 5 --min-reads 500 --genome-length 29903 --max-p-value 0.001
-    //   --equivalence-jaccard 0.9
+    //   --min-hit-fraction 0.05 --equivalence-jaccard 0.9
     def args = task.ext.args ?: ''
     prefix = task.ext.prefix ?: "${meta.id}"
     def declared_arg = custom_bed ? custom_bed : declared
@@ -43,7 +43,7 @@ process PRIMER_SCHEME_CHECK {
     def declared_name = custom_bed ? custom_bed.baseName : declared
     """
     printf 'scheme\\tn_primer_5prime_sites\\tn_reads\\thits\\texpected_hits\\thit_fraction\\tenrichment\\tp_value\\tequivalent_to_declared\\n' > ${prefix}.primer_scheme_check.tsv
-    printf 'sample\\tdeclared_scheme\\tdeclared_enrichment\\tbest_scheme\\tbest_enrichment\\tscheme_check\\treason\\n' > ${prefix}.primer_scheme_summary.tsv
-    printf '${meta.id}\\t${declared_name}\\tNA\\tNA\\tNA\\tNA\\tstub\\n' >> ${prefix}.primer_scheme_summary.tsv
+    printf 'sample\\tdeclared_scheme\\tdeclared_enrichment\\tbest_scheme\\tbest_enrichment\\tscheme_check\\treason\\tdeclared_hit_fraction\\tbest_hit_fraction\\n' > ${prefix}.primer_scheme_summary.tsv
+    printf '${meta.id}\\t${declared_name}\\tNA\\tNA\\tNA\\tNA\\tstub\\tNA\\tNA\\n' >> ${prefix}.primer_scheme_summary.tsv
     """
 }

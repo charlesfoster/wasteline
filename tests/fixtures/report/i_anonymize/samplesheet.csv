@@ -1,0 +1,6 @@
+sample,fastq_1,fastq_2,sample_type,collection_date,site
+NTC_Central_01,/Users/jdoe/Data/NTC_Central_01_R1.fastq.gz,/Users/jdoe/Data/NTC_Central_01_R2.fastq.gz,negative,2026-01-05,Central_WWTP
+WW_Central_001,/Users/jdoe/Data/WW_Central_001_R1.fastq.gz,/Users/jdoe/Data/WW_Central_001_R2.fastq.gz,sample,2026-01-05,Central_WWTP
+WW_Central_002,/Users/jdoe/Data/WW_Central_002_R1.fastq.gz,/Users/jdoe/Data/WW_Central_002_R2.fastq.gz,sample,2026-01-12,Central_WWTP
+WW_North_001,/Users/jdoe/Data/WW_North_001_R1.fastq.gz,/Users/jdoe/Data/WW_North_001_R2.fastq.gz,sample,2026-01-05,North_Plant
+WW_North_002.rep1,/Users/jdoe/Data/WW_North_002.rep1_R1.fastq.gz,/Users/jdoe/Data/WW_North_002.rep1_R2.fastq.gz,sample,2026-01-12,North_Plant

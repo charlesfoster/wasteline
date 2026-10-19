@@ -3,7 +3,8 @@
 
   primer_scheme_check.py --starts S.read_starts.tsv --declared SCHEME_OR_BED --sample S
         [--beds-dir assets/primer_schemes] [--window 2] [--min-enrichment 5] [--min-reads 500]
-        [--genome-length 29903] [--max-p-value 0.001] [--equivalence-jaccard 0.9]
+        [--genome-length 29903] [--max-p-value 0.001] [--min-hit-fraction 0.05]
+        [--equivalence-jaccard 0.9]
         -o S.primer_scheme_check.tsv [--summary-out S.primer_scheme_summary.tsv]
 
 Idea. In anchored libraries (ligation/ARTIC-style, QIAseq single-primer extension) a read starts exactly at a
@@ -31,18 +32,22 @@ they are negligible), reported with 3 significant digits and floored at 1e-300.
 
 Scheme comparison. Two schemes are *equivalent* when the Jaccard index of their sets of (strand, 5' position) sites
 is >= --equivalence-jaccard (default 0.9; e.g. midnight and midnightv2 share 58 of 59 sites): reads cannot tell
-them apart. A scheme "reaches" the bar when enrichment >= --min-enrichment AND p_value <= --max-p-value (the p-value
-guard stops sparse schemes with a handful of chance hits from passing on a ratio alone).
+them apart. A scheme "reaches" the bar when ALL of: enrichment >= --min-enrichment, p_value <= --max-p-value (stops
+a handful of chance hits passing on a ratio alone) and hit_fraction >= --min-hit-fraction (an absolute floor: a sparse
+scheme has a tiny expected count, so even ~1.5 % of reads at its sites gives a large enrichment ratio; 0 disables).
 
 Summary row (`--summary-out`): sample, declared_scheme, declared_enrichment, best_scheme, best_enrichment,
-scheme_check, reason. best_scheme = the highest-enrichment scheme that reaches the bar (NA if none; ties/near-ties of
-equivalent schemes are all listed, joined with `/`); scheme_check:
+scheme_check, reason, then the appended declared_hit_fraction, best_hit_fraction (4 dp; consumers read by column name
+and ignore these). best_scheme = the highest-enrichment scheme that reaches the bar (NA if none; ties/near-ties of
+equivalent schemes are all listed, joined with `/`; best_hit_fraction is that top scheme's); scheme_check:
   ok            the declared scheme reaches the bar (reason `declared_enriched`)
-  mismatch      the declared scheme does not reach the bar, the best scheme does, is not equivalent to the declared
-                one and has >= 3x its enrichment (reason `best_other_scheme`)
+  mismatch      the declared scheme does not reach the bar, the best scheme does (so its hit_fraction is also
+                >= --min-hit-fraction), is not equivalent to the declared one and either has >= 3x the declared
+                enrichment or >= 3x the declared hit_fraction (reason `best_other_scheme`)
   uninformative no scheme reaches the bar, e.g. fragmentation/tagmentation libraries (reason `no_scheme_enriched`),
                 or the declared scheme does not reach it and the best scheme is not decisively better
-                (`best_not_decisive`)
+                (`best_not_decisive`), or the declared scheme passes the enrichment and p-value tests but not the
+                hit-fraction floor and nothing else reaches the bar (`declared_sparse_inflated`)
   NA            fewer than --min-reads usable reads (`too_few_reads`), unreadable/missing starts
                 (`missing_input`) or an unknown declared scheme (`declared_not_found`)
 Never an error: exit 0 always except unusable arguments (2).
@@ -76,6 +81,8 @@ SUMMARY_COLUMNS = [
     "best_enrichment",
     "scheme_check",
     "reason",
+    "declared_hit_fraction",
+    "best_hit_fraction",
 ]
 NAME_STRAND = re.compile(r"(LEFT|RIGHT|F|R)$")
 ALT_TAIL = re.compile(r"[_-]?ALT\d*$")
@@ -228,12 +235,22 @@ def load_schemes(beds_dir, declared):
     return schemes, declared_name, notes
 
 
-def reaches(row, args):
+def enriched(row, args):
+    """Enrichment and p-value tests only (the ratio evidence)."""
     return (
         row["enrichment"] is not None
         and row["enrichment"] >= args.min_enrichment
         and row["p_value"] is not None
         and row["p_value"] <= args.max_p_value
+    )
+
+
+def reaches(row, args):
+    """The bar: ratio evidence AND an absolute hit-fraction floor."""
+    return (
+        enriched(row, args)
+        and row["hit_fraction"] is not None
+        and row["hit_fraction"] >= args.min_hit_fraction
     )
 
 
@@ -246,6 +263,7 @@ def summarise(args, scored, declared_name, status, reason):
     if scored and declared_name:
         by_name = {r["scheme"]: r for r in scored}
         out["declared_enrichment"] = fmt(by_name[declared_name]["enrichment"], 1)
+        out["declared_hit_fraction"] = fmt(by_name[declared_name]["hit_fraction"], 4)
     return out
 
 
@@ -284,7 +302,7 @@ def check(args, notes):
     qualifying = sorted(
         (r for r in scored if reaches(r, args)), key=lambda r: r["enrichment"], reverse=True
     )
-    best_label, best_enrichment, best_equivalent = NA, None, False
+    best_label, best_enrichment, best_hit_fraction, best_equivalent = NA, None, None, False
     if qualifying:
         top = qualifying[0]
         # the best scheme together with every scheme the reads cannot tell apart from it
@@ -293,18 +311,28 @@ def check(args, notes):
         ]
         best_label = "/".join(sorted(r["scheme"] for r in group))
         best_enrichment = top["enrichment"]
+        best_hit_fraction = top["hit_fraction"]
         best_equivalent = any(r["equivalent"] for r in group)
     if reaches(declared_row, args):
         status, reason = "ok", "declared_enriched"
     elif not qualifying or best_equivalent:
-        status, reason = "uninformative", "no_scheme_enriched"
-    elif declared_row["enrichment"] is None or best_enrichment >= 3 * declared_row["enrichment"]:
+        # the declared scheme's ratio looked fine but too few reads sit at its sites (sparse scheme)
+        sparse = enriched(declared_row, args)
+        status = "uninformative"
+        reason = "declared_sparse_inflated" if sparse else "no_scheme_enriched"
+    elif (
+        declared_row["enrichment"] is None
+        or best_enrichment >= 3 * declared_row["enrichment"]
+        or declared_row["hit_fraction"] is None
+        or best_hit_fraction >= 3 * declared_row["hit_fraction"]
+    ):
         status, reason = "mismatch", "best_other_scheme"
     else:
         status, reason = "uninformative", "best_not_decisive"
     out = summarise(args, scored, declared_name, status, reason)
     out["best_scheme"] = best_label
     out["best_enrichment"] = fmt(best_enrichment, 1)
+    out["best_hit_fraction"] = fmt(best_hit_fraction, 4)
     return scored, out
 
 
@@ -355,6 +383,13 @@ def main(argv=None):
     p.add_argument("--min-reads", type=int, default=500)
     p.add_argument("--genome-length", type=int, default=29903, help="default 29903 (SARS-CoV-2)")
     p.add_argument("--max-p-value", type=float, default=0.001)
+    p.add_argument(
+        "--min-hit-fraction",
+        type=float,
+        default=0.05,
+        help="a scheme reaches the bar only if >= this fraction of reads start at its primers "
+        "(default 0.05; 0 disables)",
+    )
     p.add_argument("--equivalence-jaccard", type=float, default=0.9)
     p.add_argument("-o", "--output", default="-", help="per-scheme table")
     p.add_argument("--summary-out", help="one-row summary table")

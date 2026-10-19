@@ -1,0 +1,5 @@
+sample	status	reason	genome_coverage_pct	barcode_version	barcode_version_iso
+A	ok		90.0	10_06_2026-05-25	2026-10-06T05-25
+B	ok		90.0	10_06_2026-05-25	2026-10-06T05-25
+C	ok		90.0	10_06_2026-05-25	2026-10-06T05-25
+D	ok		90.0	10_06_2026-05-25	2026-10-06T05-25

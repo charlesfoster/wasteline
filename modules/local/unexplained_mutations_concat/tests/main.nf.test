@@ -45,7 +45,7 @@ nextflow_process {
             def rows = lines.drop(1).collect { it.split('\t') as List }
             assertAll(
                 { assert process.success },
-                { assert lines[0] == 'sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tn_samples\trecurrent\tp_value' },
+                { assert lines[0] == 'sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tn_samples\trecurrent\tp_value\tin_dataset' },
                 { assert lines.count { it.startsWith('sample\t') } == 1 },
                 { assert rows.collect { [it[0], it[1], it[12], it[13]] } == [
                     ['S_ONE', '22102', '3', 'true'],       // recurrent first, then excess descending
@@ -73,7 +73,7 @@ nextflow_process {
             def lines = new File(process.out.tsv[0].toString()).readLines()
             assertAll(
                 { assert process.success },
-                { assert lines == ['sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tn_samples\trecurrent\tp_value'] }
+                { assert lines == ['sample\tposition\tref\talt\tobserved_freq\texpected_freq\texcess\tdepth\talt_depth\tgene\taa_change\teffect\tn_samples\trecurrent\tp_value\tin_dataset'] }
             )
         }
     }

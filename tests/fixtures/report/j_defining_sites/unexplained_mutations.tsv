@@ -1,0 +1,8 @@
+sample	position	ref	alt	observed_freq	expected_freq	excess	depth	alt_depth	gene	aa_change	effect	n_samples	recurrent	p_value	in_dataset
+SiteC_W05_1	22102	A	T	0.3	0	0.3	520	156	S	E180D	missense	3	true	1e-300	false
+SiteB_W03_1	22102	A	T	0.18	0	0.18	410	74	S	E180D	missense	3	true	1.41e-17	false
+SiteA_W04_1	22102	A	T	0.12	0	0.12	350	42	S	E180D	missense	3	true	2.28e-14	false
+SiteA_W05_1	23063	A	T	0.15	0.05	0.1	300	45	S	N501Y	missense	2	true	4.2e-12	true
+SiteB_W06_1	23063	A	T	0.14	0.05	0.09	280	39	S	N501Y	missense	2	true	1.9e-10	true
+SiteB_W06_1	28802	A	T	0.2	0	0.2	300	60	N	R177*	stop_gained	1	false	3.4e-21	true
+SiteA_W06_1	29800	G	A	0.12	0	0.12	250	30	NA	NA	intergenic	1	false	8.1e-09	false

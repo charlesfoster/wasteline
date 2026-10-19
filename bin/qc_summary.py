@@ -20,8 +20,8 @@ reads, then the flagstat primary total); `NA` when no denominator is available.
 
 QC status:
   sample_type=sample
-    FAIL  pct genome >= --min-depth is below --fail-below-pct (default 50), or no reads at all
-    WARN  below --pass-min-pct (default 80), or amplicons_dropped > --max-dropped (default 10), or
+    FAIL  pct genome >= --min-depth is below --fail-below-pct (default 30), or no reads at all
+    WARN  below --pass-min-pct (default 60), or amplicons_dropped > --max-dropped (default 10), or
           primer_trimmed_pct < --min-primer-trimmed-pct (default 0 = rule off; a possible wrong primer scheme;
           never FAIL by itself, and only when the value is known)
     PASS  otherwise
@@ -468,13 +468,13 @@ def main(argv=None):
     p.add_argument(
         "--pass-min-pct",
         type=float,
-        default=80.0,
+        default=60.0,
         help="PASS needs >= this %% genome at --min-depth",
     )
     p.add_argument(
         "--fail-below-pct",
         type=float,
-        default=50.0,
+        default=30.0,
         help="FAIL below this %% genome at --min-depth",
     )
     p.add_argument(

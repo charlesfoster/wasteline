@@ -158,6 +158,14 @@ def sci(value, digits=2):
     return "–" if value is None else f"{value:.{digits}e}"
 
 
+def pval(value):
+    """A p-value; the pipeline floors them at 1e-300, which means "at most 1e-300"."""
+    value = _num(value)
+    if value is None:
+        return "–"
+    return "<=1e-300" if value <= 1e-300 else f"{value:.2e}"
+
+
 # ---------------------------------------------------------------------------------------------
 # View models
 # ---------------------------------------------------------------------------------------------
@@ -680,6 +688,9 @@ def dropout_view(data):
                 "total": s.get("informative_sites_total"),
                 "lost": s.get("informative_sites_in_dropped"),
                 "pct": s.get("pct_informative_sites_lost"),
+                "def_total": s.get("defining_sites_total"),
+                "def_lost": s.get("defining_sites_lost"),
+                "def_pct": s.get("pct_defining_sites_lost"),
                 "n_affecting": n_affecting if n_affecting is not None else len(affecting),
                 "no_estimate": no_estimate,
                 "affects": bool(affecting),
@@ -696,6 +707,8 @@ def dropout_view(data):
                     "end": a.get("end"),
                     "mean_depth": a.get("mean_depth"),
                     "n_inf": a.get("n_informative_sites"),
+                    "n_def": a.get("n_defining_sites"),
+                    "n_diff": a.get("n_differential_sites"),
                     "n_det": a.get("n_sites_in_detected_lineages"),
                     "affects": bool(a.get("affects_detected_lineage")),
                     "no_estimate": a.get("n_sites_in_detected_lineages") is None,
@@ -706,8 +719,19 @@ def dropout_view(data):
             )
     rows.sort(key=lambda r: (not r["affects"], r["sample"], r["start"] or 0))
     with_dropout = [x for x in summary if (x["n_dropped"] or 0) > 0]
-    with_dropout.sort(key=lambda x: (-(x["pct"] if x["pct"] is not None else -1), x["sample"]))
+    # tables written before the "defining sites" refinement lack these columns: keep the old layout
+    has_defining = any(r["n_def"] is not None for r in rows) or any(
+        x["def_pct"] is not None or x["def_total"] is not None for x in summary
+    )
+    if has_defining:
+        with_dropout.sort(
+            key=lambda x: (-(x["def_pct"] if x["def_pct"] is not None else -1), x["sample"])
+        )
+    else:
+        with_dropout.sort(key=lambda x: (-(x["pct"] if x["pct"] is not None else -1), x["sample"]))
     return {
+        "has_defining": has_defining,
+        "min_affect": _num(data["thresholds"].get("dropout_min_affect_abundance")),
         "table": _capped(rows),
         "summary": with_dropout,
         "n_samples": len(summary),
@@ -745,7 +769,10 @@ def unexplained_view(data):
                 else f"p-value \u2264 {fmt.format(value)}"
             )
     n_recurrent = len({(r["position"], r["alt"]) for r in out if r.get("recurrent")})
+    n_blind = len({(r["position"], r["alt"]) for r in out if r.get("in_dataset") is False})
     return {
+        "has_in_dataset": any(r.get("in_dataset") is not None for r in out),
+        "n_blind": n_blind,
         "table": _capped(out),
         "n_recurrent": n_recurrent,
         "n_samples": len({r["sample"] for r in out}),
@@ -1184,6 +1211,7 @@ def make_environment(template_path):
         frac=fmt_frac,
         sortval=sortval,
         sci=sci,
+        pval=pval,
         short=short,
         dash=dash,
     )

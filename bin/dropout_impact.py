@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Which dropped amplicons remove lineage-informative sites for the lineages detected in a sample.
+"""Which dropped amplicons hide the DEFINING sites of the lineages detected in a sample.
 
 Amplicon dropout biases lineage abundance estimates when the dropped amplicon hides mutations that
-distinguish the lineages present. This script intersects the dropped amplicons of each sample
+identify the lineages present. This script intersects the dropped amplicons of each sample
 (`amplicon_coverage.tsv`) with the mutations of the Freyja lineage dataset and the lineages Freyja
 detected in that sample (`freyja_aggregated.tsv`).
 
@@ -13,11 +13,14 @@ Inputs
 --aggregated  summary/freyja_aggregated.tsv: Freyja aggregate (unnamed index column = sample; the
               `lineages` and `abundances` columns are parallel lists, as plain space-separated text or
               as a Python/numpy repr). `summarized` is NOT used (it is a regrouping of the same estimate).
---dataset     a Freyja dataset directory (preferred: its `lineage_mutations.json`, {lineage: [mutation]}),
-              or a custom barcodes `.csv` (index = lineage, columns = mutations, a cell > 0 means the
-              lineage carries the mutation). A directory without `lineage_mutations.json` falls back to a
-              `usher_barcodes.csv` inside it. A `.feather` barcodes file (alone, or a directory holding only
-              `usher_barcodes.feather`) is an error: pass the dataset directory instead.
+--dataset     a Freyja dataset directory (preferred: its `lineage_mutations.json`, {lineage: [mutation]},
+              and its `lineages.yml` for the lineage hierarchy), or a custom barcodes `.csv` (index =
+              lineage, columns = mutations, a cell > 0 means the lineage carries the mutation). A directory
+              without `lineage_mutations.json` falls back to a `usher_barcodes.csv` inside it. A `.feather`
+              barcodes file (alone, or a directory holding only `usher_barcodes.feather`) is an error: pass
+              the dataset directory instead.
+--lineages-yml  optional explicit `lineages.yml`; default: the one inside the dataset directory (or next to
+              a dataset file). Without any, parents are guessed from the lineage names (see "defining site").
 
 Definitions
 -----------
@@ -32,11 +35,36 @@ informative site
           A mutation carried by more than 0 and fewer than `--informative-max-fraction` (default 0.95) of
           ALL lineages in the dataset (carried by n of N lineages: 0 < n/N < 0.95). A mutation carried by
           (almost) every lineage (fixed) cannot separate lineages; one carried by none is not a lineage
-          marker.
+          marker. Informative sites are the unit of the `n_informative_sites` / `pct_informative_sites_lost`
+          columns (how much lineage-discriminating signal the scheme loses, regardless of the sample).
 detected lineage
           A lineage whose abundance is >= `--min-abundance` (default 0.01) in the `lineages`/`abundances`
           columns of the aggregate row of the sample. Detected lineages missing from the dataset carry no
           mutations (counted and reported on stderr).
+defining site (of a lineage)
+          An informative site that the lineage carries and its PARENT lineage does not: barcode(l) minus
+          barcode(parent(l)). The parent comes from the dataset's `lineages.yml` (`parent`, by name or
+          alias, case-insensitive). A parent that has no barcode in the dataset is skipped: the nearest
+          ancestor with a barcode is used. A lineage with no parent / no usable ancestor is a root and has
+          ALL its (informative) mutations as defining; a RECOMBINANT root (XBB, XFW, ... carry
+          `recombinant_parents` in lineages.yml) is the exception: the sites carried by any of its
+          recombinant parents (`BA.1*` = BA.1, resolved by name/alias, only those with a barcode) are
+          inherited, not defining, exactly like the sites of an ordinary parent. Without this a detected
+          recombinant root counted ~130 "defining" sites that are all inherited (`--strict-roots`
+          switches this off).
+          Without a usable `lineages.yml` (or for a lineage missing from it) the parent is guessed by
+          dropping trailing `.N` components of the name until a lineage with a barcode is found
+          (`B.1.1.7` -> `B.1.1` -> `B.1` -> `B`); aliased names (`BA.5`) then become roots, so the result is
+          an over-count; a warning says so. Why: a Freyja barcode lists hundreds of mutations inherited from
+          ancestors; hiding one of those does not stop the lineage (or its relatives) from being called,
+          so counting them flagged practically every dropout. Defining sites are what separates the lineage
+          from its parent, i.e. the evidence for calling the lineage at all.
+differential site (of a sample)
+          A site carried by some but not all of the sample's detected lineages (only when >= 2 are
+          detected); the sites the deconvolution can use to split the lineages of this sample. Uses the
+          full barcodes (not only informative sites). Sites two detected lineages inherit from a common
+          ancestor are NOT differential; sites separating different clades are, so with several clades
+          present this count is large: it is reported as context and is not part of the affects rule.
 dropped amplicon
           A row of the amplicon table with `dropped == true`. Its span is [start, end], 1-based inclusive.
 
@@ -44,16 +72,23 @@ Per dropped amplicon (`dropout_impact.tsv`)
 -------------------------------------------
 n_informative_sites              informative sites with position in [start, end] (overlapping amplicons
                                  each count the shared sites).
-n_sites_in_detected_lineages     those carried by at least one detected lineage. NA when the sample has no
-                                 aggregate row (skipped / failed / negative control).
-affected_lineages                the detected lineages carrying informative sites in the span, ordered by
-                                 count (descending, then name), at most 5, comma-joined as `name:count`
-                                 (`BA.2:7,BA.5:6`). NA when there are none or no aggregate row.
-affects_detected_lineage         `true` when any detected lineage carries >= 1 INFORMATIVE site in the span,
-                                 else `false` (always `false` without an aggregate row). Informative-only is
-                                 deliberate: a mutation carried by nearly all lineages (or none) being hidden
-                                 cannot shift the estimate between lineages, so counting it would flag almost
-                                 every dropout.
+n_sites_in_detected_lineages     those carried by at least one detected lineage (inherited or defining).
+                                 NA when the sample has no aggregate row (skipped / failed / negative
+                                 control).
+affected_lineages                the detected lineages with >= 1 DEFINING site in the span, ordered by count
+                                 (descending, then name), at most 5, comma-joined as `name:count`
+                                 (`RK.1.5:3,BA.3.2:1`). NA when there are none or no aggregate row.
+affects_detected_lineage         `true` when a detected lineage whose abundance is >=
+                                 `--min-affect-abundance` (default 0.05) has >= 1 defining site in the span,
+                                 else `false` (always `false` without an aggregate row). Lineages between
+                                 `--min-abundance` and `--min-affect-abundance` are listed in
+                                 `affected_lineages` and counted in `n_defining_sites` but do not raise the
+                                 flag: a lineage at a few per mille is noise-level and its loss does not
+                                 bias the estimate in any useful way.
+n_defining_sites                 distinct defining sites in the span, union over the detected lineages.
+                                 NA without an aggregate row.
+n_differential_sites             differential sites in the span (0 when fewer than 2 lineages are detected).
+                                 NA without an aggregate row.
 
 Per sample (`dropout_impact_summary.tsv`), one row for every sample of the amplicon table
 -----------------------------------------------------------------------------------------
@@ -65,8 +100,13 @@ informative_sites_in_dropped           informative sites inside the union of the
 pct_informative_sites_lost             100 * in_dropped / total, 2 decimals; NA when total is 0.
 n_dropped_affecting_detected_lineages  dropped amplicons with affects_detected_lineage true; NA when the
                                        sample has no aggregate row.
+defining_sites_total                   distinct defining sites of the detected lineages inside the union of
+                                       the sample's amplicon spans; NA without an aggregate row.
+defining_sites_lost                    those inside the union of the dropped spans (overlaps counted once).
+pct_defining_sites_lost                100 * lost / total, 2 decimals; NA when total is 0 or no aggregate row.
 
-Both outputs always carry their header. Rows are sorted by sample, then start, end, amplicon (byte order).
+New columns are always appended at the end; the older columns keep their position and name. Both outputs
+always carry their header. Rows are sorted by sample, then start, end, amplicon (byte order).
 """
 
 import argparse
@@ -88,6 +128,8 @@ IMPACT_COLUMNS = [
     "n_sites_in_detected_lineages",
     "affects_detected_lineage",
     "affected_lineages",
+    "n_defining_sites",
+    "n_differential_sites",
 ]
 SUMMARY_COLUMNS = [
     "sample",
@@ -96,6 +138,9 @@ SUMMARY_COLUMNS = [
     "informative_sites_in_dropped",
     "pct_informative_sites_lost",
     "n_dropped_affecting_detected_lineages",
+    "defining_sites_total",
+    "defining_sites_lost",
+    "pct_defining_sites_lost",
 ]
 AMPLICON_REQUIRED = ["sample", "amplicon", "start", "end", "mean_depth", "dropped"]
 NA = "NA"
@@ -253,10 +298,120 @@ def load_csv_dataset(path, skipped):
     return lineages
 
 
+# ---------------------------------------------------------------------------------------------
+# Lineage hierarchy (lineages.yml)
+# ---------------------------------------------------------------------------------------------
+def _unquote(text):
+    text = text.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "'\"":
+        return text[1:-1]
+    return text
+
+
+def parse_lineages_yml(path):
+    """name -> {"alias": ..., "parent": ...} from Freyja's `lineages.yml`.
+
+    Minimal reader (a list of maps of scalars plus block lists such as `children`, which are skipped),
+    so no YAML library is needed. Same shape as the reader in bin/lineage_groups.py (kept as a copy so
+    this script stays stand-alone).
+    """
+    entries, current = {}, None
+    with open(path, encoding="utf-8-sig") as handle:
+        for raw in handle:
+            text = raw.strip()
+            if not text or text.startswith("#"):
+                continue
+            if text.startswith("- ") or text == "-":
+                item = text[1:].strip()
+                if ":" not in item:  # a list value (children): not needed here
+                    continue
+                current = {}
+                text = item
+            elif current is None:
+                continue
+            key, sep, value = text.partition(":")
+            value = value.strip()
+            if not sep or value in ("", "[]"):
+                continue
+            if key.strip() == "name":
+                entries[_unquote(value)] = current
+            else:
+                current[key.strip()] = _unquote(value)
+    return entries
+
+
+class Hierarchy:
+    """Parent lookup over a lineage dataset (barcodes) with an optional `lineages.yml`."""
+
+    def __init__(self, barcode_names, entries=None):
+        self.barcodes = set(barcode_names)
+        self.entries = entries or {}
+        self.lookup = {name.casefold(): name for name in self.entries}
+        for name, item in self.entries.items():  # aliases never override a real name
+            if item.get("alias"):
+                self.lookup.setdefault(item["alias"].casefold(), name)
+        self.guessed = set()  # lineages whose parent was guessed from the name
+        self._cache = {}
+
+    def canonical(self, name):
+        """Dataset (barcodes) name for a name or alias, or None."""
+        if name in self.barcodes:
+            return name
+        hit = self.lookup.get(name.strip().casefold())
+        return hit if hit in self.barcodes else None
+
+    def _next_up(self, name, via_yml):
+        if via_yml:
+            parent = self.entries[name].get("parent")
+            return self.lookup.get(parent.casefold(), parent) if parent else None
+        head, dot, _tail = name.rpartition(".")
+        return head if dot else None
+
+    def parent(self, name):
+        """Nearest ancestor of `name` that has a barcode, or None (root)."""
+        if name in self._cache:
+            return self._cache[name]
+        via_yml = name in self.entries
+        if not via_yml:
+            self.guessed.add(name)
+        seen, node, found = {name}, name, None
+        while True:
+            node = self._next_up(node, node in self.entries)
+            if not node or node in seen:
+                break
+            seen.add(node)
+            if node in self.barcodes:
+                found = node
+                break
+        self._cache[name] = found
+        return found
+
+    def recombinant_parents(self, name):
+        """Barcoded lineages in the `recombinant_parents` of a lineage (`BA.1*` = BA.1), not itself."""
+        found = []
+        for token in (self.entries.get(name, {}).get("recombinant_parents") or "").split(","):
+            parent = self.canonical(token.strip().rstrip("*"))
+            if parent and parent != name and parent not in found:
+                found.append(parent)
+        return found
+
+
+def find_lineages_yml(explicit, dataset_path):
+    if explicit:
+        path = Path(explicit)
+        if not path.is_file():
+            raise DatasetError(f"lineages.yml not found: {path}")
+        return path
+    base = Path(dataset_path)
+    base = base if base.is_dir() else base.parent
+    candidate = base / "lineages.yml"
+    return candidate if candidate.is_file() and candidate.stat().st_size > 0 else None
+
+
 class Dataset:
     """Informative sites of a lineage dataset and per-lineage lookups."""
 
-    def __init__(self, lineages, max_fraction):
+    def __init__(self, lineages, max_fraction, hierarchy=None, strict_roots=False):
         self.lineages = lineages
         self.n_lineages = len(lineages)
         counts = {}
@@ -269,7 +424,10 @@ class Dataset:
         )
         self.sorted_sites = sorted(self.informative)
         self.positions = [pos for pos, _alt in self.sorted_sites]
+        self.hierarchy = hierarchy or Hierarchy(lineages)
         self._lineage_cache = {}
+        self._defining_cache = {}
+        self.strict_roots = strict_roots
 
     def sites_in(self, start, end):
         """Informative sites with start <= position <= end (sorted list of (pos, alt))."""
@@ -291,6 +449,47 @@ class Dataset:
             cached = self.lineages.get(lineage, frozenset()) & self.informative
             self._lineage_cache[lineage] = cached
         return cached
+
+    def resolve(self, name):
+        """The dataset name of a detected lineage (aliases accepted), or None if it is not in it."""
+        return self.hierarchy.canonical(name)
+
+    def defining_of(self, lineage):
+        """Defining sites of `lineage`: informative sites it carries and its parent does not.
+
+        Sorted list of (position, alt); empty for lineages not in the dataset. A root has all its
+        informative sites defining, except that a recombinant root loses the sites of its
+        `recombinant_parents` (unless `strict_roots`).
+        """
+        cached = self._defining_cache.get(lineage)
+        if cached is None:
+            if lineage in self.lineages:
+                mine = self.informative_of(lineage)
+                parent = self.hierarchy.parent(lineage)
+                if parent:
+                    cached = sorted(mine - self.informative_of(parent))
+                else:
+                    inherited = set()
+                    if not self.strict_roots:
+                        for relative in self.hierarchy.recombinant_parents(lineage):
+                            inherited |= self.informative_of(relative)
+                    cached = sorted(mine - inherited)
+            else:
+                cached = []
+            self._defining_cache[lineage] = cached
+        return cached
+
+
+def sites_between(sorted_sites, start, end):
+    """Sites of a sorted (position, alt) list with start <= position <= end."""
+    lo = bisect_left(sorted_sites, (start, ""))
+    hi = bisect_right(sorted_sites, (end, "\U0010ffff"))
+    return sorted_sites[lo:hi]
+
+
+def count_in_union(sorted_sites, intervals):
+    """Sites of a sorted (position, alt) list inside the union of the intervals (overlaps once)."""
+    return sum(len(sites_between(sorted_sites, a, b)) for a, b in merge_intervals(intervals))
 
 
 def merge_intervals(intervals):
@@ -374,8 +573,8 @@ def load_aggregated(path, known, warn):
 
 
 def detected_lineages(pairs, min_abundance):
-    """Names of lineages with abundance >= min_abundance (tolerating float round-off)."""
-    return [name for name, ab in pairs if ab >= min_abundance - 1e-12]
+    """(name, abundance) of lineages with abundance >= min_abundance (tolerating float round-off)."""
+    return [(name, ab) for name, ab in pairs if ab >= min_abundance - 1e-12]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -412,54 +611,94 @@ def load_amplicons(path):
 # ---------------------------------------------------------------------------------------------
 # Analysis
 # ---------------------------------------------------------------------------------------------
-def analyse_sample(rows, dataset, detected):
+def analyse_sample(rows, dataset, detected, min_affect_abundance=0.05):
     """Return (impact_rows, summary_row_fields) for one sample.
 
-    `detected` is None when the sample has no aggregate row, else the list of detected lineages.
+    `detected` is None when the sample has no aggregate row, else the list of (lineage, abundance) of
+    the detected lineages.
     """
-    detected_sets = None if detected is None else [(d, dataset.informative_of(d)) for d in detected]
+    dropped = [r for r in rows if r["dropped"]]
+    spans = [(r["start"], r["end"]) for r in rows]
+    dropped_spans = [(r["start"], r["end"]) for r in dropped]
+    if detected is not None:
+        members = []  # (name as reported, abundance, informative sites, defining sites, full barcode)
+        for name, abundance in detected:
+            key = dataset.resolve(name)
+            members.append(
+                (
+                    name,
+                    abundance,
+                    dataset.informative_of(key) if key else frozenset(),
+                    dataset.defining_of(key) if key else [],
+                    dataset.lineages[key] if key else frozenset(),
+                )
+            )
+        all_defining = sorted({site for m in members for site in m[3]})
+        differential = []
+        if len(members) >= 2:
+            counts = {}
+            for m in members:
+                for site in m[4]:
+                    counts[site] = counts.get(site, 0) + 1
+            differential = sorted(site for site, n in counts.items() if n < len(members))
     impact = []
     affecting = 0
-    dropped = [r for r in rows if r["dropped"]]
     for row in sorted(dropped, key=lambda r: (r["start"], r["end"], r["amplicon"])):
-        sites = dataset.sites_in(row["start"], row["end"])
-        if detected_sets is None:
-            n_detected_sites, affected, affects = NA, NA, False
+        start, end = row["start"], row["end"]
+        sites = dataset.sites_in(start, end)
+        if detected is None:
+            n_detected_sites, affected, affects, n_defining, n_differential = NA, NA, False, NA, NA
         else:
-            carried = set()
-            per_lineage = []
-            for name, lineage_sites in detected_sets:
-                hits = [s for s in sites if s in lineage_sites]
+            carried, defining, per_lineage, affects = set(), set(), [], False
+            for name, abundance, informative, own, _full in members:
+                carried.update(s for s in sites if s in informative)
+                hits = sites_between(own, start, end)
                 if hits:
                     per_lineage.append((name, len(hits)))
-                    carried.update(hits)
+                    defining.update(hits)
+                    if abundance >= min_affect_abundance - 1e-12:
+                        affects = True
             per_lineage.sort(key=lambda p: (-p[1], p[0]))
             n_detected_sites = len(carried)
-            affects = bool(per_lineage)
+            n_defining = len(defining)
+            n_differential = len(sites_between(differential, start, end))
             affected = ",".join(f"{n}:{c}" for n, c in per_lineage[:MAX_AFFECTED]) or NA
         affecting += affects
         impact.append(
             {
                 "sample": None,
                 "amplicon": row["amplicon"],
-                "start": row["start"],
-                "end": row["end"],
+                "start": start,
+                "end": end,
                 "mean_depth": row["mean_depth"],
                 "n_informative_sites": len(sites),
                 "n_sites_in_detected_lineages": n_detected_sites,
                 "affects_detected_lineage": "true" if affects else "false",
                 "affected_lineages": affected,
+                "n_defining_sites": n_defining,
+                "n_differential_sites": n_differential,
             }
         )
-    total = dataset.count_in_intervals([(r["start"], r["end"]) for r in rows])
-    lost = dataset.count_in_intervals([(r["start"], r["end"]) for r in dropped])
+    total = dataset.count_in_intervals(spans)
+    lost = dataset.count_in_intervals(dropped_spans)
     summary = {
         "n_dropped_amplicons": len(dropped),
         "informative_sites_total": total,
         "informative_sites_in_dropped": lost,
         "pct_informative_sites_lost": f"{100.0 * lost / total:.2f}" if total else NA,
         "n_dropped_affecting_detected_lineages": NA if detected is None else affecting,
+        "defining_sites_total": NA,
+        "defining_sites_lost": NA,
+        "pct_defining_sites_lost": NA,
     }
+    if detected is not None:
+        d_total = count_in_union(all_defining, spans)
+        d_lost = count_in_union(all_defining, dropped_spans)
+        summary.update(
+            defining_sites_total=d_total,
+            defining_sites_lost=d_lost,
+            pct_defining_sites_lost=f"{100.0 * d_lost / d_total:.2f}" if d_total else NA,
+        )
     return impact, summary
 
 
@@ -485,7 +724,17 @@ def run(args):
         )
     if not lineages:
         raise DatasetError(f"{dataset_file}: no lineages found")
-    dataset = Dataset(lineages, args.informative_max_fraction)
+    yml = find_lineages_yml(args.lineages_yml, args.dataset)
+    entries = parse_lineages_yml(yml) if yml else {}
+    if not entries:
+        warn(
+            "no lineages.yml found: parent lineages are guessed from the names, which treats aliased "
+            "lineages (BA.5, XBB.1.5, ...) as roots and over-counts defining sites; use a Freyja "
+            "dataset directory (it ships lineages.yml) or --lineages-yml"
+        )
+    dataset = Dataset(
+        lineages, args.informative_max_fraction, Hierarchy(lineages, entries), args.strict_roots
+    )
 
     amplicons = load_amplicons(args.amplicons)
     aggregated = load_aggregated(args.aggregated, set(amplicons), warn)
@@ -495,10 +744,12 @@ def run(args):
     for sample in sorted(amplicons):
         if sample in aggregated:
             detected = detected_lineages(aggregated[sample], args.min_abundance)
-            unknown.update(d for d in detected if d not in dataset.lineages)
+            unknown.update(d for d, _ab in detected if dataset.resolve(d) is None)
         else:
             detected = None
-        impact, fields = analyse_sample(amplicons[sample], dataset, detected)
+        impact, fields = analyse_sample(
+            amplicons[sample], dataset, detected, args.min_affect_abundance
+        )
         for row in impact:
             row["sample"] = sample
         impact_rows.extend(impact)
@@ -507,6 +758,11 @@ def run(args):
         warn(
             f"{len(unknown)} detected lineage(s) not in the dataset (treated as carrying no "
             f"mutations): {', '.join(sorted(unknown)[:10])}{' ...' if len(unknown) > 10 else ''}"
+        )
+    if entries and dataset.hierarchy.guessed:
+        warn(
+            f"{len(dataset.hierarchy.guessed)} lineage(s) of the dataset are not in lineages.yml; their "
+            "parents were guessed from the names"
         )
     write_table(args.out, IMPACT_COLUMNS, impact_rows)
     write_table(args.summary_out, SUMMARY_COLUMNS, summary_rows)
@@ -531,6 +787,24 @@ def parse_args(argv=None):
         help="a lineage is detected at abundance >= this (default 0.01)",
     )
     parser.add_argument(
+        "--min-affect-abundance",
+        type=float,
+        default=0.05,
+        help="a dropped amplicon is flagged (affects_detected_lineage) only when it hides defining "
+        "sites of a detected lineage with abundance >= this (default 0.05)",
+    )
+    parser.add_argument(
+        "--strict-roots",
+        action="store_true",
+        help="count ALL mutations of a recombinant root as defining (default: only those none of its "
+        "recombinant_parents carry)",
+    )
+    parser.add_argument(
+        "--lineages-yml",
+        default=None,
+        help="lineage hierarchy (default: lineages.yml inside/next to --dataset)",
+    )
+    parser.add_argument(
         "--informative-max-fraction",
         type=float,
         default=0.95,
@@ -542,6 +816,8 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if not 0 <= args.min_abundance <= 1:
         parser.error("--min-abundance must be between 0 and 1")
+    if not 0 <= args.min_affect_abundance <= 1:
+        parser.error("--min-affect-abundance must be between 0 and 1")
     if not 0 < args.informative_max_fraction <= 1:
         parser.error("--informative-max-fraction must be in (0, 1]")
     return args

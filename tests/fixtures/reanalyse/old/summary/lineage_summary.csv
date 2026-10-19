@@ -1,0 +1,5 @@
+sample,site,collection_date,status,genome_coverage_pct,JN.1*,BA.2*,other,proportion_summary,major_lineages,major_abundances,minor_lineages,minor_abundances,ungrouped_lineages,status_reason
+A,,,ok,90.00,0.900000,,0.100000,1.000000,JN.1 KP.3,0.6 0.3,,,,
+B,,,ok,90.00,,0.700000,0.300000,1.000000,BA.2 AY.4,0.7 0.3,,,,
+C,,,ok,90.00,1.000000,,,1.000000,JN.1,1.0,,,,
+D,,,ok,90.00,0.999500,,0.000500,1.000000,JN.1,0.9995,,,,

@@ -1,0 +1,4 @@
+sample	status	mean_depth	pct_covered	reason
+WW-1	ok	812.4	97.5	
+WW-2	skipped_low_coverage	3.1	12.5	mean depth < 10x
+WW-3	failed			ivar variants: empty & aborted

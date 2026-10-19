@@ -14,11 +14,11 @@
                     {
                         "id": "S_1"
                     },
-                    "S_1.primer_scheme_summary.tsv:md5,700be04d92856798c3689048c0156666"
+                    "S_1.primer_scheme_summary.tsv:md5,2d5acf6de8264f2982e57ef31f0f1ad5"
                 ]
             ]
         ],
-        "timestamp": "2026-10-16T13:21:02.967665",
+        "timestamp": "2026-10-19T21:24:20.309561",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

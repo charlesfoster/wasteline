@@ -671,7 +671,10 @@ def test_dropout_impact_section(g_html):
 
 def test_dropout_flag_is_rendered(g_html):
     assert "dropout_affects_lineages" in g_html
-    assert "Amplicon dropout hides lineage-informative sites" in g_html
+    assert (
+        "Amplicon dropout hides defining mutations (those that separate a lineage from its parent)"
+        in g_html
+    )
 
 
 def test_unexplained_section(g_html):
@@ -1195,3 +1198,279 @@ def test_150_samples_with_site_aggregates_stay_small_and_fast():
     assert_valid(html)
     assert len(html.encode()) < 3_000_000, len(html)
     assert elapsed < 10 and html.count('class="sarow"') == 120
+
+
+# =============================================================================================
+# Anonymised reports: nothing identifying may remain anywhere in the HTML
+# =============================================================================================
+A = FIX / "i_anonymize"
+A_OPTIONS = {
+    "--qc": "qc_summary.tsv",
+    "--demix-status": "demix_status.tsv",
+    "--aggregated": "freyja_aggregated.tsv",
+    "--consensus": "consensus_stats.tsv",
+    "--samplesheet": "samplesheet.csv",
+    "--site-aggregates": "site_aggregates_freyja.tsv",
+    "--site-aggregates-meta": "site_aggregates_meta.tsv",
+}
+A_IDS = ["NTC_Central_01", "WW_Central_001", "WW_Central_002", "WW_North_001", "WW_North_002.rep1"]
+A_NAMES = ["Central_WWTP", "North_Plant", "Metro_Region", "Central", "North_", "WW_", "NTC_"]
+A_PATH_LEAKS = [
+    "jdoe",
+    "j.doe",
+    "example.org",
+    "/Users",
+    "/home",
+    "C:\\",
+    "Run 1 Plate A",
+    "My Results",
+    "~/",
+]
+
+
+def build_anon(tmp_path, mode, extra_args=()):
+    args = ["--run-info", str(A / "run_info.json")]
+    for option, name in A_OPTIONS.items():
+        args += [option, str(A / name)]
+    out = tmp_path / f"{mode}.json"
+    assert brd.main(args + ["--anonymize", mode, "--out", str(out), *extra_args]) == 0
+    return json.loads(out.read_text())
+
+
+@pytest.fixture(scope="module")
+def anon_html(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("anon")
+    return {mode: render(build_anon(tmp, mode)) for mode in ("none", "paths", "full")}
+
+
+def test_full_report_html_contains_no_identifying_string(anon_html):
+    html = anon_html["full"]
+    assert_valid(html)
+    for leak in A_IDS + A_NAMES + A_PATH_LEAKS:
+        assert leak not in html, leak
+    # pseudonyms are used everywhere instead: tables, flags, charts, tooltips, nav targets
+    for pseudo in ("S001", "S002", "S005", "SITE1", "SITE2", "AGG1"):
+        assert pseudo in html, pseudo
+    assert 'id="anonymized-note"' in html and "Anonymised for sharing (full)" in html
+    assert (
+        "pseudonyms (S001, SITE1" in html
+        and "lineage names, barcode versions and QC values are unchanged" in html
+    )
+    # structure that must survive
+    assert "XBB.1.5* [Omicron (XBB.1.5.X)]" in html and "10_06_2026-05-25" in html
+    assert "quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0" in html
+    assert "2026-01-05" in html and "http://" not in html and "https://" not in html
+    # tooltips and data attributes carry pseudonyms too
+    assert 'data-sample="S002"' in html and 'title="S005"' in html
+    assert "<title>wasteline report</title>" in html
+
+
+def test_paths_report_html_has_no_path_user_or_email_but_keeps_ids(anon_html):
+    html = anon_html["paths"]
+    assert_valid(html)
+    for leak in A_PATH_LEAKS:
+        assert leak not in html, leak
+    for sid in A_IDS:
+        assert sid in html
+    assert (
+        "Anonymised for sharing (paths)" in html
+        and "pseudonyms" not in html.split('id="anonymized-note"')[1].split("</p>")[0]
+    )
+    assert (
+        "<code>.../main.nf" not in html and "nextflow run .../main.nf" in html
+    )  # sanitised command line (provenance block)
+    assert ".../samplesheet.csv" in html and "&lt;user&gt;" in html  # run_name and the reason text
+
+
+def test_default_report_is_not_anonymised_and_has_no_note(anon_html):
+    html = anon_html["none"]
+    assert 'id="anonymized-note"' not in html
+    assert "/Users/jdoe" in html and "WW_Central_001" in html
+
+
+def test_hostile_ids_in_full_and_paths_html_are_inert(tmp_path):
+    evil = "<script>alert(1)</script>"
+    qc = tmp_path / "qc.tsv"
+    qc.write_text(
+        "sample\tsample_type\tcollection_date\tsite\tqc_status\tqc_reasons\n"
+        f"{evil}\tsample\t2026-01-01\tSite<b>\tFAIL\tlow_coverage\nWW_1\tsample\t2026-01-08\tSite<b>\tPASS\t\n"
+    )
+    for mode in ("full", "paths"):
+        out = tmp_path / f"{mode}.json"
+        args = [
+            "--run-info",
+            str(A / "run_info.json"),
+            "--qc",
+            str(qc),
+            "--anonymize",
+            mode,
+            "--out",
+            str(out),
+        ]
+        assert brd.main(args) == 0
+        html = render(json.loads(out.read_text()))
+        assert_valid(html)
+        parser = parse(html)
+        assert [t for t, _ in parser.tags].count("script") == 1
+        assert "<script>alert" not in html
+        assert ("script&gt;alert(1)" in html) is (
+            mode == "paths"
+        )  # escaped when kept, gone when pseudonymised
+        assert ("Site&lt;b&gt;" in html) is (mode == "paths")
+
+
+def test_anonymised_150_samples_stay_small(tmp_path):
+    data = synthetic_data(150)
+    info = json.loads((A / "run_info.json").read_text())
+    data["provenance"] = info
+    anon = brd.Anonymizer("full", data)
+    out = anon.apply(data)
+    html = render(out)
+    assert_valid(html)
+    assert len(html.encode()) < 3_000_000
+    assert not any(sid in html for sid in ("NTC_000", "WW_001_site1")) and "S150" in html
+
+
+def test_full_anonymisation_covers_every_analysis_table(tmp_path):
+    data = build_g(
+        tmp_path,
+        extra=["--consensus", str(G / "consensus_stats.tsv"), "--dashboard-name", "x.html"],
+    )
+    ids = [s["sample"] for s in data["samples"]]
+    sites = {s["site"] for s in data["samples"] if s["site"]}
+    assert "SiteA_W03_1" in ids and sites == {"SiteA", "SiteB", "SiteC"}
+    anon = brd.Anonymizer("full", data)
+    html = render(anon.apply(data))
+    assert_valid(html)
+    for sid in ids:
+        assert sid not in html, sid
+    for site in sites:
+        assert site not in html, site
+    for section_id in ("sec-dropout-impact", "sec-unexplained", "sec-timeseries"):
+        assert f'id="{section_id}"' in html
+    assert "SITE1" in html and "S0" in html
+    # lineage names, p-values and growth rates are untouched
+    assert "XBB.1.5* [Omicron (XBB.1.5.X)]" in html and "2.39e-42" in html and "+60.3" in html
+    mapped = {row[1]: row[2] for row in anon.mapping_rows()}
+    assert mapped["SiteA_W03_1"].startswith("S") and mapped["SiteB"] == "SITE2"
+
+
+# =============================================================================================
+# Defining-sites dropout section and the unexplained `in_dataset` marker
+# =============================================================================================
+J = FIX / "j_defining_sites"
+
+
+def build_j(tmp_path):
+    args = ["--run-info", str(J / "run_info.json")]
+    for option, name in G_OPTIONS.items():
+        base = J if option in ("--dropout-impact", "--dropout-summary", "--unexplained") else G
+        args += [option, str(base / name)]
+    out = tmp_path / "j.json"
+    assert brd.main(args + ["--out", str(out)]) == 0
+    return json.loads(out.read_text())
+
+
+@pytest.fixture(scope="module")
+def j_html(tmp_path_factory):
+    return render(build_j(tmp_path_factory.mktemp("j")))
+
+
+def test_dropout_section_shows_defining_sites_first(j_html):
+    assert_valid(j_html)
+    sec = section(j_html, "sec-dropout-impact")
+    assert (
+        '<abbr title="Defining mutations are the mutations a lineage has that its parent lineage lacks'
+        in sec
+    )
+    assert (
+        "defining mutations</abbr>" in sec and "(abundance &ge; 1.0%)" in sec and "&ge; 5.0%" in sec
+    )
+    # per-sample summary: defining sites lost (primary), pct defining, informative as secondary context
+    head = sec[sec.index("Per-sample summary") :]
+    head = head[: head.index("</thead>")]
+    assert (
+        "Defining sites lost" in head
+        and "% defining sites lost" in head
+        and "Informative sites lost (%)" in head
+    )
+    assert head.index("% defining sites lost") < head.index("Informative sites lost (%)")
+    assert "<b>2.50</b>" in sec and "3 / 120" in sec and "850 / 8,006 (10.6)" in sec
+    assert "no lineage estimate" in sec  # LOWCOV_1
+    # amplicon table: defining sites hidden is the primary count
+    table = sec[sec.index('id="dx-table"') :]
+    th = table[: table.index("</thead>")]
+    assert (
+        th.index("Defining sites hidden")
+        < th.index("Lineages losing defining sites")
+        < th.index("Differential sites")
+        < th.index("Informative sites")
+    )
+    assert (
+        "<b>3</b>" in table and "XBB.1.5 (2), BA.2 (1)" in table and "hides defining sites" in table
+    )
+    # a lineage under the affect threshold is listed but not highlighted
+    quiet = table[table.index("PQ.2.1.17 (1)") - 700 : table.index("PQ.2.1.17 (1)")]
+    assert 'class="hl' not in quiet.split("<tr")[-1]
+    assert (
+        "hides defining sites" in j_html and "Amplicon dropout hides defining mutations" in j_html
+    )
+
+
+def test_old_dropout_tables_keep_the_old_layout(tmp_path):
+    html = render(build_g(tmp_path))
+    sec = section(html, "sec-dropout-impact")
+    assert "Defining sites" not in sec and "lineage-informative</b> sites it covers" in sec
+    assert "Affected lineages (informative sites)" in sec and "affects detected lineages" in sec
+    assert "XBB.1.5 (9), BA.2 (3), BA.5 (3)" in sec
+
+
+def test_unexplained_marker_floor_and_note(j_html):
+    sec = section(j_html, "sec-unexplained")
+    assert (
+        sec.count('class="chip" title="No lineage in the Freyja dataset models this mutation') == 4
+    )
+    assert ">not in dataset<" in sec
+    assert "&lt;=1e-300" in sec and "1.41e-17" in sec and "2.28e-14" in sec
+    assert (
+        "P-values are floored at 1e-300" in sec
+        and "dataset blind spot" in sec
+        and "(2 mutations here)" in sec
+    )
+    # recurrent rows that the dataset does model carry no marker
+    n501 = sec[sec.index("N501Y") : sec.index("N501Y") + 900]
+    assert "not in dataset" not in n501.split("</tr>")[0]
+    assert "(1 of them at sites no lineage in the dataset models)" in j_html
+
+
+def test_unexplained_without_in_dataset_column_has_no_marker_or_floor_note(g_html):
+    sec = section(g_html, "sec-unexplained")
+    assert "not in dataset" not in sec and "floored" not in sec
+    assert "2.39e-42" in sec
+
+
+def test_pval_filter():
+    assert rr.pval(1e-300) == "<=1e-300" and rr.pval(2.5e-310) == "<=1e-300"
+    assert rr.pval(2.39e-42) == "2.39e-42" and rr.pval(None) == "–"
+
+
+def test_new_dropout_and_unexplained_strings_are_escaped(tmp_path):
+    evil = "<script>alert(1)</script>"
+    imp = tmp_path / "imp.tsv"
+    imp.write_text(
+        "sample\tamplicon\tstart\tend\tmean_depth\tn_informative_sites\tn_sites_in_detected_lineages\taffects_detected_lineage\t"
+        "affected_lineages\tn_defining_sites\tn_differential_sites\n"
+        f"{evil}\t{evil}\t1\t100\t0\t5\t2\ttrue\t{evil}:2\t2\t1\n"
+    )
+    ue = tmp_path / "ue.tsv"
+    ue.write_text(
+        UE_HEADER
+        + "\tin_dataset\n"
+        + f"{evil}\t5\tA\tT\t0.3\t0\t0.3\t100\t30\t{evil}\t{evil}\t{evil}\t2\ttrue\t1e-300\tfalse\n"
+    )
+    data_args = ["--run-info", str(J / "run_info.json"), "--qc", str(G / "qc_summary.tsv"), "--dropout-impact", str(imp),
+                 "--unexplained", str(ue), "--out", str(tmp_path / "o.json")]  # fmt: skip
+    assert brd.main(data_args) == 0
+    html = render(json.loads((tmp_path / "o.json").read_text()))
+    assert_valid(html)
+    assert "<script>alert" not in html and [t for t, _ in parse(html).tags].count("script") == 2

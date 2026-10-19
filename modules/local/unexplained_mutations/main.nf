@@ -40,6 +40,6 @@ process UNEXPLAINED_MUTATIONS {
     stub:
     prefix = task.ext.prefix ?: "${meta.id}"
     """
-    printf 'sample\\tposition\\tref\\talt\\tobserved_freq\\texpected_freq\\texcess\\tdepth\\talt_depth\\tgene\\taa_change\\teffect\\tp_value\\n' > ${prefix}.unexplained_mutations.tsv
+    printf 'sample\\tposition\\tref\\talt\\tobserved_freq\\texpected_freq\\texcess\\tdepth\\talt_depth\\tgene\\taa_change\\teffect\\tp_value\\tin_dataset\\n' > ${prefix}.unexplained_mutations.tsv
     """
 }

@@ -38,7 +38,9 @@ test per genome position (0.05 / 29903; about 30,000 positions are tested per sa
 let ~30 chance calls through). `--max-pvalue 1` switches the test off (the plain rules above). The ivar PASS
 column is ignored, as elsewhere in the pipeline. Rows are sorted by excess (descending), at most --max-rows (100)
 are written; the header is always written. The p-value of every reported row is the last output column
-(`p_value`, 3 significant digits, e.g. 1.2e-07), also when the test is switched off.
+(`p_value`, 3 significant digits, e.g. 1.2e-07), also when the test is switched off. The tail is summed in
+log space, so deep, clear-cut calls get their real (tiny) p-value; values below 1e-300 are written as the floor
+`1e-300`, which means "at most 1e-300" (the column is always a plain float, never `0`, `<1e-300` or `NA`).
 
 Lineages named by the demix but absent from the dataset cannot be expanded: they are counted (with the abundance
 they carry) in a stderr note and contribute nothing to the expectation, which makes the table more sensitive, never
@@ -55,13 +57,20 @@ ivar ran with --annot). A position inside several CDS (ORF1a/ORF1ab, ORF7a/ORF7b
 three columns are NA.
 
 Per-sample columns: sample, position, ref, alt, observed_freq, expected_freq, excess, depth, alt_depth, gene,
-aa_change, effect, p_value.
+aa_change, effect, p_value, in_dataset.
+
+`in_dataset` (last column) is `true` when at least one lineage in the dataset's barcodes (any lineage, not only
+the demixed ones) carries this exact (position, alt) mutation, else `false`. `false` means the barcodes never
+model this mutation (a masked / problematic site, e.g. 21987 G>A = S:G142D, which no lineage of Freyja 2.0.6 carries,
+or a genuinely novel change): the table cannot tell which, so read a recurrent hit with `in_dataset = false` first as
+a dataset blind spot, second as a candidate novel variant. It does not influence the call or the order.
 
 Concat mode inserts `n_samples` (number of distinct samples in the input that have the same position + alt
 unexplained: recurrence across samples is the strongest evidence that the signal is real and shared) and
 `recurrent` (`true` when n_samples >= --min-recurrence, default 2). Rows are sorted recurrent first, then excess
 (descending), then sample and position. Inputs must share the per-sample header (exit 2 otherwise); header-only inputs
-are fine and give a header-only output.
+are fine and give a header-only output. Tables from before the `in_dataset` column (13 columns) are rejected by
+that header check.
 """
 
 import argparse
@@ -88,11 +97,14 @@ COLUMNS = [
     "aa_change",
     "effect",
     "p_value",
+    "in_dataset",
 ]
-# concat: n_samples and recurrent go before p_value, which stays the last column
-CONCAT_COLUMNS = [*COLUMNS[:-1], "n_samples", "recurrent", COLUMNS[-1]]
+# concat: n_samples and recurrent go before p_value; p_value and in_dataset stay the last two columns
+CONCAT_COLUMNS = [*COLUMNS[:-2], "n_samples", "recurrent", *COLUMNS[-2:]]
 GENOME_LENGTH = 29903  # one test per position; only used for the default significance level
 DEFAULT_MAX_PVALUE = 0.05 / GENOME_LENGTH
+P_VALUE_FLOOR = 1e-300  # reported p-values are never smaller; `1e-300` reads "at most 1e-300"
+LOG_NEGLIGIBLE = math.log(1e-17)  # stop the tail sum once the next term is this small vs the total
 NA = "NA"
 EPS = 1e-9
 _SNV = re.compile(r"^([ACGT])(\d+)([ACGT])$")
@@ -144,12 +156,27 @@ def _add(table, token, weight, counters):
     table[(int(m.group(2)), m.group(1), m.group(3))] = weight
 
 
-def _json_barcodes(path, wanted, counters):
+def _note_sites(all_sites, tokens):
+    """Add the (position, alt) of every SNV token to `all_sites` (a set, or None to skip)."""
+    if all_sites is None:
+        return
+    for token in tokens:
+        m = _SNV.match(token)
+        if m is not None:
+            all_sites.add((int(m.group(2)), m.group(3)))
+
+
+def _json_barcodes(path, wanted, counters, all_sites=None):
     with open(path) as handle:
         data = json.load(handle)
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected a JSON object lineage -> mutations")  # noqa: TRY004
     out = {}
+    if all_sites is not None:
+        unique = set()
+        for tokens in data.values():
+            unique.update(str(t).strip() for t in tokens)
+        _note_sites(all_sites, unique)
     for lineage in wanted:
         if lineage not in data:
             continue
@@ -160,7 +187,7 @@ def _json_barcodes(path, wanted, counters):
     return out
 
 
-def _csv_barcodes(path, wanted, counters):
+def _csv_barcodes(path, wanted, counters, all_sites=None):
     wanted = set(wanted)
     out = {}
     with open(path, newline="") as handle:
@@ -168,9 +195,16 @@ def _csv_barcodes(path, wanted, counters):
         if not header:
             raise ValueError(f"{path}: empty barcodes file")
         columns = [c.strip() for c in header[1:]]
+        carried = [False] * len(columns)
         for line in handle:
             name, _, rest = line.partition(",")
             name = name.strip().strip('"')
+            if all_sites is not None:
+                cells = rest.rstrip("\r\n").split(",")
+                for i, cell in enumerate(cells[: len(columns)]):
+                    if not carried[i] and cell.strip().strip('"') not in ("", "0", "0.0", "0.00"):
+                        weight = _float(cell)
+                        carried[i] = weight is not None and weight > 0
             if name not in wanted:
                 continue
             values = next(csv.reader([rest]))
@@ -189,13 +223,16 @@ def _csv_barcodes(path, wanted, counters):
                 if weight > 0:
                     _add(table, col, weight, counters)
             out[name] = table
+    if all_sites is not None:
+        _note_sites(all_sites, (c for c, flag in zip(columns, carried) if flag))
     return out
 
 
-def load_barcodes(dataset, wanted):
+def load_barcodes(dataset, wanted, all_sites=None):
     """Return ({lineage: {(pos, ref, alt): weight}}, n_non_snv_tokens) for the wanted lineages.
 
-    Lineages absent from the dataset are simply missing from the returned dict.
+    Lineages absent from the dataset are simply missing from the returned dict. When `all_sites` is a
+    set it is filled with the (position, alt) of every SNV carried by ANY lineage of the dataset.
     """
     path = Path(dataset)
     counters = {"non_snv": 0}
@@ -205,24 +242,24 @@ def load_barcodes(dataset, wanted):
         json_file = path / "lineage_mutations.json"
         json_ok = json_file.is_file() and json_file.stat().st_size > 0
         if feather.exists() and json_ok:
-            table = _json_barcodes(json_file, wanted, counters)
+            table = _json_barcodes(json_file, wanted, counters, all_sites)
         elif feather.exists():
             raise ValueError(
                 f"{dataset}: only usher_barcodes.feather found; lineage_mutations.json is required "
                 "(.feather barcodes are not read here)"
             )
         elif csv_file.is_file():
-            table = _csv_barcodes(csv_file, wanted, counters)
+            table = _csv_barcodes(csv_file, wanted, counters, all_sites)
         elif json_ok:
-            table = _json_barcodes(json_file, wanted, counters)
+            table = _json_barcodes(json_file, wanted, counters, all_sites)
         else:
             raise ValueError(f"{dataset}: no lineage_mutations.json or usher_barcodes.csv")
     elif path.is_file():
         suffix = path.suffix.lower()
         if suffix == ".csv":
-            table = _csv_barcodes(path, wanted, counters)
+            table = _csv_barcodes(path, wanted, counters, all_sites)
         elif suffix == ".json":
-            table = _json_barcodes(path, wanted, counters)
+            table = _json_barcodes(path, wanted, counters, all_sites)
         elif suffix == ".feather":
             raise ValueError(
                 f"{dataset}: .feather barcodes are not supported; give the dataset directory "
@@ -352,32 +389,54 @@ def annotate(pos, ref, alt, models, reference):
 # --------------------------------------------------------------------------- per-sample call
 
 
-def binom_sf(k, n, p):
-    """P(X >= k) for X ~ Binomial(n, p), exact (stdlib only)."""
+def binom_logsf(k, n, p):
+    """ln P(X >= k) for X ~ Binomial(n, p), exact (stdlib only), computed in log space.
+
+    Exact down to arbitrarily small tails (a plain sum of probabilities underflows to 0.0 below ~1e-308,
+    which happens as soon as the alt count is a large share of a depth of a few hundred).
+    """
     if k <= 0:
-        return 1.0
-    if k > n:
         return 0.0
+    if k > n:
+        return -math.inf
     p = min(max(p, 1e-12), 1 - 1e-12)
     log_p, log_q = math.log(p), math.log1p(-p)
-    total = 0.0
+    log_n = math.lgamma(n + 1)
+    total = -math.inf
     for i in range(k, n + 1):
-        term = math.exp(
-            math.lgamma(n + 1)
-            - math.lgamma(i + 1)
-            - math.lgamma(n - i + 1)
-            + i * log_p
-            + (n - i) * log_q
+        term = log_n - math.lgamma(i + 1) - math.lgamma(n - i + 1) + i * log_p + (n - i) * log_q
+        total = (
+            term
+            if total == -math.inf
+            else max(total, term) + math.log1p(math.exp(-abs(total - term)))
         )
-        total += term
-        if i > n * p and term < total * 1e-17:
+        if i > n * p and term < total + LOG_NEGLIGIBLE:
             break
-    return min(total, 1.0)
+    return min(total, 0.0)
 
 
-def call_unexplained(rows, expected, thresholds, sample, models=None, reference=None):
-    """Return the output rows (lists of strings), sorted by excess descending, uncapped."""
+def binom_sf(k, n, p):
+    """P(X >= k) for X ~ Binomial(n, p); underflows to 0.0 below ~1e-308 (see binom_logsf)."""
+    return math.exp(binom_logsf(k, n, p))
+
+
+def format_pvalue(log_p):
+    """p-value text for ln p: 3 significant digits, floored at P_VALUE_FLOOR (written `1e-300`).
+
+    The floor means "at most 1e-300"; the column stays a plain float for any parser.
+    """
+    return f"{max(math.exp(log_p), P_VALUE_FLOOR):.3g}"
+
+
+def call_unexplained(
+    rows, expected, thresholds, sample, models=None, reference=None, dataset_sites=frozenset()
+):
+    """Return the output rows (lists of strings), sorted by excess descending, uncapped.
+
+    `dataset_sites`: (position, alt) of every mutation any lineage of the dataset carries (`in_dataset`).
+    """
     called = []
+    max_log_p = math.log(thresholds["max_pvalue"]) if thresholds["max_pvalue"] > 0 else -math.inf
     for r in rows:
         if r["total_dp"] < thresholds["min_depth"] or r["alt_dp"] < thresholds["min_alt_depth"]:
             continue
@@ -390,15 +449,15 @@ def call_unexplained(rows, expected, thresholds, sample, models=None, reference=
         if excess < thresholds["min_excess"] - EPS:
             continue
         null_rate = max(exp, thresholds["background_rate"])
-        p_value = binom_sf(r["alt_dp"], r["total_dp"], null_rate)
-        if p_value > thresholds["max_pvalue"]:
+        log_p = binom_logsf(r["alt_dp"], r["total_dp"], null_rate)
+        if log_p > max_log_p:
             continue
-        called.append((excess, r, exp, p_value))
+        called.append((excess, r, exp, log_p))
     called.sort(
         key=lambda t: (-round(t[0], 9), t[1]["pos"], t[1]["alt"])
     )  # rounding: deterministic ties
     out = []
-    for excess, r, exp, p_value in called:
+    for excess, r, exp, log_p in called:
         gene, aa_change, effect = annotate(r["pos"], r["ref"], r["alt"], models, reference)
         out.append(
             [
@@ -414,7 +473,8 @@ def call_unexplained(rows, expected, thresholds, sample, models=None, reference=
                 gene,
                 aa_change,
                 effect,
-                f"{p_value:.3g}",
+                format_pvalue(log_p),
+                "true" if (r["pos"], r["alt"]) in dataset_sites else "false",
             ]
         )
     return out
@@ -460,7 +520,8 @@ def run_sample(args):
         return header_only(f"variants unusable ({exc})")
     if not args.dataset:
         raise ValueError("--dataset is required")
-    barcodes, n_non_snv = load_barcodes(args.dataset, [name for name, _ in lineages])
+    dataset_sites = set()
+    barcodes, n_non_snv = load_barcodes(args.dataset, [name for name, _ in lineages], dataset_sites)
     missing = [(n, a) for n, a in lineages if n not in barcodes]
     if missing:
         mass = sum(a for _, a in missing)
@@ -474,7 +535,9 @@ def run_sample(args):
             "barcode mutation(s) (only SNVs are considered)"
         )
     expected = expected_frequencies(lineages, barcodes)
-    out = call_unexplained(rows, expected, thresholds, args.sample, models, reference)
+    out = call_unexplained(
+        rows, expected, thresholds, args.sample, models, reference, dataset_sites
+    )
     if len(out) > args.max_rows:
         warn(
             f"{args.sample}: {len(out)} unexplained mutations; reporting the top {args.max_rows} by excess"
@@ -493,7 +556,11 @@ def run_concat(args):
         with open(path) as handle:
             lines = handle.read().splitlines()
         if not lines or lines[0].split("\t") != COLUMNS:
-            raise ValueError(f"{path}: header is not the per-sample unexplained_mutations header")
+            raise ValueError(
+                f"{path}: header is not the per-sample unexplained_mutations header "
+                f"(expected {len(COLUMNS)} columns ending in p_value, in_dataset; tables from before "
+                "the in_dataset column must be regenerated)"
+            )
         for number, line in enumerate(lines[1:], start=2):
             if not line.strip():
                 continue
@@ -509,7 +576,7 @@ def run_concat(args):
     out = []
     for f in rows:
         n = len(samples_by_site[(f[1], f[3])])
-        out.append([*f[:-1], str(n), "true" if n >= args.min_recurrence else "false", f[-1]])
+        out.append([*f[:-2], str(n), "true" if n >= args.min_recurrence else "false", *f[-2:]])
 
     def sort_key(f):
         excess = _float(f[6])
@@ -550,9 +617,17 @@ def main(argv=None):
     p.add_argument(
         "--background-rate", type=float, default=0.01, help="floor for the null rate (0.01)"
     )
-    p.add_argument("--max-rows", type=int, default=100)
+    p.add_argument(
+        "--max-rows",
+        type=int,
+        default=100,
+        help="write at most this many rows per sample, the highest excess first (ties: position, "
+        "then alt); 0 writes the header only; a stderr warning says how many were cut (100)",
+    )
     p.add_argument("-o", "--output", default="-")
     args = p.parse_args(argv)
+    if args.max_rows < 0:
+        p.error("--max-rows must be >= 0")
 
     try:
         if args.concat:

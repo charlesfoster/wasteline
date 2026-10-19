@@ -24,6 +24,7 @@ process BUILD_REPORT_DATA {
 
     output:
     path "report_data.json", emit: json
+    path "sample_id_map.csv", emit: id_map, optional: true // --report_anonymize full only: original -> pseudonym table (PRIVATE: never share it with the report)
     path "qc_summary.merged.tsv", emit: qc_summary, optional: true // the QC table with demix/consensus/barcode columns filled in
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python // not topic: versions: PROVENANCE needs every topic entry before it writes run_info.json, and these run after it
 
@@ -92,8 +93,10 @@ process BUILD_REPORT_DATA {
     """
 
     stub:
+    def args = task.ext.args ?: ''
     """
     echo '{"schema_version":1,"mode":"stub","header":{},"provenance":{},"samples":[]}' > report_data.json
     ${qc_summary ? "cp -L ${qc_summary} qc_summary.merged.tsv" : ''}
+    ${args.contains('--anonymize-map-out') ? "printf 'type,original,pseudonym\\n' > sample_id_map.csv" : ''}
     """
 }

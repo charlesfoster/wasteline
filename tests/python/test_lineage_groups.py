@@ -627,3 +627,196 @@ def test_print_default_groups_prints_the_bundled_file(capsys):
 def test_the_bundled_default_groups_file_is_valid_and_resolves_against_the_fixture(tmp_path):
     groups, _ = lg.read_groups(REPO / "assets" / "lineage_groups.csv")
     assert len(groups) >= 10 and all(g["include"] for g in groups)
+
+
+# ---- --xlsx-out ---------------------------------------------------------------------------------
+XLSX_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+XLSX_ARGS = ["--decimals", "4", "--major-threshold", "0.2"]
+
+
+def xlsx_run(tmp_path, *extra, groups=None, sites=False, target=None):
+    """Run the fixture with --xlsx-out; return (rc, xlsx path, out csv path, other outputs)."""
+    from xml.etree import ElementTree as ET
+
+    outs = {"out": tmp_path / "o.csv", "res": tmp_path / "r.tsv", "ung": tmp_path / "u.tsv"}
+    argv = [
+        "--aggregated", str(FIX / "freyja_aggregated.tsv"),
+        "--demix-status", str(FIX / "demix_status.tsv"),
+        "--samplesheet", str(FIX / "samplesheet.csv"),
+        "--groups", str(groups or FIX / "groups.csv"),
+        "--dataset", str(FIX),
+        "-o", str(outs["out"]),
+        "--resolved-out", str(outs["res"]),
+        "--ungrouped-out", str(outs["ung"]),
+        *XLSX_ARGS, *extra,
+    ]  # fmt: skip
+    if sites:
+        argv += [
+            "--aggregated-sites", str(FIX / "site_aggregates_freyja.tsv"),
+            "--aggregated-sites-meta", str(FIX / "site_aggregates_meta.tsv"),
+            "--sites-out", str(tmp_path / "sites.csv"),
+        ]  # fmt: skip
+    xlsx = target or tmp_path / "o.xlsx"
+    code = lg.main([*argv, "--xlsx-out", str(xlsx)])
+    return code, xlsx, outs, ET
+
+
+def sheet_grid(path, ET):
+    """{sheet name: {ref: (type, value)}} read with the stdlib only."""
+    import zipfile
+
+    with zipfile.ZipFile(path) as archive:
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+        names = [s.get("name") for s in workbook.find(XLSX_NS + "sheets")]
+        grids = {}
+        for i, name in enumerate(names, 1):
+            tree = ET.fromstring(archive.read(f"xl/worksheets/sheet{i}.xml"))
+            grid = {}
+            for c in tree.iter(XLSX_NS + "c"):
+                v = c.find(XLSX_NS + "v")
+                text = "".join(t.text or "" for t in c.iter(XLSX_NS + "t"))
+                grid[c.get("r")] = (c.get("t"), v.text if v is not None else text)
+            grids[name] = grid
+    return grids
+
+
+def test_xlsx_out_leaves_every_other_output_byte_identical(tmp_path):
+    plain, with_xlsx = tmp_path / "plain", tmp_path / "xlsx"
+    plain.mkdir()
+    with_xlsx.mkdir()
+    for folder, extra in ((plain, []), (with_xlsx, ["--xlsx-out", str(with_xlsx / "o.xlsx")])):
+        argv = [
+            "--aggregated", str(FIX / "freyja_aggregated.tsv"),
+            "--demix-status", str(FIX / "demix_status.tsv"),
+            "--samplesheet", str(FIX / "samplesheet.csv"),
+            "--groups", str(FIX / "groups.csv"), "--dataset", str(FIX),
+            "-o", str(folder / "o.csv"), "--resolved-out", str(folder / "r.tsv"),
+            "--ungrouped-out", str(folder / "u.tsv"),
+            "--aggregated-sites", str(FIX / "site_aggregates_freyja.tsv"),
+            "--aggregated-sites-meta", str(FIX / "site_aggregates_meta.tsv"),
+            "--sites-out", str(folder / "s.csv"), *XLSX_ARGS, *extra,
+        ]  # fmt: skip
+        assert lg.main(argv) == 0
+    for name in ("o.csv", "r.tsv", "u.tsv", "s.csv"):
+        assert (plain / name).read_bytes() == (with_xlsx / name).read_bytes(), name
+    assert not (plain / "o.xlsx").exists()
+
+
+def test_xlsx_sheets_columns_and_values_match_the_csvs(tmp_path):
+    code, xlsx, outs, ET = xlsx_run(tmp_path, "--wasteline-version", "9.9.9", sites=True)
+    assert code == 0
+    grids = sheet_grid(xlsx, ET)
+    assert list(grids) == [
+        "Lineage summary", "Ungrouped lineages", "Site aggregates", "Groups used", "About"
+    ]  # fmt: skip
+    with open(outs["out"], newline="", encoding="utf-8") as handle:
+        csv_rows = list(csv.reader(handle))
+    summary = grids["Lineage summary"]
+    ncols = len(csv_rows[0])
+    from xlsx_writer import column_letter
+
+    for c, title in enumerate(csv_rows[0]):  # same header, same order
+        assert summary[f"{column_letter(c)}1"][1] == title
+    groups_end = 5 + len(GROUPS)
+    for r, row in enumerate(csv_rows[1:], 2):
+        for c, value in enumerate(row):
+            ref = f"{column_letter(c)}{r}"
+            if value == "":
+                assert ref not in summary, ref  # blank zeros and blank cells: no cell at all
+            elif 4 <= c <= groups_end + 1:  # coverage, groups, other, proportion_summary: numbers
+                assert summary[ref][0] is None
+                assert float(summary[ref][1]) == pytest.approx(float(value))
+            else:
+                assert summary[ref] == ("inlineStr", value), ref
+    assert ncols == 5 + len(GROUPS) + 7 + 1
+    # an ok sample's blank group is a missing cell; its value cells are numeric
+    row = next(r for r in csv_rows if r[0] == "Site_1_week_2")
+    assert row[5] == "" and float(row[6]) == 0.8
+
+
+def test_xlsx_extra_sheets_about_and_groups(tmp_path):
+    code, xlsx, outs, ET = xlsx_run(tmp_path, "--wasteline-version", "9.9.9", sites=True)
+    assert code == 0
+    grids = sheet_grid(xlsx, ET)
+    about = {grids["About"][f"A{r}"][1]: grids["About"][f"B{r}"][1] for r in range(2, 12)
+             if f"A{r}" in grids["About"]}  # fmt: skip
+    assert about["Generated by"] == "wasteline 9.9.9"
+    assert about["Freyja dataset version"] == "01_02_2026-03-04"
+    assert (
+        about["Groups file sha256"] == hashlib.sha256((FIX / "groups.csv").read_bytes()).hexdigest()
+    )
+    used = grids["Groups used"]
+    assert [used[f"{c}1"][1] for c in "ABCD"] == ["group", "include", "exclude", "in_total"]
+    assert used["A8"][1] == "Old Omicron, B.1.1.529* only" and used["D3"][1] == "no"
+    assert used["C4"][1] == "KP.3*"
+    ungrouped = grids["Ungrouped lineages"]
+    expect = tsv_rows(outs["ung"])
+    assert ungrouped["A1"][1] == "lineage" and len(expect) >= 1
+    assert ungrouped["A2"][1] == expect[0]["lineage"]
+    assert float(ungrouped["C2"][1]) == pytest.approx(float(expect[0]["mean_abundance"]))
+    sites = rows_of(tmp_path / "sites.csv")
+    assert grids["Site aggregates"]["A2"][1] == sites[0]["aggregate_name"]
+    assert grids["Site aggregates"]["D2"][0] is None  # n_sites_included is numeric
+    assert grids["Site aggregates"]["E2"] == ("inlineStr", sites[0]["sites_included"])
+
+
+def test_xlsx_without_version_or_ungrouped_or_sites(tmp_path):
+    from xml.etree import ElementTree as ET
+
+    xlsx = tmp_path / "o.xlsx"
+    code, _out, _ = run(tmp_path, {"S1": [("JN.1.16", 1.0)]}, (FIX / "groups.csv").read_text(),
+                       "--xlsx-out", str(xlsx))  # fmt: skip
+    assert code == 0
+    grids = sheet_grid(xlsx, ET)
+    assert list(grids) == ["Lineage summary", "Groups used", "About"]
+    assert grids["About"]["B2"][1] == "wasteline"
+
+
+def test_xlsx_is_deterministic(tmp_path):
+    first, second = tmp_path / "a", tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    for folder in (first, second):
+        assert xlsx_run(folder, sites=True)[0] == 0
+    assert (first / "o.xlsx").read_bytes() == (second / "o.xlsx").read_bytes()
+
+
+def test_xlsx_with_hostile_group_names_and_sample_ids(tmp_path):
+    groups = tmp_path / "hostile.csv"
+    groups.write_text(
+        'group,include,exclude,in_total\n"R&D <JN.1*> ""q"" =x",JN.1*,KP.3*,yes\nKP.3*,KP.3*,,yes\n'
+    )
+    agg = tmp_path / "agg.tsv"
+    agg.write_text(agg_text({"=cmd|x&y<1>": [("JN.1.16", 0.6), ("KP.3.1", 0.4)]}))
+    xlsx, out = tmp_path / "o.xlsx", tmp_path / "o.csv"
+    code = lg.main(
+        ["--aggregated", str(agg), "--groups", str(groups), "--dataset", str(FIX), "-o", str(out),
+         "--resolved-out", str(tmp_path / "r.tsv"), "--xlsx-out", str(xlsx)]
+    )  # fmt: skip
+    assert code == 0
+    from xml.etree import ElementTree as ET
+
+    grid = sheet_grid(xlsx, ET)["Lineage summary"]
+    assert grid["A2"] == ("inlineStr", "=cmd|x&y<1>")
+    assert grid["F1"][1] == 'R&D <JN.1*> "q" =x'
+    assert grid["F2"][0] is None and float(grid["F2"][1]) == pytest.approx(0.6)
+
+
+def test_xlsx_decimals_only_change_the_display_format(tmp_path):
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    code, xlsx, _, _ = xlsx_run(tmp_path, "--xlsx-decimals", "2")
+    assert code == 0
+    with zipfile.ZipFile(xlsx) as archive:
+        styles = ET.fromstring(archive.read("xl/styles.xml"))
+    codes = [n.get("formatCode") for n in styles.find(XLSX_NS + "numFmts")]
+    assert "0.00" in codes and "0.000" not in codes
+
+
+def test_xlsx_failure_is_a_warning_and_keeps_the_csv_outputs(tmp_path, capsys):
+    code, _xlsx, outs, _ = xlsx_run(tmp_path, target=tmp_path / "missing_dir" / "o.xlsx")
+    assert code == 0
+    assert "could not write" in capsys.readouterr().err
+    assert not (tmp_path / "missing_dir").exists()
+    assert (outs["out"]).read_text().startswith("sample,site,collection_date,status")

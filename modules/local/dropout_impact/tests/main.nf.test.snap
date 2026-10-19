@@ -2,13 +2,28 @@
     "tiny dataset directory with lineage_mutations.json - real": {
         "content": [
             [
-                "dropout_impact.tsv:md5,058c28eb6417bd699034678889a4df3e"
+                "dropout_impact.tsv:md5,fbf15ca8fbf350a05f77963bd9fc52f3"
             ],
             [
-                "dropout_impact_summary.tsv:md5,659c10a0e1faf9593b83f645be2d2d36"
+                "dropout_impact_summary.tsv:md5,b0b1dd0cf7e7f2bd62bd639cb478bece"
             ]
         ],
-        "timestamp": "2026-10-16T09:49:32.266482",
+        "timestamp": "2026-10-19T21:27:02.352511",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    },
+    "defining sites from a lineage hierarchy (lineages.yml) - real": {
+        "content": [
+            [
+                "dropout_impact.tsv:md5,072d4e48f9ac69396fe6301cd82224da"
+            ],
+            [
+                "dropout_impact_summary.tsv:md5,c9ff0ea03d0c0491ab8bbdf5191768f7"
+            ]
+        ],
+        "timestamp": "2026-10-19T21:27:09.365786",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"
@@ -17,13 +32,13 @@
     "stub": {
         "content": [
             [
-                "dropout_impact.tsv:md5,d461a8a673138bd678534ba4759210da"
+                "dropout_impact.tsv:md5,3ea36e68e36c9e2f55c3516422a04aeb"
             ],
             [
-                "dropout_impact_summary.tsv:md5,a8e9f6cc7f37f8fda1fb113d940a1e29"
+                "dropout_impact_summary.tsv:md5,676d11346674b5924517e4684372ffa4"
             ]
         ],
-        "timestamp": "2026-10-16T09:49:27.178761",
+        "timestamp": "2026-10-19T21:26:58.848424",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

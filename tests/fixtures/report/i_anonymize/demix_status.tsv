@@ -1,0 +1,5 @@
+sample	status	reason	barcode_version
+WW_Central_001	ok		10_06_2026-05-25
+WW_Central_002	ok		10_06_2026-05-25
+WW_North_001	ok		10_06_2026-05-25
+WW_North_002.rep1	failed	freyja demix failed for WW_North_002.rep1 in /Users/jdoe/Programs/wasteline/work/ab/cd1234/WW_North_002.rep1.variants.tsv (jdoe)	10_06_2026-05-25

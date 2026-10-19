@@ -1,0 +1,4 @@
+sample	length	n_count	n_pct	ambiguous_count	status	reason
+WW_Central_001	29903	10	0.03	0	ok	NA
+WW_Central_002	29903	29903	100.00	0	failed	bcftools consensus failed: The fasta sequence does not match the REF allele at NC_045512.2:11287: (/Users/jdoe/Programs/wasteline/work/ab/cd/WW_Central_002.consensus.fa)
+WW_North_001	29903	20	0.07	0	ok	skipped variant at NC_045512.2:22942 (overlaps another variant) in WW_North_001

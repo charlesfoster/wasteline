@@ -216,6 +216,14 @@ table.sortable thead th[aria-sort=descending]::after{content:" \25BC";font-size:
 tbody tr:hover{background:var(--panel)}
 tr.ntc td:first-child,tr.ntc th:first-child{font-style:italic}
 .qc-wrap{max-height:70vh}
+#qc-table table{font-size:.8rem}
+#qc-table th,#qc-table td{padding:3px 5px}
+#qc-table td{white-space:nowrap}
+#qc-table thead th{white-space:normal;vertical-align:bottom;line-height:1.2;min-width:58px}
+#qc-table th:first-child,#qc-table td:first-child{position:sticky;left:0;z-index:1;background:var(--bg);box-shadow:1px 0 0 var(--line)}
+#qc-table thead th:first-child{z-index:3;background:var(--panel)}
+#qc-table tbody tr:hover td:first-child{background:var(--panel)}
+#qc-table td.reasons{min-width:100px;max-width:170px;white-space:normal}
 .reasons{color:var(--muted);font-size:.8rem}
 /* categorical colours */
 .c0{fill:var(--c0);background:var(--c0)}.c1{fill:var(--c1);background:var(--c1)}.c2{fill:var(--c2);background:var(--c2)}
@@ -289,6 +297,7 @@ footer{margin-top:40px;color:var(--muted);font-size:.8rem;border-top:1px solid v
 @media print{
   html{font-size:11px}.wrap{max-width:none}.filterbar,.seg,nav.toc{display:none!important}
   .scroll,.qc-wrap,pre{overflow:visible;max-height:none}thead th{position:static}
+  #qc-table th:first-child,#qc-table td:first-child{position:static}
   section{break-inside:auto}h2{break-after:avoid}.cov,.stat,ul.flags li{break-inside:avoid}
   table.heat th.s{position:static}
 }
@@ -326,6 +335,9 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
 <header class="top">
   <h1>{{ h.pipeline_name or 'wasteline' }} report</h1>
   <p class="sub">Wastewater SARS-CoV-2 lineage deconvolution &middot; mode <b>{{ mode }}</b>{% if h.pipeline_version %} &middot; pipeline {{ h.pipeline_version }}{% endif %}</p>
+  {% if d.anonymized and d.anonymized != 'none' %}
+  <p class="note" id="anonymized-note"><b>Anonymised for sharing ({{ d.anonymized }}).</b> Local paths, home directories and user names were removed{% if d.anonymized == 'full' %}; sample IDs and site names were replaced by pseudonyms (S001, SITE1, ...){% endif %}. Dates, lineage names, barcode versions and QC values are unchanged.</p>
+  {% endif %}
   <div class="barcode {{ barcode_kind }}" id="barcode-version">
     <small>Freyja barcode version{% if h.pathogen %} ({{ h.pathogen }}){% endif %}</small>
     <b>{{ barcode or 'not recorded' }}</b>
@@ -519,20 +531,33 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
 {% if dx %}
 <section id="sec-dropout-impact">
   <h2>Amplicon dropout impact</h2>
+  {% if dx.has_defining %}
+  <p class="note">A dropped amplicon hides every mutation inside it. What matters for the lineage estimate are the <b><abbr title="Defining mutations are the mutations a lineage has that its parent lineage lacks: they are what tells it apart from its parent and siblings. Mutations inherited from ancestors do not count.">defining mutations</abbr></b> of the lineages detected in the sample{% if dx.min_abundance is not none %} (abundance &ge; {{ (dx.min_abundance * 100)|round(1) }}%){% endif %}. For each dropped amplicon the table counts the defining sites it hides (primary), the <i>differential</i> sites (carried by some but not all detected lineages) and the lineage-informative sites (secondary context). Amber rows (<i>hides defining sites</i>) mean a lineage detected at {% if dx.min_affect is not none %}&ge; {{ (dx.min_affect * 100)|round(1) }}%{% else %}a noticeable abundance{% endif %} loses defining mutations, so its abundance estimate may be biased. Samples without a lineage estimate (skipped, failed, controls) show &ldquo;no lineage estimate&rdquo;.</p>
+  {% else %}
   <p class="note">A dropped amplicon hides every mutation inside it. For each dropped amplicon this shows how many <b>lineage-informative</b> sites it covers (mutations carried by some but not nearly all lineages of the Freyja dataset) and how many of those belong to the lineages detected in the sample{% if dx.min_abundance is not none %} (abundance &ge; {{ (dx.min_abundance * 100)|round(1) }}%){% endif %}. Amber rows (<i>affects detected lineages</i>) mean the abundance estimate of those lineages may be biased. Samples without a lineage estimate (skipped, failed, controls) show &ldquo;no lineage estimate&rdquo;.</p>
+  {% endif %}
   <div class="cards">
-    <div class="stat"><b>{{ dx.n_affected }}</b><span>sample(s) with dropout affecting detected lineages</span></div>
+    <div class="stat"><b>{{ dx.n_affected }}</b><span>sample(s) with dropout {% if dx.has_defining %}hiding defining sites of detected lineages{% else %}affecting detected lineages{% endif %}</span></div>
     <div class="stat"><b>{{ dx.summary|length }}</b><span>sample(s) with dropped amplicons (of {{ dx.n_samples }})</span></div>
   </div>
   {% if dx.summary %}
   <h3>Per-sample summary</h3>
   <div class="scroll qc-wrap"><table class="sortable">
+    {% if dx.has_defining %}
+    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Dropped amplicons</th><th class="n" data-sort title="Defining sites of the detected lineages inside dropped amplicons / all defining sites the scheme can observe">Defining sites lost</th><th class="n" data-sort title="Share of the defining sites of the detected lineages that lie in dropped amplicons">% defining sites lost</th><th class="n" data-sort>Dropouts hiding defining sites</th><th class="n" data-sort title="Lineage-informative sites (carried by some but not nearly all lineages) in dropped amplicons / observable">Informative sites lost (%)</th></tr></thead>
+    <tbody>
+    {% for x in dx.summary %}
+    <tr{% if x.affects %} class="hl"{% endif %}><td>{{ x.sample }}{% if x.ntc %}<em class="chip">NTC</em>{% endif %}</td><td class="n" data-v="{{ x.n_dropped|sortval }}">{{ x.n_dropped|num }}</td><td class="n" data-v="{{ x.def_lost|sortval }}">{% if x.def_total is none and x.def_lost is none %}<span class="reasons">no lineage estimate</span>{% else %}{{ x.def_lost|num }} / {{ x.def_total|num }}{% endif %}</td><td class="n" data-v="{{ x.def_pct|sortval }}"><b>{{ x.def_pct|pct(2) }}</b></td><td class="n" data-v="{{ x.n_affecting|sortval if not x.no_estimate else '' }}">{% if x.no_estimate %}<span class="reasons">no lineage estimate</span>{% else %}{{ x.n_affecting|num }}{% endif %}</td><td class="n reasons" data-v="{{ x.pct|sortval }}">{{ x.lost|num }} / {{ x.total|num }} ({{ x.pct|pct(1) }})</td></tr>
+    {% endfor %}
+    </tbody>
+    {% else %}
     <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Dropped amplicons</th><th class="n" data-sort>Informative sites lost</th><th class="n" data-sort title="Share of the lineage-informative sites the scheme can observe that lie in dropped amplicons">% informative sites lost</th><th class="n" data-sort>Dropouts affecting detected lineages</th></tr></thead>
     <tbody>
     {% for x in dx.summary %}
     <tr{% if x.affects %} class="hl"{% endif %}><td>{{ x.sample }}{% if x.ntc %}<em class="chip">NTC</em>{% endif %}</td><td class="n" data-v="{{ x.n_dropped|sortval }}">{{ x.n_dropped|num }}</td><td class="n" data-v="{{ x.lost|sortval }}">{{ x.lost|num }} / {{ x.total|num }}</td><td class="n" data-v="{{ x.pct|sortval }}">{{ x.pct|pct(2) }}</td><td class="n" data-v="{{ x.n_affecting|sortval if not x.no_estimate else '' }}">{% if x.no_estimate %}<span class="reasons">no lineage estimate</span>{% else %}{{ x.n_affecting|num }}{% endif %}</td></tr>
     {% endfor %}
     </tbody>
+    {% endif %}
   </table></div>
   {% if dx.n_without %}<p class="note">{{ dx.n_without }} sample(s) without dropped amplicons are not listed.</p>{% endif %}
   {% endif %}
@@ -541,7 +566,11 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
   {{ filterbar('dx-table', true) }}
   <div class="scroll qc-wrap" id="dx-table">
   <table class="sortable capped">
+    {% if dx.has_defining %}
+    <thead><tr><th data-sort>Sample</th><th data-sort>Amplicon</th><th class="n" data-sort>Span (bp)</th><th class="n" data-sort>Mean depth</th><th class="n" data-sort title="Defining mutations (lineage has them, its parent lacks them) of the detected lineages inside the dropped amplicon">Defining sites hidden</th><th>Lineages losing defining sites</th><th class="n" data-sort title="Sites in the amplicon carried by some but not all detected lineages (reported, not part of the warning)">Differential sites</th><th class="n" data-sort title="Lineage-informative sites in the amplicon (secondary context)">Informative sites</th></tr></thead>
+    {% else %}
     <thead><tr><th data-sort>Sample</th><th data-sort>Amplicon</th><th class="n" data-sort>Span (bp)</th><th class="n" data-sort>Mean depth</th><th class="n" data-sort>Informative sites</th><th class="n" data-sort>In detected lineages</th><th>Affected lineages (informative sites)</th></tr></thead>
+    {% endif %}
     <tbody>
     {% for r in dx.table.rows %}
     <tr data-sample="{{ r.sample }}" data-qc="{{ r.qc }}" data-ntc="{{ 1 if r.ntc else 0 }}" class="{{ 'hl' if r.affects }}{{ ' more' if loop.index > dx.table.n_visible else '' }}">
@@ -549,9 +578,16 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
       <td>{{ r.amplicon|dash }}</td>
       <td class="n" data-v="{{ r.start|sortval }}">{{ r.start|num }}&ndash;{{ r.end|num }}</td>
       <td class="n" data-v="{{ r.mean_depth|sortval }}">{{ r.mean_depth|dec(1) }}</td>
+      {% if dx.has_defining %}
+      <td class="n" data-v="{{ r.n_def|sortval }}">{% if r.no_estimate %}<span class="reasons">no lineage estimate</span>{% else %}<b>{{ r.n_def|num }}</b>{% endif %}</td>
+      <td>{% if r.affects %}<span class="badge b-warn" title="A lineage detected at or above the affect threshold loses defining mutations">hides defining sites</span> {% endif %}{% for l in r.lineages %}{{ l.lineage }} ({{ l.n_sites }}){% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td class="n reasons" data-v="{{ r.n_diff|sortval }}">{{ r.n_diff|num }}</td>
+      <td class="n reasons" data-v="{{ r.n_inf|sortval }}">{{ r.n_inf|num }}</td>
+      {% else %}
       <td class="n" data-v="{{ r.n_inf|sortval }}">{{ r.n_inf|num }}</td>
       <td class="n" data-v="{{ r.n_det|sortval }}">{% if r.no_estimate %}<span class="reasons">no lineage estimate</span>{% else %}{{ r.n_det|num }}{% endif %}</td>
       <td>{% if r.affects %}<span class="badge b-warn">affects detected lineages</span> {% endif %}{% for l in r.lineages %}{{ l.lineage }} ({{ l.n_sites }}){% if not loop.last %}, {% endif %}{% endfor %}</td>
+      {% endif %}
     </tr>
     {% endfor %}
     </tbody>
@@ -644,7 +680,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
 {% if ue %}
 <section id="sec-unexplained">
   <h2>Unexplained mutations</h2>
-  <p class="note"><b>What this is.</b> High-frequency single-nucleotide mutations in a sample that the demixed lineage mixture does not account for: for each site the frequency <i>expected</i> from the detected lineages and their abundances is compared with the <i>observed</i> frequency. A recurrent mutation (unexplained in {{ ue.min_recurrence|int if ue.min_recurrence else 'several' }} or more samples) is an early hint of a novel or cryptic lineage, or of a lineage missing from the barcodes. <b>It is not a variant caller</b>: sequencing errors, mixed-in reference lineages, low depth and amplicon dropout can all produce false hits, so confirm anything interesting on the reads.{% if ue.thresholds %} Thresholds: {{ ue.thresholds|join('; ') }}.{% endif %}</p>
+  <p class="note"><b>What this is.</b> High-frequency single-nucleotide mutations in a sample that the demixed lineage mixture does not account for: for each site the frequency <i>expected</i> from the detected lineages and their abundances is compared with the <i>observed</i> frequency. A recurrent mutation (unexplained in {{ ue.min_recurrence|int if ue.min_recurrence else 'several' }} or more samples) is an early hint of a novel or cryptic lineage, or of a lineage missing from the barcodes. <b>It is not a variant caller</b>: sequencing errors, mixed-in reference lineages, low depth and amplicon dropout can all produce false hits, so confirm anything interesting on the reads.{% if ue.thresholds %} Thresholds: {{ ue.thresholds|join('; ') }}.{% endif %}{% if ue.has_in_dataset %} P-values are floored at 1e-300 (shown as &lt;=1e-300, meaning &ldquo;at most&rdquo;). <span class="chip">not in dataset</span> marks mutations at sites that no lineage in the Freyja dataset models: a dataset blind spot (for example masked sites) or a novel change{% if ue.n_blind %} ({{ ue.n_blind }} mutation{{ 's' if ue.n_blind != 1 }} here){% endif %}.{% endif %}</p>
   {% if ue.table.rows %}
   <div class="cards">
     <div class="stat"><b>{{ ue.table.n|num }}</b><span>unexplained mutation call(s)</span></div>
@@ -668,8 +704,8 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
       <td class="n" data-v="{{ r.expected_freq|sortval }}" title="excess {{ r.excess|frac(1) }} percentage points">{{ r.expected_freq|frac(1) }}</td>
       <td class="n" data-v="{{ r.depth|sortval }}">{{ r.depth|num }}</td>
       <td class="n" data-v="{{ r.alt_depth|sortval }}">{{ r.alt_depth|num }}</td>
-      <td class="n" data-v="{{ r.p_value|sortval }}">{{ r.p_value|sci }}</td>
-      <td data-v="{{ r.n_samples|sortval if r.recurrent else 0 }}">{% if r.recurrent %}<span class="badge b-info" title="The same mutation is unexplained in {{ r.n_samples if r.n_samples is not none else 'several' }} samples">recurrent{% if r.n_samples is not none %} ({{ r.n_samples }}){% endif %}</span>{% else %}<span class="reasons">single sample</span>{% endif %}</td>
+      <td class="n" data-v="{{ r.p_value|sortval }}">{{ r.p_value|pval }}</td>
+      <td data-v="{{ r.n_samples|sortval if r.recurrent else 0 }}">{% if r.recurrent %}<span class="badge b-info" title="The same mutation is unexplained in {{ r.n_samples if r.n_samples is not none else 'several' }} samples">recurrent{% if r.n_samples is not none %} ({{ r.n_samples }}){% endif %}</span>{% else %}<span class="reasons">single sample</span>{% endif %}{% if r.in_dataset is false %} <span class="chip" title="No lineage in the Freyja dataset models this mutation: a dataset blind spot (for example masked sites) or a novel change">not in dataset</span>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
