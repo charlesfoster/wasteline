@@ -1,0 +1,3 @@
+aggregate_name,site_name,weight
+Metro,SiteA,10
+Metro,,10

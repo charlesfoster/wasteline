@@ -1,0 +1,12 @@
+{
+    "stub": {
+        "content": [
+            "site_aggregate_check.txt"
+        ],
+        "timestamp": "2026-10-19T12:34:01.398855",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

@@ -1,0 +1,4 @@
+aggregate_name,site_name,weight
+Metro_Sites,Site1,250000
+Metro_Sites,Site2,120000
+Metro_Sites,Site3,80000

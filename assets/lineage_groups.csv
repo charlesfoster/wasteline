@@ -1,0 +1,16 @@
+group,include,exclude,in_total
+BA.2.86* (excludes JN.1*),BA.2.86*,JN.1*,yes
+BA.2.86* (includes JN.1*),BA.2.86*,,no
+"JN.1* (excludes KP.2*, KP.3*, KW.1.1*, LP.8.1*)",JN.1*,KP.2*;KP.3*;KW.1.1*;LP.8.1*,yes
+"JN.1* (includes KP.2*, KP.3*, KW.1.1*, LP.8.1*)",JN.1*,,no
+KP.2*,KP.2*,,yes
+KP.3*,KP.3*,,yes
+PE.1.4*,PE.1.4*,,no
+KW.1.1*,KW.1.1*,,yes
+LP.8.1*,LP.8.1*,,yes
+XEC*,XEC*,,yes
+NB.1.8.1* (XDV.1.5.1.1.8*),NB.1.8.1*,,yes
+XFG*,XFG*,,yes
+BA.3.2*,BA.3.2*,,yes
+Omicron Lineage (B.1.1.529*),B.1.1.529*,BA.2.86*;BA.3.2*,yes
+"Recombinants (excludes XEC*, NB.1.8.1*, XFG*)",RECOMBINANT*,XEC*;NB.1.8.1*;XFG*,yes

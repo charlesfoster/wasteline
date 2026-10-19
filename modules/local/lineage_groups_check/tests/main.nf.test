@@ -1,0 +1,98 @@
+nextflow_process {
+
+    name "Test Process LINEAGE_GROUPS_CHECK"
+    script "../main.nf"
+    process "LINEAGE_GROUPS_CHECK"
+    tag "modules"
+    tag "modules_local"
+    tag "lineage_groups_check"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/tests/fixtures/lineage_groups/groups.csv")
+                input[1] = file("\$projectDir/tests/fixtures/lineage_groups")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(file(process.out.report[0].toString()).name).match() }
+            )
+        }
+    }
+
+    test("a valid groups file passes and says so - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/tests/fixtures/lineage_groups/groups.csv")
+                input[1] = file("\$projectDir/tests/fixtures/lineage_groups")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert file(process.out.report[0].toString()).text.contains('groups file OK') }
+            )
+        }
+    }
+
+    test("an unknown lineage is a warning in the report, not an error - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                def groups = new File("\${launchDir}/typo_groups.csv")
+                groups.text = "group,include,exclude,in_total\\nJN.1*,JN.1*,,yes\\nTypo,JN.99999*,,no\\n"
+                input[0] = file(groups.toString())
+                input[1] = file("\$projectDir/tests/fixtures/lineage_groups")
+                """
+            }
+        }
+
+        then {
+            def text = file(process.out.report[0].toString()).text
+            assertAll(
+                { assert process.success },
+                { assert text.contains('JN.99999') && text.contains('WARNING') }
+            )
+        }
+    }
+
+    test("a duplicate group name stops the process with the row numbers - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                def groups = new File("\${launchDir}/dup_groups.csv")
+                groups.text = "group,include,exclude,in_total\\nJN.1*,JN.1*,,yes\\nJN.1*,KP.3*,,yes\\n"
+                input[0] = file(groups.toString())
+                input[1] = file("\$projectDir/tests/fixtures/lineage_groups")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.failed }
+            )
+        }
+    }
+}

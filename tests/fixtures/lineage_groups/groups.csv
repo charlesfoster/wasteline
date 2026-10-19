@@ -1,0 +1,9 @@
+group,include,exclude,in_total
+BA.2.86* (excludes JN.1*),BA.2.86*,JN.1*,yes
+BA.2.86* (includes JN.1*),BA.2.86*,,no
+JN.1* (excludes KP.3*),JN.1*,KP.3*,yes
+JN.1* (includes KP.3*),JN.1*,,no
+KP.3*,KP.3*,,yes
+NB.1.8* (alias XAA.1.7.8*),XAA.1.7.8*,,yes
+"Old Omicron, B.1.1.529* only",B.1.1.529*,BA.2.86*,yes
+Recombinants (excludes NB.1*),RECOMBINANT*,NB.1*,yes

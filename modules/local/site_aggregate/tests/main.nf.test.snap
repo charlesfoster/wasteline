@@ -1,0 +1,17 @@
+{
+    "stub": {
+        "content": [
+            [
+                "\tsummarized\tlineages\tabundances\tresid\tcoverage"
+            ],
+            [
+                "row_label\taggregate_name\tperiod\tperiod_start\tn_sites_included\tsites_included\tsites_missing\tmissing_reasons\tweight_basis\tweight_fraction_included\tn_samples"
+            ]
+        ],
+        "timestamp": "2026-10-19T12:18:04.503171",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

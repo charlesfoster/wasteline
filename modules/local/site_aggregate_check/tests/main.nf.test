@@ -1,0 +1,95 @@
+nextflow_process {
+
+    name "Test Process SITE_AGGREGATE_CHECK"
+    script "../main.nf"
+    process "SITE_AGGREGATE_CHECK"
+    tag "modules"
+    tag "modules_local"
+    tag "site_aggregate_check"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/tests/fixtures/site_aggregate/sites.csv")
+                input[1] = file("\$projectDir/tests/data_timeseries/samplesheet.csv")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(file(process.out.report[0].toString()).name).match() }
+            )
+        }
+    }
+
+    test("a valid sites file passes - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/tests/fixtures/site_aggregate/sites.csv")
+                input[1] = file("\$projectDir/tests/data_timeseries/samplesheet.csv")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert file(process.out.report[0].toString()).text.contains('sites file OK') }
+            )
+        }
+    }
+
+    test("a site name that no sample uses is a warning, not an error - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                def sites = new File("\${launchDir}/typo_sites.csv")
+                sites.text = "aggregate_name,site_name\\nMetro,SiteA\\nMetro,Site_B\\n"
+                input[0] = file(sites.toString())
+                input[1] = file("\$projectDir/tests/data_timeseries/samplesheet.csv")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert file(process.out.report[0].toString()).text.contains("site 'Site_B'") }
+            )
+        }
+    }
+
+    test("a bad sites file stops the process naming the line - real") {
+
+        tag "docker"
+
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/tests/fixtures/site_aggregate/sites_bad.csv")
+                input[1] = file("\$projectDir/tests/data_timeseries/samplesheet.csv")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.failed }
+            )
+        }
+    }
+}

@@ -1,0 +1,3 @@
+	summarized	lineages	abundances	resid	coverage	pathogen
+Catchment_X_2026-W02	[('Omicron', 1.0)]	JN.1.16 KP.3 XAA.1	0.50000000 0.30000000 0.20000000	1.5	NA	SARS-CoV-2
+Catchment_X_2026-W03	[('Omicron', 1.0)]	NB.1.8	1.00000000	1.5	NA	SARS-CoV-2

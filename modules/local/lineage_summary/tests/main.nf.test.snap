@@ -1,0 +1,24 @@
+{
+    "stub": {
+        "content": [
+            "lineage_summary.csv",
+            "lineage_groups_resolved.tsv"
+        ],
+        "timestamp": "2026-10-19T12:18:30.298078",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    },
+    "stub with site aggregates": {
+        "content": [
+            "lineage_summary.csv",
+            "lineage_summary_site_aggregates.csv"
+        ],
+        "timestamp": "2026-10-19T12:18:33.690705",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

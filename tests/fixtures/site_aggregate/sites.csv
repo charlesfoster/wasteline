@@ -1,0 +1,6 @@
+aggregate_name,site_name,weight
+Metro,SiteA,120000
+Metro,SiteB,450000
+Metro,SiteC,80000
+Pair,SiteA,
+Pair,siteb ,

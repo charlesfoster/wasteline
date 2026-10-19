@@ -1,0 +1,8 @@
+sample,fastq_1,fastq_2,sample_type,collection_date,site
+ALLX_3,/x/a_R1.fastq.gz,/x/a_R2.fastq.gz,sample,2026-01-06,Site_2
+FAIL_5,/x/b_R1.fastq.gz,/x/b_R2.fastq.gz,sample,2026-01-07,Site_1
+LOW_6,/x/c_R1.fastq.gz,/x/c_R2.fastq.gz,sample,2026-01-08,Site_1
+Mixed_4,/x/d_R1.fastq.gz,/x/d_R2.fastq.gz,sample,2026-01-09,Site_2
+NEG_1,/x/e_R1.fastq.gz,/x/e_R2.fastq.gz,negative,2026-01-05,Site_1
+NOAGG_8,/x/f_R1.fastq.gz,/x/f_R2.fastq.gz,sample,,
+Site_1_week_2,/x/g_R1.fastq.gz,/x/g_R2.fastq.gz,sample,2026-01-12,Site_1

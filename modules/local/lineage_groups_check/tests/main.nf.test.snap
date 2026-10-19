@@ -1,0 +1,12 @@
+{
+    "stub": {
+        "content": [
+            "lineage_groups_check.txt"
+        ],
+        "timestamp": "2026-10-19T12:33:48.480604",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

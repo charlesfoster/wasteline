@@ -1,0 +1,4 @@
+row_label	aggregate_name	period	period_start	n_sites_included	sites_included	sites_missing	weight_basis	n_samples
+Catchment_X_2026-W02	Catchment_X	2026-W02	2026-01-05	2	Site_1;Site_2		viral_load	3
+Catchment_X_2026-W03	Catchment_X	2026-W03	2026-01-12	1	Site_1	Site_2	equal	1
+Catchment_X_2026-W04	Catchment_X	2026-W04	2026-01-19	0		Site_1;Site_2	equal	0
