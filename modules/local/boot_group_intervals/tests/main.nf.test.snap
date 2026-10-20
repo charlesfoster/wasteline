@@ -1,0 +1,12 @@
+{
+    "stub": {
+        "content": [
+            "lineage_group_intervals.tsv"
+        ],
+        "timestamp": "2026-10-20T13:47:44.185689",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

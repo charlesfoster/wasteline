@@ -18,6 +18,7 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
   aggregation unless `--include_low_confidence true`. `depth_stats.py` gains `--floor-genome-coverage` (exit code 11),
   `FILTER_AGGREGATED` / `bin/filter_aggregated.py` filter the aggregate for the time-based analyses and `site_aggregate.py` gains
   `--include-low-confidence`. `--demix_floor_coverage 0` restores the previous behaviour.
+- Group-level bootstrap intervals (PLAN D19): with `--freyja_boot` (and the lineage summary) `summary/lineage_group_intervals.tsv` gives a 95 % interval for every lineage group and `other` per sample, computed from the raw Freyja bootstrap draws (`freyja boot --rawboots`, summed into groups draw by draw). `lineage_summary.csv` is unchanged. New module `BOOT_GROUP_INTERVALS`, script `bin/boot_group_intervals.py`; `samples/<s>/freyja/<s>.boot_lineages_boot.csv` holds the raw draws.
 - Report privacy: `--report_anonymize none|paths|full` removes file paths, user names (`paths`) and also sample IDs and site names (`full`) from
   `report_data.json` and `report.html`; `full` writes the private `summary/sample_id_map.csv`. In mode `report` the report data are rebuilt
   from the summary files when it is not `none`.

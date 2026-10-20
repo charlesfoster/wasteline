@@ -687,6 +687,13 @@ and a `<s>.boot_status.json` are in `samples/<s>/freyja/`; the report shows the 
 failed bootstrap is recorded in its status file (never fatal) and that sample simply has no interval. In `aggregate` mode the
 option is ignored with a warning. The intervals describe sampling noise in the reads given the barcodes; they do not include
 barcode-dataset uncertainty (use [`--compare_barcodes`](#comparing-barcode-versions---compare_barcodes) for that).
+
+When the [lineage-group summary](#lineage-groups) runs too, `--freyja_boot` also gives each group (and `other`) a 95% interval in
+`summary/lineage_group_intervals.tsv`. The group sums are formed draw by draw from the raw bootstrap draws (`freyja boot --rawboots`,
+`samples/<s>/freyja/<s>.boot_lineages_boot.csv`) with the same membership rules as `lineage_summary.csv`, and the 2.5 and 97.5
+percentiles are taken afterwards; per-lineage intervals must not be added up, because the lineages of a group are negatively
+correlated. `lineage_summary.csv` itself is unchanged. With a custom barcodes file (no `lineages.yml`) the lineage summary and
+therefore these group intervals are skipped.
 <!-- UNVERIFIED: only the defaults (--freyja_boot_n 100, --freyja_boot_seed 0) were run; other values were not tried. -->
 
 ### Time series, growth rates and the dashboard

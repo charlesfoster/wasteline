@@ -33,6 +33,7 @@ include { FREYJA_DEMIX           } from '../modules/local/freyja_demix/main'
 include { FREYJA_DEMIX as FREYJA_DEMIX_COMPARE } from '../modules/local/freyja_demix/main'
 include { BARCODE_COMPARE        } from '../modules/local/barcode_compare/main'
 include { FREYJA_BOOT            } from '../modules/local/freyja_boot/main'
+include { BOOT_GROUP_INTERVALS   } from '../modules/local/boot_group_intervals/main'
 include { FREYJA_AGGREGATE_CONTROLS } from '../modules/local/freyja_aggregate_controls/main'
 include { ANNOTATE_VARIANTS      } from '../modules/local/annotate_variants/main'
 include { FREYJA_AGGREGATE_PLOT  } from '../modules/local/freyja_aggregate_plot/main'
@@ -354,6 +355,7 @@ workflow WASTELINE {
         def ch_compare_tsv = channel.empty()
         def ch_compare_status = channel.empty()
         def ch_boot_summary = channel.empty()
+        def ch_boot_raw = channel.empty()
         // demix_status.tsv lines: [ sample, status, reason, genome_coverage_pct, barcode_version, barcode_version_iso ]
         def ch_status_lines = ch_skipped.map { sample, reason, _type, _date, _site -> [ sample, 'missing', reason, '', '', '' ].collect { value -> value.toString().replaceAll('[\t\r\n]+', ' ') }.join('\t') }
 
@@ -414,6 +416,7 @@ workflow WASTELINE {
             //
             if (params.freyja_boot) {
                 FREYJA_BOOT(ch_freyja_in.join(FREYJA_DEMIX.out.demix), FREYJA_DATA.out.dataset)
+                ch_boot_raw = FREYJA_BOOT.out.raw.map { _meta, raw -> raw }
                 ch_boot_summary = FREYJA_BOOT.out.summary
                     .map { _meta, summary -> summary }
                     .toSortedList { a, b -> a.name <=> b.name }
@@ -655,6 +658,15 @@ workflow WASTELINE {
                 )
                 ch_lineage_summary = LINEAGE_SUMMARY.out.summary
                 ch_lineage_resolved = LINEAGE_SUMMARY.out.resolved
+                // --freyja_boot: 95 % intervals of the groups from the raw bootstrap draws (summary/lineage_group_intervals.tsv)
+                if (params.freyja_boot) {
+                    BOOT_GROUP_INTERVALS(
+                        FREYJA_AGGREGATE_PLOT.out.aggregated,
+                        ch_boot_raw.toSortedList { a, b -> a.name <=> b.name }.filter { files -> files }, // nothing when no sample was bootstrapped
+                        channel.value(lineageGroupsFile()),
+                        FREYJA_DATA.out.dataset,
+                    )
+                }
             }
         }
 

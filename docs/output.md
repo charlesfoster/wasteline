@@ -54,6 +54,7 @@ results/
 │   ├── dropout_impact_summary.tsv   per-sample totals of the above
 │   ├── unexplained_mutations.tsv    frequent variants the lineage mixture does not predict (usually empty)
 │   ├── freyja_boot_summary.tsv      only with --freyja_boot: 95% bootstrap interval per lineage
+│   ├── lineage_group_intervals.tsv  only with --freyja_boot and the lineage summary: 95% interval per lineage group
 │   ├── barcode_compare.tsv          only with --compare_barcodes: abundance with barcode set A and B
 │   ├── barcode_compare_status.tsv   only with --compare_barcodes: outcome of the second demix per sample
 │   ├── annotated_variants.tsv       only with --annotate_variants: amino-acid consequences, all samples
@@ -427,6 +428,28 @@ two SNVs giving `N501S`).
 
 The report shows these as a heatmap; cells with depth below `--consensus_min_depth` are drawn with a dashed outline.
 The per-sample piece is `samples/<s>/variants/<s>.mutations_of_interest.tsv`.
+
+### `summary/lineage_group_intervals.tsv`
+
+Only with `--freyja_boot` when the lineage summary is made (see [`lineage_summary.csv`](#summarylineage_summarycsv)). One row per sample x (every group of the groups file + `other`), long format, samples sorted, groups in the order of the groups file. Layout (illustrative: the real MIX_A bootstrap, 20 draws, with a small groups file):
+
+```
+sample  group             abundance  lo        hi        n_boot
+MIX_A   BA.2*             0.712121   0.669632  0.723015  20
+MIX_A   BA.5              0.000000   0.000000  0.034250  20
+MIX_A   B.1.1.529* (all)  0.712121   0.696395  0.729955  20
+MIX_A   other             0.287879   0.270045  0.303605  20
+```
+
+| Column      | Meaning                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `sample`    | Sample ID (never rewritten).                                                                                                   |
+| `group`     | A group name from the groups file, or `other`.                                                                                 |
+| `abundance` | The point estimate: the group sum of the sample's own demix (the value in `lineage_summary.csv`), not the bootstrap mean.      |
+| `lo`, `hi`  | The 2.5 and 97.5 percentiles of the group sum over the bootstrap draws (fractions 0-1; `--lineage_summary_decimals` decimals). |
+| `n_boot`    | Number of bootstrap draws used (`--freyja_boot_n`).                                                                            |
+
+Lineages are assigned to groups per draw exactly as in the lineage summary (a lineage can count in several groups; `other` is everything in no `in_total` group), then the draw's abundances are summed and the percentiles taken, so the interval of a group is correct even though its lineages are negatively correlated. A sample without a usable bootstrap is absent; negative controls that demixed are included here although `lineage_summary.csv` leaves them out. The task never fails the run.
 
 ### `summary/freyja_boot_summary.tsv`
 
@@ -817,6 +840,7 @@ Under `samples/<sample>/`. Which files exist depends on the mode and on the samp
 | `freyja/<s>.compare.demix`, `.compare.demix_status.json`, `.compare.depth_stats.json` | Only with `--compare_barcodes`: the same three files for the second barcode dataset (the status JSON carries dataset B's barcode version). `.compare.demix` only for status `ok`.                                                                                                                                                                                                                                                                |
 | `freyja/<s>.boot_summary.tsv`                                                         | Only with `--freyja_boot`: the sample's rows of `freyja_boot_summary.tsv` (data rows, no header).                                                                                                                                                                                                                                                                                                                                                |
 | `freyja/<s>.boot_lineages.csv`, `.boot_summarized.csv`                                | Only with `--freyja_boot`: Freyja's bootstrap quantile tables (rows `0.025` ... `0.975`; one column per lineage / summarized group).                                                                                                                                                                                                                                                                                                             |
+| `freyja/<s>.boot_lineages_boot.csv`                                                   | Only with `--freyja_boot` and the lineage summary: the raw bootstrap draws (`freyja boot --rawboots`; first column the draw index, one column per lineage), the input of `lineage_group_intervals.tsv`.                                                                                                                                                                                                                                          |
 | `freyja/<s>.boot_status.json`                                                         | Only with `--freyja_boot`: `{sample, status, reason}`; `failed` with the reason when the bootstrap failed (never fatal).                                                                                                                                                                                                                                                                                                                         |
 | `coverage/<s>.primertrimmed.flagstat`                                                 | `samtools flagstat` of the final BAM (mode `full`); named `<s>.mapped.flagstat` when nothing was primer-trimmed.                                                                                                                                                                                                                                                                                                                                 |
 | `coverage/<s>.amplicon_coverage.tsv`                                                  | The sample's rows of `amplicon_coverage.tsv`.                                                                                                                                                                                                                                                                                                                                                                                                    |

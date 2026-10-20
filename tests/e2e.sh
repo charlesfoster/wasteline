@@ -343,7 +343,7 @@ Omicron (all B.1.1.529*),B.1.1.529*,,yes
 Delta (B.1.617.2*),B.1.617.2*,,yes
 GROUPS
 run demix_groups --mode demix --previous_results "$SCRATCH/out_full" --barcodes container \
-    --lineage_groups "$SCRATCH/groups_custom.csv" --site_aggregation "$SCRATCH/sites_full.csv"
+    --lineage_groups "$SCRATCH/groups_custom.csv" --site_aggregation "$SCRATCH/sites_full.csv" --freyja_boot --freyja_boot_n 20
 "${PY[@]}" - "$SCRATCH" << 'PYCHECK' || fail=1
 import csv, json, sys
 
@@ -353,8 +353,25 @@ used = open(summary + "/lineage_groups_used.csv", "rb").read() == open(scratch +
 rows = {r["sample"]: r for r in csv.DictReader(open(summary + "/lineage_summary.csv"))}
 info = json.load(open(scratch + "/out_demix_groups/pipeline_info/run_info.json"))
 ungrouped = open(summary + "/lineage_ungrouped_summary.tsv").read().splitlines()[0]
+# --freyja_boot: lineage_group_intervals.tsv has one row per sample x (group + other) and its point estimates are the summary values
+intervals_text = open(summary + "/lineage_group_intervals.tsv").read()
+intervals = [r for r in csv.DictReader(intervals_text.splitlines(), delimiter="\t") if r["sample"] in rows]
+by_sample = {}
+for r in intervals:
+    by_sample.setdefault(r["sample"], {})[r["group"]] = r
+intervals_ok = (
+    intervals_text.splitlines()[0] == "sample\tgroup\tabundance\tlo\thi\tn_boot"
+    and set(by_sample) == {"MIX_A", "MIX_B", "PURE_C", "Site_1_week_2"}
+    and all(list(g) == ["Omicron (all B.1.1.529*)", "Delta (B.1.617.2*)", "other"] for g in by_sample.values())
+    and all(
+        abs(float(g[name]["abundance"]) - float(rows[sample][name] or 0)) < 1e-6
+        and float(g[name]["lo"]) <= float(g[name]["hi"]) and g[name]["n_boot"] == "20"
+        for sample, g in by_sample.items() for name in g
+    )
+)
 ok = (
     used
+    and intervals_ok
     and set(rows) == {"LOWCOV_D", "MIX_A", "MIX_B", "PURE_C", "Site_1_week_2"}
     and rows["MIX_A"]["status"] == "ok" and rows["LOWCOV_D"]["status"] != "ok"
     and info["lineage_groups_source"] == "custom" and info["lineage_groups_file"] == "groups_custom.csv"
@@ -362,7 +379,7 @@ ok = (
     and ungrouped.startswith("lineage\tn_samples")
     and (open(summary + "/site_aggregates_meta.tsv").read().count("\n") > 1)
 )
-print(("PASS" if ok else "FAIL") + "  demix mode: custom groups file used and copied back, one row per sample, negatives absent, run_info records the file, site aggregates written")
+print(("PASS" if ok else "FAIL") + "  demix mode: custom groups file used and copied back, one row per sample, negatives absent, run_info records the file, site aggregates written, group intervals (--freyja_boot) match the summary")
 sys.exit(0 if ok else 1)
 PYCHECK
 

@@ -15,6 +15,7 @@ process FREYJA_BOOT {
     tuple val(meta), path("${prefix}.boot_summary.tsv"),   emit: summary,    optional: true // data rows: sample, lineage, abundance, lo, hi
     tuple val(meta), path("${prefix}.boot_lineages.csv"),  emit: lineages,   optional: true
     tuple val(meta), path("${prefix}.boot_summarized.csv"), emit: summarized, optional: true
+    tuple val(meta), path("${prefix}.boot_lineages_boot.csv"), emit: raw, optional: true // the raw draws; only with `--rawboots` in ext.args
     tuple val(meta), path("${prefix}.boot_status.json"),   emit: status
     tuple val("${task.process}"), val('freyja'), eval('freyja --version | sed "s/.*version //"'), emit: versions_freyja, topic: versions
 
@@ -46,14 +47,16 @@ process FREYJA_BOOT {
             --demix ${demix} --output ${prefix}.boot_summary.tsv 2>> ${prefix}.boot.log; then
         write_status ok ""
     else
-        rm -f ${prefix}.boot_summary.tsv ${prefix}.boot_lineages.csv ${prefix}.boot_summarized.csv
+        rm -f ${prefix}.boot_summary.tsv ${prefix}.boot_lineages.csv ${prefix}.boot_summarized.csv ${prefix}.boot_lineages_boot.csv ${prefix}.boot_summarized_boot.csv
         write_status failed "freyja boot failed: \$(tail -n 3 ${prefix}.boot.log | tr '\\n' ' ' | cut -c1-300)"
     fi
     """
 
     stub:
     prefix = task.ext.prefix ?: "${meta.id}"
+    def raw_stub = (task.ext.args ?: '').contains('--rawboots') ? "printf ',stub\\n0,0.5\\n1,0.5\\n' > ${prefix}.boot_lineages_boot.csv" : ''
     """
+    ${raw_stub}
     printf '${meta.id}\\tstub\\t0.500000\\t0.400000\\t0.600000\\n' > ${prefix}.boot_summary.tsv
     printf ',stub\\n0.025,0.4\\n0.975,0.6\\n' > ${prefix}.boot_lineages.csv
     printf ',stub\\n0.025,0.4\\n0.975,0.6\\n' > ${prefix}.boot_summarized.csv
