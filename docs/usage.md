@@ -380,7 +380,7 @@ also work in `demix` mode (that is the cheap way to add them to an existing run)
 - **Legacy Snakemake results** (`<s>/freyja/<s>.freyja_variants.tsv`, `<s>/freyja/<s>.depths`, gzipped variants/depths
   accepted) are supported; their previous barcode version is recorded as `unknown`. Their variants were made with
   `--varthresh 0.25`, so a re-demix reuses that filtering. See [migration_from_snakemake.md](migration_from_snakemake.md).
-  The synthetic legacy fixture (`tests/fixtures/demix_legacy`) demixes with `--mode demix --previous_results`;
+  A legacy layout demixes with `--mode demix --previous_results`;
   <!-- UNVERIFIED: real Freyja 1.5.3 (Snakemake-era) variants/depths files were not available to test -->
 - A negative control with real coverage is demixed too (so contamination is visible) but kept out of the aggregate
   ([section 9](#9-negative-controls-and-qc-thresholds)).

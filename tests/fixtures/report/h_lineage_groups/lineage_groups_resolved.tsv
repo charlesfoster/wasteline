@@ -1,9 +1,0 @@
-group	include	exclude	in_total	n_lineages_matched	warnings	dataset_version	groups_sha256
-BA.2.86* (excludes JN.1*)	BA.2.86*	JN.1*	yes	2		01_02_2026-03-04	3cbeef2ff042316828f25f3ed6718a2dddd2d8eb88345c25f8189487d33c4c02
-BA.2.86* (includes JN.1*)	BA.2.86*		no	7		01_02_2026-03-04	3cbeef2ff042316828f25f3ed6718a2dddd2d8eb88345c25f8189487d33c4c02
-JN.1* (excludes KP.3*)	JN.1*	KP.3*	yes	3		01_02_2026-03-04	3cbeef2ff042316828f25f3ed6718a2dddd2d8eb88345c25f8189487d33c4c02
-JN.1* (includes KP.3*)	JN.1*		no	5		01_02_2026-03-04	3cbeef2ff042316828f25f3ed6718a2dddd2d8eb88345c25f8189487d33c4c02
-KP.3*	KP.3*		yes	2	in_total group overlaps in_total group 'JN.1* (excludes KP.3*)' on 2 lineage(s) (KP.3, KP.3.1); proportion_summary can exceed 1 (set in_total to no for the informational group)	01_02_2026-03-04	3cbeef2ff042316828f25f3ed6718a2dddd2d8eb88345c25f8189487d33c4c02
-NB.1.8* (alias XAA.1.7.8*)	XAA.1.7.8*		yes	1	pattern 'XAA.1.7.9*' is not a lineage of the dataset (typo, or newer than the dataset?) | matches no lineage in the dataset	01_02_2026-03-04	3cbeef2ff042316828f25f3ed6718a2dddd2d8eb88345c25f8189487d33c4c02
-Old Omicron, B.1.1.529* only	B.1.1.529*	BA.2.86*	yes	3		01_02_2026-03-04	3cbeef2ff042316828f25f3ed6718a2dddd2d8eb88345c25f8189487d33c4c02
-Recombinants (excludes NB.1*)	RECOMBINANT*	NB.1*	yes	5		01_02_2026-03-04	3cbeef2ff042316828f25f3ed6718a2dddd2d8eb88345c25f8189487d33c4c02

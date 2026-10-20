@@ -1,3 +1,0 @@
-sample	sample_type	collection_date	site	raw_reads	trimmed_reads	mapped_reads	mapped_pct	mean_depth	depth_sd	median_depth	pct_genome_ge_1x	pct_genome_ge_10x	pct_genome_ge_min_depth	amplicons_total	amplicons_dropped	qc_status	qc_reasons	demix_status	demix_reason	consensus_length	consensus_n_pct	barcode_version
-REAL_1	sample	2026-09-01	SiteA	NA	NA	NA	NA	612.31	532.14	485.00	99.81	99.73	99.70	99	0	PASS		NA	NA	NA	NA	NA
-REAL_2	sample	2026-09-08	SiteA	NA	NA	NA	NA	612.31	532.14	485.00	99.81	99.73	99.70	99	0	PASS		NA	NA	NA	NA	NA

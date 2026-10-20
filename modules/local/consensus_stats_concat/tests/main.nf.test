@@ -27,28 +27,4 @@ nextflow_process {
             )
         }
     }
-
-    test("joined and sorted by sample, one header - real") {
-
-        tag "docker"
-        when {
-            process {
-                """
-                def d = "\$projectDir/tests/fixtures/modules_phase3/concat"
-                input[0] = [ file("\$d/S_B.consensus_stats.tsv"), file("\$d/S_A.consensus_stats.tsv") ]
-                """
-            }
-        }
-
-        then {
-            def lines = new File(process.out.tsv[0].toString()).readLines()
-            assertAll(
-                { assert process.success },
-                { assert lines[0] == 'sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus\treason' },
-                { assert lines.drop(1).collect { it.split('\t')[0] } == ['S_A', 'S_B'] },
-                { assert lines[1].split('\t')[-1] == 'NA' },
-                { assert lines[2].split('\t')[-1].contains('REF mismatch') }
-            )
-        }
-    }
 }

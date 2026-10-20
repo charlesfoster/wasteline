@@ -1,2 +1,0 @@
-sample	sample_type	collection_date	site	raw_reads	trimmed_reads	mapped_reads	mapped_pct	mean_depth	depth_sd	median_depth	pct_genome_ge_1x	pct_genome_ge_10x	pct_genome_ge_min_depth	amplicons_total	amplicons_dropped	qc_status	qc_reasons	demix_status	demix_reason	consensus_length	consensus_n_pct	barcode_version	primer_trimmed_pct	primer_scheme_check	primer_scheme_best	primer_scheme_enrichment
-S_B	sample	NA	NA	NA	NA	NA	NA	22.50	12.99	30.00	75.00	75.00	75.00	2	0	WARN	low_coverage	NA	NA	NA	NA	NA	NA	NA	NA	NA

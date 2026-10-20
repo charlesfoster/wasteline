@@ -1,7 +1,0 @@
-	MIX_A.variants.tsv
-summarized	[('Omicron', 0.7121209999278063), ('Delta', 0.287879000132854)]
-lineages	BA.2 AY.4
-abundances	0.71212100 0.28787900
-resid	3.324458426135655
-coverage	99.33451493161222
-pathogen	SARS-CoV-2

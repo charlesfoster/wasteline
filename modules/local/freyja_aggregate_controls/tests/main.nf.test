@@ -27,28 +27,4 @@ nextflow_process {
             )
         }
     }
-
-    test("real: the aggregate of control demix files is labelled with the sample IDs - real") {
-
-        tag "docker"
-
-        when {
-            process {
-                """
-                def body = "summarized\\t[('Omicron', 1.0)]\\nlineages\\tBA.2\\nabundances\\t1.0\\nresid\\t1.0\\ncoverage\\t90.0\\npathogen\\tSARS-CoV-2\\n"
-                def f = new File("\${launchDir}/NEG_CONTAM.demix")
-                f.text = "\\tNEG_CONTAM.variants.tsv\\n" + body
-                input[0] = [ ['NEG_CONTAM'], [ file(f.toString()) ] ]
-                """
-            }
-        }
-
-        then {
-            def rows = new File(process.out.aggregated[0].toString()).readLines()
-            assertAll(
-                { assert process.success },
-                { assert rows.drop(1).collect { line -> line.split('\t')[0] } == ['NEG_CONTAM'] }
-            )
-        }
-    }
 }

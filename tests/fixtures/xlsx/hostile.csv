@@ -1,7 +1,0 @@
-sample,group a & b,value,note
-S<1>,0.25,0.5,=cmd|' /C calc'!A0
-S&2,,0.01,+1+1
-007,0.9,1e-3,-2+3
-"S""4",0.05,nan,@SUM(1)
-café 中,0,,"line1
-line2"

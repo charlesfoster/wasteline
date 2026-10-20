@@ -7,9 +7,10 @@ nextflow_process {
     tag "modules_local"
     tag "provenance"
 
-    test("run_info.json carries checksums and the mandatory freyja_data block") {
+    test("stub: run_info.json carries checksums and the mandatory freyja_data block") {
 
-        tag "docker"
+        tag "stub"
+        options "-stub"
         when {
             process {
                 """

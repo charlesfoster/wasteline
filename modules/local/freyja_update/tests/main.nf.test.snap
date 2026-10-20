@@ -1,16 +1,4 @@
 {
-    "container - stub": {
-        "content": [
-            [
-                "container_dataset"
-            ]
-        ],
-        "timestamp": "2026-10-15T20:29:01.622714",
-        "meta": {
-            "nf-test": "0.9.5",
-            "nextflow": "26.10.0"
-        }
-    },
     "latest - stub": {
         "content": [
             [

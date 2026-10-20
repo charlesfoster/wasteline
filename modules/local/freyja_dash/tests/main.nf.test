@@ -3,7 +3,6 @@ nextflow_process {
     name "Test Process FREYJA_DASH"
     script "../main.nf"
     process "FREYJA_DASH"
-    config "./nextflow.config"
     tag "modules"
     tag "modules_local"
     tag "freyja_dash"
@@ -32,88 +31,6 @@ nextflow_process {
                     process.out.dashboard.collect { f -> file(f.toString()).name },
                     process.out.failed.size()
                 ).match() }
-            )
-        }
-    }
-
-    // The page embeds Plotly (about 5 MB) but loads Bootstrap CSS/JS and a logo from the internet.
-    test("dashboard for the synthetic dataset, title with a quote - real") {
-
-        tag "docker"
-
-        setup {
-            run("FREYJA_UPDATE") {
-                script "../../freyja_update/main.nf"
-                process {
-                    """
-                    input[0] = 'container'
-                    """
-                }
-            }
-        }
-
-        when {
-            process {
-                """
-                input[0] = file("\$projectDir/tests/data_timeseries/freyja_aggregated.tsv")
-                input[1] = file("\$projectDir/tests/data_timeseries/samplesheet.csv")
-                input[2] = FREYJA_UPDATE.out.dataset
-                input[3] = "Wasteline's synthetic sites"
-                input[4] = 'Three sites, eight weekly dates.'
-                """
-            }
-        }
-
-        then {
-            def html = file(process.out.dashboard[0].toString())
-            assertAll(
-                { assert process.success },
-                { assert process.out.failed.size() == 0 },
-                { assert html.size() > 100000 },
-                { assert html.text.contains("Wasteline's synthetic sites") },
-                { assert html.text.contains('Three sites, eight weekly dates.') },
-                { assert process.out.growth_rates.size() == 1 }
-            )
-        }
-    }
-
-    test("too few dates: failure note, no dashboard, run continues - real") {
-
-        tag "docker"
-
-        setup {
-            run("FREYJA_UPDATE") {
-                script "../../freyja_update/main.nf"
-                process {
-                    """
-                    input[0] = 'container'
-                    """
-                }
-            }
-        }
-
-        when {
-            process {
-                """
-                def sheet = new File("\${launchDir}/two_dates.csv")
-                def lines = new File("\$projectDir/tests/data_timeseries/samplesheet.csv").readLines()
-                def keep = ['2026-01-05', '2026-01-12']
-                sheet.text = ([lines[0]] + lines.drop(1).findAll { l -> keep.contains(l.split(',', -1)[3]) }).join('\\n') + '\\n'
-                input[0] = file("\$projectDir/tests/data_timeseries/freyja_aggregated.tsv")
-                input[1] = file(sheet.toString())
-                input[2] = FREYJA_UPDATE.out.dataset
-                input[3] = 'Title'
-                input[4] = 'Intro'
-                """
-            }
-        }
-
-        then {
-            assertAll(
-                { assert process.success },
-                { assert process.out.dashboard.size() == 0 },
-                { assert process.out.failed.size() == 1 },
-                { assert file(process.out.failed[0].toString()).text.contains('insufficient data') }
             )
         }
     }

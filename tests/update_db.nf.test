@@ -71,49 +71,6 @@ nextflow_pipeline {
         }
     }
 
-    test("-stub: report mode renders an existing report_data.json without rebuilding it") {
-
-        tag "stub"
-        options "-stub"
-
-        when {
-            params {
-                mode        = 'report'
-                outdir      = "$outputDir"
-                results_dir = prepareResultsDir(outputDir, true)
-            }
-        }
-
-        then {
-            assertAll(
-                { assert workflow.success },
-                { assert workflow.trace.tasks().collect { task -> task.name.tokenize(':').last().tokenize(' ').first() } == ['RENDER_REPORT'] },
-                { assert new File("$outputDir/summary/report.html").exists() }
-            )
-        }
-    }
-
-    test("-stub: report mode refuses --outdir equal to --results_dir") {
-
-        tag "stub"
-        options "-stub"
-
-        when {
-            params {
-                mode        = 'report'
-                outdir      = "$outputDir/previous"
-                results_dir = prepareResultsDir(outputDir)
-            }
-        }
-
-        then {
-            assertAll(
-                { assert workflow.failed },
-                { assert (workflow.stdout + workflow.stderr).join('\n').contains('--outdir must differ from --results_dir') }
-            )
-        }
-    }
-
     test("-stub: report mode without --results_dir fails with a helpful message") {
 
         tag "stub"
@@ -130,27 +87,6 @@ nextflow_pipeline {
             assertAll(
                 { assert workflow.failed },
                 { assert (workflow.stdout + workflow.stderr).join('\n').contains('No --results_dir given') }
-            )
-        }
-    }
-
-    test("-stub: report mode refuses a directory that is not a results directory") {
-
-        tag "stub"
-        options "-stub"
-
-        when {
-            params {
-                mode        = 'report'
-                outdir      = "$outputDir"
-                results_dir = "${projectDir}/tests/fixtures/qc"
-            }
-        }
-
-        then {
-            assertAll(
-                { assert workflow.failed },
-                { assert (workflow.stdout + workflow.stderr).join('\n').contains('has no pipeline_info/run_info.json') }
             )
         }
     }

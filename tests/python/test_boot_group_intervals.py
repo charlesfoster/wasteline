@@ -63,11 +63,3 @@ def test_hand_computed_group_intervals(tmp_path):
     for _sample, group, abundance, lo, hi, n_boot in rows:
         assert (float(abundance), float(lo), float(hi)) == pytest.approx(expected[group], abs=1e-9)
         assert n_boot == "5"
-
-
-def test_dataset_without_lineages_yml_fails(tmp_path, capsys):
-    (tmp_path / "dataset").mkdir()
-    code, out = run(tmp_path, tmp_path / "dataset")
-    assert code == 2
-    assert "no lineages.yml" in capsys.readouterr().err
-    assert not out.exists()

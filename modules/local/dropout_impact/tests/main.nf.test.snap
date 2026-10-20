@@ -1,34 +1,4 @@
 {
-    "tiny dataset directory with lineage_mutations.json - real": {
-        "content": [
-            [
-                "dropout_impact.tsv:md5,fbf15ca8fbf350a05f77963bd9fc52f3"
-            ],
-            [
-                "dropout_impact_summary.tsv:md5,b0b1dd0cf7e7f2bd62bd639cb478bece"
-            ]
-        ],
-        "timestamp": "2026-10-19T21:27:02.352511",
-        "meta": {
-            "nf-test": "0.9.5",
-            "nextflow": "26.10.0"
-        }
-    },
-    "defining sites from a lineage hierarchy (lineages.yml) - real": {
-        "content": [
-            [
-                "dropout_impact.tsv:md5,072d4e48f9ac69396fe6301cd82224da"
-            ],
-            [
-                "dropout_impact_summary.tsv:md5,c9ff0ea03d0c0491ab8bbdf5191768f7"
-            ]
-        ],
-        "timestamp": "2026-10-19T21:27:09.365786",
-        "meta": {
-            "nf-test": "0.9.5",
-            "nextflow": "26.10.0"
-        }
-    },
     "stub": {
         "content": [
             [

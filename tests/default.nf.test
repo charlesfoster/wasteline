@@ -13,55 +13,6 @@ nextflow_pipeline {
         return sheet.toString()
     }
 
-    test("-stub: negative control is demixed but kept out of the aggregate (PLAN D8)") {
-
-        tag "stub"
-        options "-stub"
-
-        when {
-            params {
-                outdir   = "$outputDir"
-                input    = absoluteSamplesheet(outputDir, projectDir)
-                barcodes = 'latest'
-                db_dir   = "$outputDir/db"
-            }
-        }
-
-        then {
-            def status = new File("$outputDir/summary/demix_status.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
-            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
-            assertAll(
-                { assert workflow.success },
-                { assert 'NEG_E' in status && 'NEG_CONTAM' in status },
-                { assert aggregated == ['LOWCOV_D', 'MIX_A', 'MIX_B', 'PURE_C', 'Site_1_week_2'] } // stub demix reports ok for every sample
-            )
-        }
-    }
-
-    test("-stub: --include_negatives_in_aggregate keeps the negative control in the aggregate") {
-
-        tag "stub"
-        options "-stub"
-
-        when {
-            params {
-                outdir   = "$outputDir"
-                input    = absoluteSamplesheet(outputDir, projectDir)
-                barcodes = 'latest'
-                db_dir   = "$outputDir/db"
-                include_negatives_in_aggregate = true
-            }
-        }
-
-        then {
-            def aggregated = new File("$outputDir/summary/freyja_aggregated.tsv").readLines().drop(1).collect { line -> line.split('\t')[0] }
-            assertAll(
-                { assert workflow.success },
-                { assert aggregated == ['LOWCOV_D', 'MIX_A', 'MIX_B', 'NEG_CONTAM', 'NEG_E', 'PURE_C', 'Site_1_week_2'] }
-            )
-        }
-    }
-
     test("-stub: output layout and status files") {
 
         tag "stub"

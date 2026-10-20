@@ -1,9 +1,0 @@
-sample	status	reason	genome_coverage_pct	barcode_version	barcode_version_iso
-ALLX_3	ok		99.0	01_02_2026-03-04	2026-01-02T03-04
-FAIL_5	failed	freyja demix errored: boom	88.1	01_02_2026-03-04	2026-01-02T03-04
-LOW_6	skipped_low_coverage	less than 60% of the genome covered at >= 10x	12.5	01_02_2026-03-04	2026-01-02T03-04
-MISS_7	missing	empty demix file (failed in the old pipeline)			
-Mixed_4	ok		75.0	01_02_2026-03-04	2026-01-02T03-04
-NEG_1	ok		80.0	01_02_2026-03-04	2026-01-02T03-04
-NOAGG_8	ok		90.0	01_02_2026-03-04	2026-01-02T03-04
-Site_1_week_2	ok		93.0576	01_02_2026-03-04	2026-01-02T03-04

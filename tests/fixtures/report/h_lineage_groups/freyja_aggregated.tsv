@@ -1,5 +1,0 @@
-	summarized	lineages	abundances	resid	coverage	pathogen
-Site_1_week_2.variants.tsv	[('Omicron', 1.0)]	JN.1.16 KP.3.1 BA.5 XAA.1.1 A.1 NB.1.8 ZZ.9	0.55000000 0.25000000 0.10000000 0.05000000 0.03000000 0.01950000 0.00050000	1.5	93.0576	SARS-CoV-2
-ALLX_3.variants.tsv	[('Omicron', 1.0)]	XAA	1.00000000	1.5	99.0	SARS-CoV-2
-NEG_1.variants.tsv	[('Omicron', 1.0)]	A.1	1.00000000	1.5	80.0	SARS-CoV-2
-Mixed_4.variants.tsv	[('Omicron', 1.0)]	XBB.1 LP.8.1	0.60000000 0.40000000	1.5	75.0	SARS-CoV-2

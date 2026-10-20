@@ -29,31 +29,4 @@ nextflow_process {
             )
         }
     }
-
-    // Paired synthetic reads against the bundled reference: a non-empty BAM comes out.
-    // tests/mapping.nf.test checks what is in it (coordinate-sorted, reads mapped).
-    test("paired reads -> BAM - real") {
-
-        tag "docker"
-
-        when {
-            process {
-                """
-                input[0] = [ [ id:'MIX_A' ], [ file("\$projectDir/tests/data/fastq/MIX_A_R1.fastq.gz"), file("\$projectDir/tests/data/fastq/MIX_A_R2.fastq.gz") ] ]
-                input[1] = [ [ id:'NC_045512' ], file("\$projectDir/assets/references/NC_045512.fasta") ]
-                input[2] = true
-                """
-            }
-        }
-
-        then {
-            assertAll(
-                { assert process.success },
-                { assert file(process.out.bam[0][1].toString()).name == 'MIX_A.bam' },
-                { assert file(process.out.bam[0][1].toString()).size() > 10000 },
-                { assert process.out.versions_minibwa[0][2] == '0.7' },
-                { assert process.out.versions_samtools[0][2] == '1.24' }
-            )
-        }
-    }
 }

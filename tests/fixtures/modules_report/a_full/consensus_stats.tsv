@@ -1,7 +1,0 @@
-sample	length	n_count	n_pct	ambiguous_count	status
-NTC_01	29903	29903	100.00	0	empty
-WW_001	29903	10	0.03	1	ok
-WW_002	29903	120	0.40	2	ok
-WW_003.rep1	29903	900	3.01	0	ok
-WW_004	29903	20000	66.88	0	ok
-WW_005	29903	300	1.00	0	ok

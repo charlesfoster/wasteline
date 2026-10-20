@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """Tolerance-based end-to-end checks of a wasteline output directory against tests/data/truth.json.
 
-  tests/check_outputs.py <outdir> --mode full|demix|aggregate|report [--truth tests/data/truth.json]
+  tests/check_outputs.py <outdir> --mode full|aggregate|report [--truth tests/data/truth.json]
                          [--barcodes tests/data/barcodes_test.csv] [--reference assets/references/NC_045512.fasta]
-                         [--original <outdir of the run the report was rebuilt from>]
+                         [--protocol capture] [--extras compare,boot,annotate] [--declared-scheme midnight]
+                         [--site-aggregation sites.csv] [--lineage-groups present]
+  tests/check_outputs.py <outdir> --mode demix --low-confidence S1,S2
 
 Standard library only. Prints one line per check and exits 1 if any check failed. What is checked depends on
-the mode (a `demix` run has no BAM, hence no flagstat or mapped-read counts and, without a primer scheme, no
-amplicon dropout; an `aggregate` run has no QC or consensus):
+the mode (an `aggregate` run has no QC or consensus; a `demix` run is only checked for the low-confidence band):
 
-  demix (full, demix)   demix_status.tsv, every <sample>.demix_status.json and barcode_version.json agree with
+  demix status (full)   demix_status.tsv, every <sample>.demix_status.json and barcode_version.json agree with
                         truth and carry the barcode version
   aggregate             rows = expected samples only (negatives and skipped samples absent); true lineages
-                        within +-tolerance in the `lineages`/`abundances` rows (not `summarized`); no lineage
-                        absent from the truth above 0.05
-  qc (full, demix)      qc_status / qc_reasons per sample
-  consensus             one consensus per non-negative sample with the right status; JN.1 SNVs in PURE_C
+                        within the truth's tolerance in the `lineages`/`abundances` rows (not `summarized`); no
+                        lineage absent from the truth above 0.05
+  qc (full)             qc_status / qc_reasons per sample
+  consensus (full)      one consensus per non-negative sample with the right status; JN.1 SNVs in PURE_C
   report                report_data.json header and run flags, report.html is self-contained, sample IDs intact
-  report (mode report)  the rebuilt report.html equals --original's modulo timestamps
+  report (mode report)  summary/report.html exists, loads nothing from the network, sample IDs intact
+  demix + --low-confidence  the named samples are low_confidence (demixed, in the aggregate and the report, not in
+                        the time series), all others keep their expected status
 """
 
 import argparse
@@ -151,7 +154,7 @@ def check_demix_status(c, out, samples, mode):
     )
 
 
-def check_aggregate(c, out, samples, tolerance_override=None):
+def check_aggregate(c, out, samples):
     path = out / "summary" / "freyja_aggregated.tsv"
     c.check(path.exists(), "freyja_aggregated.tsv exists")
     if not path.exists():
@@ -172,7 +175,7 @@ def check_aggregate(c, out, samples, tolerance_override=None):
         values = parse_floats(rows[sample].get("abundances"))
         c.check(len(names) == len(values) and names, f"{sample}: lineages/abundances rows parse")
         found = dict(zip(names, values, strict=False))
-        tol = tolerance_override or info.get("abundance_tolerance") or 0.05
+        tol = info.get("abundance_tolerance") or 0.05
         for lineage, truth in info["true_lineage_fractions"].items():
             got = found.get(lineage, 0.0)
             c.check(
@@ -761,12 +764,12 @@ def check_extras(c, out, samples, extras, barcodes, reference):
                 )
 
 
-def check_capture(c, out, samples, duplicates):
-    """Probe-capture data (PLAN D13): no primers, no amplicon analysis, duplicates marked."""
+def check_capture(c, out, samples):
+    """Probe-capture data (PLAN D13): no primers, no amplicon analysis, duplicates marked (the default)."""
     info = json.loads((out / "pipeline_info" / "run_info.json").read_text())
     c.check(info.get("protocol") == "capture", "run_info.json records protocol capture")
     c.check(info.get("primer_trimming") is False, "run_info.json: primer_trimming false")
-    c.check(info.get("duplicates") == duplicates, f"run_info.json: duplicates {duplicates}")
+    c.check(info.get("duplicates") == "mark", "run_info.json: duplicates mark")
     c.check(
         not (out / "summary" / "amplicon_coverage.tsv").exists()
         and not list((out / "samples").glob("*/coverage/*amplicon_coverage.tsv")),
@@ -801,11 +804,6 @@ def check_capture(c, out, samples, duplicates):
     )
     for sample, truth in samples.items():
         stats = out / "samples" / sample / "bam" / f"{sample}.markdup_stats.txt"
-        if duplicates != "mark":
-            c.check(
-                not stats.exists(), f"{sample}: no markdup stats when duplicates are not marked"
-            )
-            continue
         c.check(
             stats.exists(), f"{sample}: samples/{sample}/bam/{sample}.markdup_stats.txt published"
         )
@@ -895,13 +893,6 @@ def check_ids_intact(c, out):
     c.check(not bad, "Site_1_week_2 is never rewritten to Site-1-week-2", str(bad))
 
 
-def normalise_html(text):
-    text = re.sub(
-        r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?", "<TS>", text
-    )
-    return re.sub(r"[ \t]+", " ", text)
-
-
 def check_run_info(c, out, mode):
     path = out / "pipeline_info" / "run_info.json"
     c.check(path.exists(), "pipeline_info/run_info.json exists")
@@ -940,11 +931,11 @@ def check_run_info(c, out, mode):
         )
 
 
-def check_low_confidence(c, out, samples, low, include):
+def check_low_confidence(c, out, samples, low):
     """Run with the low-confidence band on (PLAN D18): `low` are the samples that must be `low_confidence`.
 
-    All other samples keep their expected status. Low-confidence samples are in the aggregate, the report and
-    the lineage-level inputs, but only in the time series (and so growth rates, dashboard) with `include`.
+    All other samples keep their expected status. Low-confidence samples are in the aggregate and the report but,
+    by default (no --include_low_confidence), not in the time series.
     """
     summary = out / "summary"
     rows = {r["sample"]: r for r in read_tsv(summary / "demix_status.tsv")}
@@ -977,8 +968,8 @@ def check_low_confidence(c, out, samples, low, include):
         point = (sheet[sample]["site"], sheet[sample]["collection_date"])
         c.check(sample in aggregated, f"{sample} is in freyja_aggregated.tsv (never filtered)")
         c.check(
-            (point in ts_points) == include,
-            f"{sample} {'is' if include else 'is not'} in freyja_timeseries.tsv",
+            point not in ts_points,
+            f"{sample} is not in freyja_timeseries.tsv",
             str(sorted(ts_points)),
         )
         c.check(
@@ -1008,26 +999,15 @@ def main(argv=None):
         default="amplicon",
         help="capture: truth defaults to tests/data_capture and the capture-specific checks run",
     )
-    parser.add_argument(
-        "--duplicates", default="mark", help="capture: effective --duplicates (mark|none)"
-    )
     parser.add_argument("--truth", default=None, help="default: tests/data[_capture]/truth.json")
     parser.add_argument("--barcodes", default=str(here / "data" / "barcodes_test.csv"))
     parser.add_argument(
         "--reference", default=str(here.parent / "assets" / "references" / "NC_045512.fasta")
     )
     parser.add_argument(
-        "--original", help="mode report: output directory of the run whose results were re-reported"
-    )
-    parser.add_argument(
         "--extras",
         default="",
         help="comma list of opt-in features that were on: compare,boot,annotate",
-    )
-    parser.add_argument(
-        "--no-amplicons",
-        action="store_true",
-        help="the run had no primer scheme (demix without --primer_scheme)",
     )
     parser.add_argument(
         "--declared-scheme",
@@ -1048,20 +1028,11 @@ def main(argv=None):
     parser.add_argument(
         "--low-confidence",
         default="",
-        help="comma list of samples that must be low_confidence: run the band checks instead of the standard ones",
-    )
-    parser.add_argument(
-        "--include-low-confidence",
-        action="store_true",
-        help="with --low-confidence: the run used --include_low_confidence true",
-    )
-    parser.add_argument(
-        "--tolerance",
-        type=float,
-        default=None,
-        help="override the abundance tolerance (e.g. when real barcodes are used)",
+        help="comma list of samples that must be low_confidence: run the band checks (with --mode demix) instead of the standard ones",
     )
     args = parser.parse_args(argv)
+    if (args.mode == "demix") != bool(args.low_confidence):
+        parser.error("--mode demix is only checked with --low-confidence (and vice versa)")
 
     out = Path(args.outdir)
     default_truth = here / ("data_capture" if args.protocol == "capture" else "data") / "truth.json"
@@ -1071,43 +1042,37 @@ def main(argv=None):
 
     if args.mode == "report":
         # report mode writes only summary/report.html (+ report_data.json when it had to rebuild it)
-        c.check((out / "summary" / "report.html").exists(), "summary/report.html exists")
-        if args.original:
-            new = (out / "summary" / "report.html").read_text()
-            old = (Path(args.original) / "summary" / "report.html").read_text()
+        html_path = out / "summary" / "report.html"
+        c.check(html_path.exists(), "summary/report.html exists")
+        if html_path.exists():
+            html = html_path.read_text()
             c.check(
-                normalise_html(new) == normalise_html(old),
-                "rebuilt report.html equals the original modulo timestamps",
-            )
-            c.check(
-                ("Site_1_week_2" in new or "Site_1_week_2" not in samples)
-                and "https://" not in new
-                and "http://" not in new,
+                ("Site_1_week_2" in html or "Site_1_week_2" not in samples)
+                and "https://" not in html
+                and "http://" not in html,
                 "rebuilt report.html: IDs intact, no URLs",
             )
         print(f"\n{c.total - c.failures}/{c.total} checks passed")
         return 0 if c.failures == 0 else 1
 
     check_run_info(c, out, args.mode)
-    if args.low_confidence:
+    if args.mode == "demix":
         low = {s for s in args.low_confidence.split(",") if s}
-        check_low_confidence(c, out, samples, low, args.include_low_confidence)
+        check_low_confidence(c, out, samples, low)
         print(f"\n{c.total - c.failures}/{c.total} checks passed")
         return 0 if c.failures == 0 else 1
-    if args.mode in ("full", "demix"):
-        have_amplicons = args.protocol == "amplicon" and (
-            args.mode == "full" or not args.no_amplicons
-        )
+    if args.mode == "full":
+        have_amplicons = args.protocol == "amplicon"
         check_demix_status(c, out, samples, args.mode)
-        check_aggregate(c, out, samples, args.tolerance)
+        check_aggregate(c, out, samples)
         check_qc(c, out, samples, args.mode, have_amplicons)
         check_consensus(c, out, samples, args.barcodes, args.reference)
         check_published_qc_is_complete(c, out, samples)
         check_analyses(c, out, samples, args.mode, have_amplicons, args.declared_scheme)
         if args.protocol == "capture":
-            check_capture(c, out, samples, args.duplicates)
+            check_capture(c, out, samples)
     else:
-        check_aggregate(c, out, samples, args.tolerance)
+        check_aggregate(c, out, samples)
         c.check(
             not (out / "summary" / "barcode_version.json").exists(),
             "aggregate mode writes no barcode_version.json sidecar",

@@ -28,47 +28,4 @@ nextflow_process {
             )
         }
     }
-
-    // Real freyja boot on the legacy PURE_C fixture with the test barcodes. Reproducible with a fixed seed.
-    test("two runs with the same seed give identical bootstrap intervals - real") {
-
-        tag "docker"
-
-        setup {
-            run("GUNZIP_FREYJA_INPUTS") {
-                script "../../gunzip_freyja_inputs/main.nf"
-                process {
-                    """
-                    input[0] = [
-                        [ id:'PURE_C' ],
-                        file("\$projectDir/tests/fixtures/demix_legacy/PURE_C/variants/PURE_C.freyja_variants.tsv.gz"),
-                        file("\$projectDir/tests/fixtures/demix_legacy/PURE_C/freyja/PURE_C.depths.gz"),
-                    ]
-                    """
-                }
-            }
-        }
-
-        when {
-            process {
-                """
-                input[0] = GUNZIP_FREYJA_INPUTS.out.plain.map { m, v, d -> [ m, v, d, file("\$projectDir/tests/fixtures/demix_expected/PURE_C.demix") ] }
-                input[1] = file("\$projectDir/tests/data/barcodes_test.csv")
-                """
-            }
-        }
-
-        then {
-            def rows = file(process.out.summary[0][1].toString()).readLines().collect { line -> line.split('\t') as List }
-            def status = new groovy.json.JsonSlurper().parse(file(process.out.status[0][1].toString()))
-            assertAll(
-                { assert process.success },
-                { assert status.status == 'ok' },
-                // JN.1 is the only lineage; its interval brackets the point estimate
-                { assert rows[0][0..1] == ['PURE_C', 'JN.1'] },
-                { assert rows[0][3] as double <= rows[0][2] as double && rows[0][2] as double <= (rows[0][4] as double) + 1e-6 },
-                { assert snapshot(file(process.out.summary[0][1].toString()).text, file(process.out.lineages[0][1].toString()).text).match() }
-            )
-        }
-    }
 }

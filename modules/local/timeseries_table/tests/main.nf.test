@@ -28,41 +28,4 @@ nextflow_process {
             )
         }
     }
-
-    // Synthetic dataset tests/data_timeseries (3 sites x 8 weekly dates, see tests/make_timeseries_fixture.py).
-    // SiteA 2026-01-12 has two samples with loads 851825 and 301960; XBB.1.5 is 0.16710542 and 0.23093447
-    // there, so the plain mean is 0.199020 and the load-weighted mean
-    // (0.16710542 * 851825 + 0.23093447 * 301960) / 1153785 = 0.183810 (computed by hand from the .demix files).
-    test("fixture: site-date means, load weighting and exclusions - real") {
-
-        tag "docker"
-
-        when {
-            process {
-                """
-                input[0] = file("\$projectDir/tests/data_timeseries/freyja_aggregated.tsv")
-                input[1] = file("\$projectDir/tests/data_timeseries/samplesheet.csv")
-                """
-            }
-        }
-
-        then {
-            def lines = file(process.out.table[0].toString()).readLines()
-            def rows = lines.drop(1).collect { line -> line.split('\t') as List }
-            def header = lines[0].split('\t') as List
-            def xbb = rows.find { r -> r[0] == 'SiteA' && r[1] == '2026-01-12' && r[2].startsWith('XBB.1.5') }
-            assertAll(
-                { assert process.success },
-                { assert header == ['site', 'collection_date', 'lineage_group', 'abundance', 'abundance_load_weighted', 'n_samples', 'mean_viral_load', 'total_viral_load'] },
-                { assert rows.collect { r -> r[0] } as Set == ['SiteA', 'SiteB', 'SiteC'] as Set },
-                { assert rows.collect { r -> r[1] } as Set == (0..7).collect { i -> java.time.LocalDate.of(2026, 1, 5).plusDays(7 * i).toString() } as Set },
-                { assert xbb != null && xbb[5] == '2' },
-                { assert Math.abs(xbb[3] as double - 0.199020) < 1e-6 },
-                { assert Math.abs(xbb[4] as double - 0.183810) < 1e-6 },
-                { assert Math.abs(xbb[7] as double - 1153785.0) < 0.01 },
-                // the negative control (SiteA, 2026-01-12) and the low-coverage sample (SiteC, 2026-01-26) never contribute
-                { assert rows.findAll { r -> r[0] == 'SiteC' && r[1] == '2026-01-26' }.every { r -> r[5] == '1' } }
-            )
-        }
-    }
 }

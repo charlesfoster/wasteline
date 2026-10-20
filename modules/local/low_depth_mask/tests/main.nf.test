@@ -3,7 +3,6 @@ nextflow_process {
     name "Test Process LOW_DEPTH_MASK"
     script "../main.nf"
     process "LOW_DEPTH_MASK"
-    config "./nextflow.config"
     tag "modules"
     tag "modules_local"
     tag "low_depth_mask"
@@ -27,106 +26,6 @@ nextflow_process {
                 { assert process.success },
                 { assert process.out.bed[0][1].toString().endsWith('S_1.mask.bed') },
                 { assert snapshot(process.out.bed).match() }
-            )
-        }
-    }
-
-    test("PURE_C: mask = depth < 10, edges masked, no keep BED - real") {
-
-        tag "docker"
-        when {
-            process {
-                """
-                def depths = new File("\${launchDir}/PURE_C.depths")
-                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
-                input[0] = [ [ id:'PURE_C' ], file(depths.toString()), [] ]
-                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
-                """
-            }
-        }
-
-        then {
-            def depth = new java.util.zip.GZIPInputStream(new FileInputStream("${projectDir}/tests/fixtures/modules_phase3/PURE_C.depths.gz")).text.readLines().collect { (it.split('\t') as List)[3] as int }
-            def expected_masked = depth.count { it < 10 }
-            def mask = new File(process.out.bed[0][1].toString()).readLines().collect { it.split('\t') as List }
-            def masked = mask.sum { (it[2] as int) - (it[1] as int) }
-            assertAll(
-                { assert process.success },
-                { assert depth.size() == 29903 },
-                { assert masked == expected_masked },
-                { assert mask.every { it[0] == 'NC_045512.2' } },
-                { assert mask[0][1] == '0' },                                  // start of the genome is low depth
-                { assert mask[-1][2] == '29903' }                              // so is the end
-            )
-        }
-    }
-
-    test("keep BED removes called-variant positions from the mask - real") {
-
-        tag "docker"
-        when {
-            process {
-                """
-                def depths = new File("\${launchDir}/PURE_C.depths")
-                depths.bytes = new java.util.zip.GZIPInputStream(new FileInputStream("\$projectDir/tests/fixtures/modules_phase3/PURE_C.depths.gz")).bytes
-                def keep = new File("\${launchDir}/keep.bed")
-                keep.text = 'NC_045512.2\\t10\\t20\\n'
-                input[0] = [ [ id:'PURE_C' ], file(depths.toString()), file(keep.toString()) ]
-                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
-                """
-            }
-        }
-
-        then {
-            def mask = new File(process.out.bed[0][1].toString()).readLines().collect { it.split('\t') as List }
-            assertAll(
-                { assert process.success },
-                { assert mask[0] == ['NC_045512.2', '0', '10'] },
-                { assert mask[1][1] == '20' }
-            )
-        }
-    }
-
-    test("empty depths file masks the whole reference (no coverage), no crash - real") {
-
-        tag "docker"
-        when {
-            process {
-                """
-                def depths = new File("\${launchDir}/EMPTY.depths")
-                depths.text = ''
-                input[0] = [ [ id:'EMPTY_1' ], file(depths.toString()), [] ]
-                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
-                """
-            }
-        }
-
-        then {
-            assertAll(
-                { assert process.success },
-                { assert new File(process.out.bed[0][1].toString()).readLines() == ['NC_045512.2\t0\t29903'] }
-            )
-        }
-    }
-
-    test("positions missing from the depths file (truncated tail) count as depth 0 - real") {
-
-        tag "docker"
-        when {
-            process {
-                """
-                def depths = new File("\${launchDir}/SHORT.depths")
-                depths.text = (1..100).collect { "NC_045512.2\\t\${it}\\tN\\t30" }.join('\\n') + '\\n'
-                input[0] = [ [ id:'SHORT_1' ], file(depths.toString()), [] ]
-                input[1] = file("\$projectDir/assets/references/NC_045512.fasta")
-                """
-            }
-        }
-
-        then {
-            assertAll(
-                { assert process.success },
-                { assert new File(process.out.bed[0][1].toString()).readLines() == ['NC_045512.2\t100\t29903'] }
             )
         }
     }

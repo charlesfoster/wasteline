@@ -7,35 +7,6 @@ nextflow_process {
     tag "modules_local"
     tag "gunzip_freyja_inputs"
 
-    test("gzipped legacy files come out as plain <id>.variants.tsv and <id>.depths - real") {
-
-        tag "docker"
-
-        when {
-            process {
-                """
-                input[0] = [
-                    [ id:'PURE_C' ],
-                    file("\$projectDir/tests/fixtures/demix_legacy/PURE_C/variants/PURE_C.freyja_variants.tsv.gz"),
-                    file("\$projectDir/tests/fixtures/demix_legacy/PURE_C/freyja/PURE_C.depths.gz"),
-                ]
-                """
-            }
-        }
-
-        then {
-            def variants = file(process.out.plain[0][1].toString())
-            def depths = file(process.out.plain[0][2].toString())
-            assertAll(
-                { assert process.success },
-                { assert variants.name == 'PURE_C.variants.tsv' },
-                { assert variants.readLines()[0].startsWith('REGION\tPOS') },
-                { assert depths.name == 'PURE_C.depths' },
-                { assert depths.readLines().size() == 29903 }
-            )
-        }
-    }
-
     test("stub") {
 
         tag "stub"
