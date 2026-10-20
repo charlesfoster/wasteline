@@ -7,13 +7,15 @@ finished abundance solutions of the member sites of an aggregate by a weighted a
 member sites reported.
 
 Inputs: `--aggregated` (Freyja aggregate `freyja_aggregated.tsv`, row label = sample ID),
-`--demix-status` (`demix_status.tsv`; only status `ok` samples contribute), `--samplesheet`
+`--demix-status` (`demix_status.tsv`; only status `ok` samples contribute, and `low_confidence` ones
+with `--include-low-confidence`), `--samplesheet`
 (`sample, sample_type, collection_date, site, viral_load`, extra columns ignored) and `--sites`, a
 long-format CSV with columns `aggregate_name, site_name[, weight]`.
 
 Algorithm, per aggregate and period:
 
-1. A sample contributes if its demix status is `ok`, its `sample_type` is not negative, and it has a
+1. A sample contributes if its demix status is `ok` (or `low_confidence` with
+   `--include-low-confidence`), its `sample_type` is not negative, and it has a
    site and a valid ISO `collection_date`. Sites are matched to the sites file case-insensitively
    after trimming (and collapsing) spaces.
 2. For each member site with >= 1 contributing sample in the period, its samples (replicates) are
@@ -378,7 +380,7 @@ def period_of(date, period):
 # --------------------------------------------------------------------------------------------------
 # selection
 # --------------------------------------------------------------------------------------------------
-def select_samples(agg, status, meta, period):
+def select_samples(agg, status, meta, period, include_low_confidence=False):
     """Split the samplesheet samples into contributing ones and everything else.
 
     Returns `(contrib, others, undated, counts)`:
@@ -403,9 +405,11 @@ def select_samples(agg, status, meta, period):
             counts["negative_control"] += 1
             continue
         state = status.get(sample, "no_status")
-        if state == "ok" and sample not in agg:
+        usable = state == "ok" or (include_low_confidence and state == "low_confidence")
+        if usable and sample not in agg:
             state = "not_in_aggregate"
-        ok = state == "ok"
+            usable = False
+        ok = usable
         if not ok:
             counts["not_ok"] += 1
         key = site_key(info["site"])
@@ -583,9 +587,20 @@ def aggregate_one(aggregate, periods, contrib, others, undated, weights_mode, mi
     return rows, dropped
 
 
-def build_aggregates(aggregates, agg, status, meta, period="week", weights="auto", min_sites=1):
+def build_aggregates(
+    aggregates,
+    agg,
+    status,
+    meta,
+    period="week",
+    weights="auto",
+    min_sites=1,
+    include_low_confidence=False,
+):
     """Run the algorithm; returns `(rows, notes)` where notes carries the counts for stderr."""
-    contrib, others, undated, counts = select_samples(agg, status, meta, period)
+    contrib, others, undated, counts = select_samples(
+        agg, status, meta, period, include_low_confidence
+    )
     all_rows, dropped = [], {}
     for aggregate in aggregates:
         keys = {m["key"] for m in aggregate["sites"]}
@@ -665,6 +680,11 @@ def parse_args(argv=None):
         "--weights", choices=["auto", "viral_load", "equal", "site_weight"], default="auto"
     )
     parser.add_argument("--min-sites", type=int, default=1, help="omit periods with fewer sites")
+    parser.add_argument(
+        "--include-low-confidence",
+        action="store_true",
+        help="let samples with demix status low_confidence contribute (default: they do not)",
+    )
     parser.add_argument("--out", help="site_aggregates_freyja.tsv")
     parser.add_argument("--meta-out", help="site_aggregates_meta.tsv")
     parser.add_argument(
@@ -727,7 +747,14 @@ def main(argv=None):
         print(f"site_aggregate.py: error: {err}", file=sys.stderr)
         return 1
     rows, sel, dropped = build_aggregates(
-        aggregates, agg, status, meta, args.period, args.weights, args.min_sites
+        aggregates,
+        agg,
+        status,
+        meta,
+        args.period,
+        args.weights,
+        args.min_sites,
+        args.include_low_confidence,
     )
     write_outputs(rows, args.out, args.meta_out)
     unknown = unknown_sites(aggregates, meta)

@@ -1,0 +1,31 @@
+nextflow_process {
+
+    name "Test Process FILTER_AGGREGATED"
+    script "../main.nf"
+    process "FILTER_AGGREGATED"
+    tag "modules"
+    tag "modules_local"
+    tag "filter_aggregated"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/tests/data_timeseries/freyja_aggregated.tsv")
+                input[1] = file("\$projectDir/tests/fixtures/site_aggregate/demix_status.tsv")
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(file(process.out.aggregated[0].toString()).readLines()).match() }
+            )
+        }
+    }
+}

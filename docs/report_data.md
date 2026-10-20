@@ -93,7 +93,7 @@ Options for the optional analyses (each input is optional; absent means the sect
 | `lineage_groups`        | object\|null | small provenance / flag-input object about the user's lineage groups (see below, no per-sample rows); `null` unless the audit or the lineage summary was given                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `site_aggregates`       | list\|null   | one entry per aggregate-period (see below); `null` unless a site-aggregate file was given                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `dashboard`             | object\|null | `{file}` when `--dashboard-name` was given                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `time_series`           | object\|null | present only when >= 2 distinct collection dates exist among non-control samples with a successful demix: `{value, groups: [top 6 summarized groups, "Other" excluded], sites: [{site, dates: [ISO], n: [samples per date], series: [{group, values: [mean fraction per date]}]}], n_samples, n_dates}`; `site: null` = samples without a site. Needs sample metadata: the QC table, or `--samplesheet`                                                                                                                                                                                                                                                                                                   |
+| `time_series`           | object\|null | present only when >= 2 distinct collection dates exist among non-control samples with a successful demix (`low_confidence` ones only when `params.include_low_confidence` is true, like the time series tables): `{value, groups: [top 6 summarized groups, "Other" excluded], sites: [{site, dates: [ISO], n: [samples per date], series: [{group, values: [mean fraction per date]}]}], n_samples, n_dates}`; `site: null` = samples without a site. Needs sample metadata: the QC table, or `--samplesheet`                                                                                                                                                                                            |
 
 `available` in a real `full` run with `--compare_barcodes container --freyja_boot`: `qc`, `amplicons`, `demix`,
 `coverage_tracks`, `consensus`, `barcode_comparison`, `negative_controls`, `boot_intervals` and `time_series` are true;
@@ -137,8 +137,9 @@ ignored (with an `info` flag).
 
 `{status, reason, barcode_version, groups, lineages, resid, coverage, intervals?}`
 
-- `status`: `ok` | `failed` | `skipped_low_coverage` | `missing` (a demix input was given but this non-control
-  sample has no result) | `null` (no demix information at all, e.g. a negative control that is in no demix input)
+- `status`: `ok` | `low_confidence` (demixed, but with less genome coverage than the high-confidence threshold, PLAN D18:
+  groups and lineages are filled and shown like `ok`; `reason` says why) | `failed` | `skipped_low_coverage` | `missing`
+  (a demix input was given but this non-control sample has no result) | `null` (no demix information at all, e.g. a negative control that is in no demix input)
 - `groups`: `[[name, fraction], ...]` Freyja `summarized`, descending, fractions 0-1 (5 dp)
 - `lineages`: `[[name, fraction], ...]` Freyja `lineages`/`abundances`, descending
 - `resid`, `coverage`: floats or null (`coverage` is Freyja's percent genome coverage; absent in older Freyja)
@@ -146,7 +147,7 @@ ignored (with an `info` flag).
   and 97.5 percentiles as fractions 0-1 (5 dp), keyed by individual **lineage** name (not summarized group); it
   includes lineages with a zero point estimate. The key is absent (not `null`) otherwise
 - Row labels in `freyja_aggregated.tsv` are matched to sample IDs; a leftover `.variants.tsv`/`.tsv` suffix is stripped
-  only when the label matches no known sample. An `ok` status with no lineages is turned into `failed`, **except for
+  only when the label matches no known sample. An `ok` or `low_confidence` status with no lineages is turned into `failed`, **except for
   negative controls**: they are deliberately not in the main aggregate (decision D8), so a control with status `ok`
   keeps `ok`, with empty `groups`/`lineages` here and its lineages under `negative_controls`. (An earlier version
   downgraded such a control to `failed`; that defect is fixed.)
@@ -305,7 +306,8 @@ evaluated. The controls file has the same format and goes through the same parse
 `freyja_data_missing`, `barcode_unknown`, `barcode_custom`, `barcode_container`, `mixed_barcode_versions`,
 `previous_run_barcode_unknown`, `previous_run_barcode_differs`, `no_samples`, `qc_not_available`, `no_ntc`,
 `ntc_reads`, `ntc_fail` (negative-control problems, level `error`), `qc_fail`, `qc_warn`, `demix_failed` (error),
-`demix_skipped`, `demix_missing`, `all_samples_failed` (error), `barcode_compare_failed` (warn: the second demix of
+`demix_low_confidence` (info: samples with status `low_confidence`, i.e. demixed below the high-confidence threshold; `samples`
+lists them), `demix_skipped` (only `skipped_low_coverage`, never `low_confidence`), `demix_missing`, `all_samples_failed` (error), `barcode_compare_failed` (warn: the second demix of
 `--compare_barcodes` failed for the listed samples, from `--compare-status`), `input_problems` (unparseable
 rows/values, for example an unknown status in `demix_status.tsv`), `input_note`.
 
@@ -314,7 +316,7 @@ consensus table has the reason) and `consensus_warnings` (info: status `ok` with
 overlapping variant; `samples` lists them).
 
 `lineage_groups_warnings` (warn: the groups audit has at least one warning; the message lists the first three),
-`lineage_groups_ungrouped` (info: an `ok` sample has `other` >= `--ungrouped-flag-threshold`; `samples` lists them, the
+`lineage_groups_ungrouped` (info: an `ok` or `low_confidence` sample has `other` >= `--ungrouped-flag-threshold`; `samples` lists them, the
 message names the top ungrouped lineages and says to add them to your lineage groups file, see
 `summary/lineage_ungrouped_summary.tsv`) and `site_aggregate_incomplete` (info: aggregate-periods with a missing site or a weaker weighting basis than
 requested, i.e. `equal (...)` / `site_weight (...)`).

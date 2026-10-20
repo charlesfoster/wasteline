@@ -367,6 +367,15 @@ def test_failed_rows_stay_blank_even_with_zeros_mode(tmp_path):
     assert rows["T"]["JN"] == "0.000000"
 
 
+def test_low_confidence_rows_are_filled_and_keep_their_status(tmp_path):
+    reason = "40.0% of the genome covered at >= 10x: below the high-confidence threshold of 50%"
+    status = f"sample\tstatus\treason\tgenome_coverage_pct\nS\tlow_confidence\t{reason}\t40\n"
+    _code, out, _ = run(tmp_path, {"S": [("JN.1.16", 0.3), ("A.1", 0.7)]}, SIMPLE, status=status)
+    row = rows_of(out)[0]
+    assert row["status"] == "low_confidence" and row["status_reason"] == reason
+    assert row["JN"] == "0.300000" and row["genome_coverage_pct"] == "40.00"
+
+
 def test_major_minor_threshold_ordering_and_ties(tmp_path):
     samples = {"S": [("B.1", 0.05), ("A.1", 0.05), ("BA.5", 0.1), ("BA.2", 0.2), ("JN.1", 0.6)]}
     _code, out, _ = run(tmp_path, samples, SIMPLE)

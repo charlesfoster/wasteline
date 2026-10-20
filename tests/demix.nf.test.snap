@@ -17,6 +17,9 @@
                 "CONSENSUS_STATS_CONCAT": {
                     "python": "3.12.12"
                 },
+                "FILTER_AGGREGATED": {
+                    "python": "3.12.12"
+                },
                 "FREYJA_AGGREGATE_CONTROLS": {
                     "freyja": "2.0.6"
                 },
@@ -61,7 +64,7 @@
                 }
             }
         ],
-        "timestamp": "2026-10-19T12:54:08.306118",
+        "timestamp": "2026-10-20T13:27:11.27242",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

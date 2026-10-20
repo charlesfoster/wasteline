@@ -333,7 +333,7 @@ report. A real run on the synthetic data finishes with:
 
 Outputs are in `results/summary/` (run-level tables and the report), `results/samples/<sample>/` and
 `results/pipeline_info/`; see [output.md](output.md). **A failed or skipped sample never aborts the run**: it gets a row in
-`summary/demix_status.tsv` with a status (`ok`, `failed`, `skipped_low_coverage` or, for unusable inputs found in old
+`summary/demix_status.tsv` with a status (`ok`, `low_confidence`, `failed`, `skipped_low_coverage` or, for unusable inputs found in old
 results, `missing`) and a reason:
 
 ```
@@ -617,8 +617,9 @@ below.
 
 **Coverage gate.** Freyja will happily report a confident single lineage from a near-empty sample (the synthetic 0.6x
 sample demixes to 100% BA.2 with Freyja's `coverage` 0.0), and crashes on a header-only variants file. wasteline therefore
-computes the % of the genome covered at `--freyja_covcut`x from the depths file and, below `--min_genome_coverage_for_demix`,
-records `skipped_low_coverage` with a reason instead of demixing. The default is **50** (it was 60): it is the _high-confidence threshold_. In real QIAseq wastewater data the median sample has only about 58 % of the genome at >= 10x, mostly because amplicons drop out (half of the samples at 25-50 % had a mean depth above 200x), so 60 threw half of the samples away; below 50 % an estimate rests on too few lineage-defining sites to trust. Freyja's own plot still hides samples below `--freyja_plot_mincov` (60). Do not set it to 0 unless you want that: with the gate
+computes the % of the genome covered at `--freyja_covcut`x from the depths file and, below `--demix_floor_coverage` (default 25),
+records `skipped_low_coverage` with a reason instead of demixing; between that floor and `--min_genome_coverage_for_demix`
+the sample is demixed and flagged `low_confidence` (see [Low-confidence estimates](#low-confidence-estimates)). The default is **50** (it was 60): it is the _high-confidence threshold_. In real QIAseq wastewater data the median sample has only about 58 % of the genome at >= 10x, mostly because amplicons drop out (half of the samples at 25-50 % had a mean depth above 200x), so 60 threw half of the samples away; below 50 % an estimate rests on too few lineage-defining sites to trust. Freyja's own plot still hides samples below `--freyja_plot_mincov` (60). Do not set it to 0 unless you want that: with the gate
 off the 0.0%-covered `LOWCOV_D` is reported as `ok`, and the near-empty `NEG_E` is recorded as `failed` with the Freyja
 traceback as its reason (the run still completes).
 
@@ -635,6 +636,28 @@ ERROR: No samples matching coverage requirements, so no plot will be generated. 
 ```
 
 The workaround is a stopgap that will be removed once Freyja fixes the upstream bug.
+
+### Low-confidence estimates
+
+A sample whose genome coverage (% of positions at `--freyja_covcut` or deeper) lies between `--demix_floor_coverage`
+(default 25) and `--min_genome_coverage_for_demix` (default 50) is still demixed, but gets the status `low_confidence`
+instead of `skipped_low_coverage`. In real wastewater data 10 of 28 samples sat at 25-50 %, half of them at a mean depth of
+200x or more (amplicon dropout, not too few reads), so skipping them threw away usable signal. Below the floor nothing
+changes: the sample is skipped.
+
+- `demix_status.tsv` gives the sample's coverage and a reason (`45.0% of the genome covered at >= 10x: below the
+high-confidence threshold of 50%; treat the estimate with care`); a `.demix` file exists, as for `ok`.
+- The sample **is** in `freyja_aggregated.tsv`, `lineage_summary.csv`/`.xlsx` (status and reason shown, values filled) and the
+  report (an amber `low confidence` badge and one `info` flag, `demix_low_confidence`, listing them). Freyja's own plot
+  (`--freyja_plot_mincov` 60) already hides them from `freyja_plot.pdf`.
+- It is **left out** of the time series tables, growth rates, the dashboard and the site aggregation, because a weak estimate
+  would distort a trend or a weighted average. `--include_low_confidence true` (default `false`) puts these samples back into
+  all four; `freyja_aggregated.tsv` itself is never filtered.
+- `--demix_floor_coverage 0`, or a value at or above `--min_genome_coverage_for_demix`, switches the band off: the pipeline
+  then behaves exactly as before (demix or skip, nothing in between).
+- Negative controls follow the same rule for their demix status (they are kept out of the aggregate anyway).
+- In `--mode aggregate` with given `.demix` files there is no coverage information, so every sample counts as `ok` and the
+  band does not apply.
 
 ### Bootstrap confidence intervals: `--freyja_boot`
 

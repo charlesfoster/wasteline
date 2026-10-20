@@ -54,6 +54,39 @@ def test_gate_fail_returns_10_but_still_writes_json(tmp_path):
     assert json.loads(out.read_text())["passes_gate"] is False
 
 
+def test_low_confidence_band(tmp_path):
+    out = tmp_path / "stats.json"
+    in_band = write_depths(
+        tmp_path / "a.depths", [10] * 4 + [0] * 6
+    )  # 40 %: floor 25 <= 40 < gate 50
+    rc = depth_stats.main(
+        [
+            in_band,
+            "--min-genome-coverage",
+            "50",
+            "--floor-genome-coverage",
+            "25",
+            "--output",
+            str(out),
+        ]
+    )
+    assert rc == depth_stats.EXIT_LOW_CONFIDENCE
+    record = json.loads(out.read_text())
+    assert record["low_confidence"] is True and record["passes_gate"] is False
+    below = write_depths(tmp_path / "b.depths", [10] * 2 + [0] * 8)  # 20 %: below the floor
+    assert (
+        depth_stats.main([below, "--min-genome-coverage", "50", "--floor-genome-coverage", "25"])
+        == depth_stats.EXIT_BELOW_GATE
+    )
+    for floor in ("0", "50", "60"):  # band off: floor 0 or not below the gate
+        assert (
+            depth_stats.main(
+                [in_band, "--min-genome-coverage", "50", "--floor-genome-coverage", floor]
+            )
+            == depth_stats.EXIT_BELOW_GATE
+        )
+
+
 def test_gate_boundary_is_inclusive(tmp_path):
     depths = write_depths(tmp_path / "d.depths", [10] * 6 + [0] * 4)
     assert depth_stats.main([depths, "--min-genome-coverage", "60"]) == depth_stats.EXIT_OK

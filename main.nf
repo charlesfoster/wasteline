@@ -52,6 +52,7 @@ params {
     freyja_relaxedmrca             : Boolean = false
     freyja_confirmedonly           : Boolean = false
     include_negatives_in_aggregate : Boolean = false
+    include_low_confidence         : Boolean = false
     skip_consensus                 : Boolean = false
     consensus_iupac                : Boolean = true
     skip_report                    : Boolean = false
@@ -111,6 +112,7 @@ params {
     freyja_plot_mincov              : Float = 60
     freyja_plot_windowsize          : Integer = 14
     min_genome_coverage_for_demix   : Float = 50
+    demix_floor_coverage            : Float = 25
     amplicon_min_depth              : Integer = 10
     qc_min_depth                    : Integer = 10
     qc_pass_min_pct                 : Float = 60

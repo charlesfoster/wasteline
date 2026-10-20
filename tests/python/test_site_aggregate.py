@@ -43,7 +43,8 @@ def write_inputs(tmp_path, samples, sites_text):
     sheet = [SHEET_HEADER]
     status = [DEMIX_HEADER]
     for s in samples:
-        if s["in_agg"] and s["status"] == "ok" or s["in_agg"] and s["type"] == "negative":
+        in_status = s["status"] in ("ok", "low_confidence")
+        if s["in_agg"] and in_status or s["in_agg"] and s["type"] == "negative":
             summ = "[" + ", ".join(f"({k!r}, {v!r})" for k, v in s["summ"].items()) + "]"
             names = " ".join(s["lin"])
             vals = " ".join(f"{v:.8f}" for v in s["lin"].values())
@@ -431,6 +432,20 @@ def test_non_ok_and_negatives_never_contribute(tmp_path):
     assert agg["Agg_2026-W02"]["lin"] == {"A": approx(1.0)}
     assert meta[0]["n_samples"] == "1"
     assert "negative_controls=1" in err and "not_ok=3" in err
+
+
+def test_low_confidence_contributes_only_with_the_flag(tmp_path):
+    samples = [
+        S("x1", "X", MON, {"A": 1.0}),
+        S("y1", "Y", MON, {"B": 1.0}, status="low_confidence"),
+    ]
+    sites = "aggregate_name,site_name\nAgg,X\nAgg,Y\n"
+    agg, meta, _ = run(tmp_path, samples, sites)
+    assert agg["Agg_2026-W02"]["lin"] == {"A": approx(1.0)}
+    assert meta[0]["sites_missing"] == "Y" and meta[0]["missing_reasons"] == "not_ok:low_confidence"
+    agg, meta, _ = run(tmp_path, samples, sites, "--include-low-confidence")
+    assert agg["Agg_2026-W02"]["lin"] == {"A": approx(0.5), "B": approx(0.5)}
+    assert meta[0]["sites_missing"] == ""
 
 
 def test_ok_sample_missing_from_aggregate_and_status_is_not_used(tmp_path):

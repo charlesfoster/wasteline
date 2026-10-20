@@ -11,6 +11,13 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Added`
 
+- Low-confidence estimates (PLAN D18): `--demix_floor_coverage` (default 25). Samples with at least that % of the genome at
+  `--freyja_covcut` but below `--min_genome_coverage_for_demix` are demixed and reported as `low_confidence` (a `.demix` exists)
+  instead of `skipped_low_coverage`. They appear in `freyja_aggregated.tsv`, the lineage summary (status and reason shown) and the
+  report (badge and `demix_low_confidence` info flag), but are left out of the time series, growth rates, dashboard and site
+  aggregation unless `--include_low_confidence true`. `depth_stats.py` gains `--floor-genome-coverage` (exit code 11),
+  `FILTER_AGGREGATED` / `bin/filter_aggregated.py` filter the aggregate for the time-based analyses and `site_aggregate.py` gains
+  `--include-low-confidence`. `--demix_floor_coverage 0` restores the previous behaviour.
 - Report privacy: `--report_anonymize none|paths|full` removes file paths, user names (`paths`) and also sample IDs and site names (`full`) from
   `report_data.json` and `report.html`; `full` writes the private `summary/sample_id_map.csv`. In mode `report` the report data are rebuilt
   from the summary files when it is not `none`.

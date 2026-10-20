@@ -1,0 +1,14 @@
+{
+    "stub": {
+        "content": [
+            [
+                "\tsummarized\tlineages\tabundances\tresid\tcoverage\tpathogen"
+            ]
+        ],
+        "timestamp": "2026-10-20T10:11:19.078632",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

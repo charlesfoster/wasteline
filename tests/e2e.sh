@@ -6,6 +6,7 @@
 #        -> report --results_dir (HTML equals the original modulo timestamps)
 #        -> probe-capture data (--protocol capture, duplicates marked vs not) and --skip_primer_trimming
 #        -> lineage groups (on by default; the bundled list) and site aggregation, incl. a bad CSV that must abort early
+#        -> the low-confidence band (--demix_floor_coverage, --include_low_confidence)
 #        -> primer scheme check against a wrong declared scheme, CRAM output, time series + growth rates +
 #           dashboard (aggregate mode, tests/data_timeseries), replay of the full run (bin/replay_run.py --execute)
 #
@@ -428,6 +429,16 @@ ok = not leaks and "MIX_A" in html and not (scratch / "out_report_anonymized" / 
 print(("PASS" if ok else "FAIL") + f"  mode report --report_anonymize paths: rebuilt without paths or user name ({leaks or 'none found'}), sample IDs kept, no id map")
 sys.exit(0 if ok else 1)
 PYCHECK
+
+# 9e. low-confidence band (PLAN D18): with the gate at 98 % and the floor at 50 %, Site_1_week_2 (93.1 %) and NEG_CONTAM (94.5 %)
+#     become low_confidence (demixed), MIX_A/MIX_B/PURE_C stay ok, LOWCOV_D/NEG_E stay skipped. Site_1_week_2 is in the
+#     aggregate and the report (badge + flag) but not in the time series; --include_low_confidence true puts it there.
+run low_confidence --mode demix --previous_results "$SCRATCH/out_full" --barcodes "$BARCODES" --primer_scheme midnight "${LS_OFF[@]}" \
+    --min_genome_coverage_for_demix 98 --demix_floor_coverage 50
+check low_confidence --mode demix --low-confidence Site_1_week_2,NEG_CONTAM || fail=1
+run low_confidence_included --mode demix --previous_results "$SCRATCH/out_full" --barcodes "$BARCODES" --primer_scheme midnight "${LS_OFF[@]}" \
+    --min_genome_coverage_for_demix 98 --demix_floor_coverage 50 --include_low_confidence true
+check low_confidence_included --mode demix --low-confidence Site_1_week_2,NEG_CONTAM --include-low-confidence || fail=1
 
 # 10. replay the full run: bin/replay_run.py reconstructs the command from run_info.json (the original is untouched);
 #     the replayed demix files are byte-identical and the barcodes come from the recorded custom file

@@ -27,6 +27,7 @@ MAX_BC_ROWS = 100
 MAX_BC_SAMPLES = 50
 VISIBLE_ROWS = 100  # rows of a long table shown before "show all"
 MAX_TABLE_ROWS = 500  # hard cap on rendered rows of a long table (the TSV has them all)
+DEMIXED = ("ok", "low_confidence")  # demix statuses that have lineages (low_confidence: PLAN D18)
 TS_TOP_GROUPS = 6
 TS_MAX_DOTS_DATES = 30  # more dates than this: lines only, no per-point markers
 REASON_TITLES = {
@@ -193,7 +194,7 @@ def _ci(info, name):
 
 
 def lineage_view(samples, demix, key, palette=None):
-    """Stacked bars + heatmap for `key` in ('groups', 'lineages') over samples with status ok."""
+    """Stacked bars + heatmap for `key` in ('groups', 'lineages') over samples with lineages (ok, low_confidence)."""
     entries = []
     totals = Counter()
     for rec in samples:
@@ -204,7 +205,7 @@ def lineage_view(samples, demix, key, palette=None):
             if isinstance(p, (list, tuple)) and len(p) == 2 and _num(p[1]) is not None
         ]
         entries.append((rec, info, pairs))
-        if info.get("status") == "ok":
+        if info.get("status") in DEMIXED:
             for name, frac in pairs:
                 totals[name] += frac
     palette = _palette(totals) if palette is None else palette
@@ -222,7 +223,7 @@ def lineage_view(samples, demix, key, palette=None):
             "reason": info.get("reason") or "",
             "segs": [],
         }
-        if info.get("status") == "ok" and pairs:
+        if info.get("status") in DEMIXED and pairs:
             total = max(sum(f for _, f in pairs), 1.0)
             x = 0.0
             other = []
@@ -251,7 +252,7 @@ def lineage_view(samples, demix, key, palette=None):
                     )
         rows.append(row)
 
-    ok_entries = [(r, i, p) for r, i, p in entries if i.get("status") == "ok" and p]
+    ok_entries = [(r, i, p) for r, i, p in entries if i.get("status") in DEMIXED and p]
     columns = [n for n, _ in totals.most_common() if n != "Other"][: MAX_HEAT_COLS[key]]
     if "Other" in totals:
         columns.append("Other")
@@ -1107,7 +1108,7 @@ def build_context(data):
     for rec in samples:
         info = _as_dict(demix.get(rec["sample"]))
         groups = _as_list(info.get("groups"))
-        rec["_top"] = groups[0] if groups and info.get("status") == "ok" else None
+        rec["_top"] = groups[0] if groups and info.get("status") in DEMIXED else None
         rec["_ntc"] = rec["sample_type"] == "negative"
         rec["_qc"] = rec.get("qc_status") or "NA"
         rec["_demix"] = info

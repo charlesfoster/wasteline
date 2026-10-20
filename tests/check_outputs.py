@@ -940,6 +940,63 @@ def check_run_info(c, out, mode):
         )
 
 
+def check_low_confidence(c, out, samples, low, include):
+    """Run with the low-confidence band on (PLAN D18): `low` are the samples that must be `low_confidence`.
+
+    All other samples keep their expected status. Low-confidence samples are in the aggregate, the report and
+    the lineage-level inputs, but only in the time series (and so growth rates, dashboard) with `include`.
+    """
+    summary = out / "summary"
+    rows = {r["sample"]: r for r in read_tsv(summary / "demix_status.tsv")}
+    for sample, info in samples.items():
+        row = rows.get(sample, {})
+        want = "low_confidence" if sample in low else info["expected_demix_status"]
+        c.check(row.get("status") == want, f"demix status of {sample} is {want}", row.get("status"))
+        has_demix = (out / "samples" / sample / "freyja" / f"{sample}.demix").exists()
+        c.check(
+            has_demix == (want in ("ok", "low_confidence")),
+            f"{sample}: a .demix file exists only for ok and low_confidence",
+        )
+        if sample in low:
+            c.check(
+                "high-confidence threshold" in row.get("reason", ""),
+                f"{sample}: the low_confidence reason names the threshold",
+                row.get("reason", ""),
+            )
+    sheet = {
+        r["sample"]: r
+        for r in csv.DictReader((summary / "samplesheet.csv").read_text().splitlines())
+    }
+    aggregated = {r[""] for r in read_tsv(summary / "freyja_aggregated.tsv")}
+    series = read_tsv(summary / "freyja_timeseries.tsv")
+    ts_points = {(r["site"], r["collection_date"]) for r in series}
+    data = json.loads((summary / "report_data.json").read_text())
+    html = (summary / "report.html").read_text()
+    real = sorted(s for s in low if samples[s]["sample_type"] != "negative")
+    for sample in real:
+        point = (sheet[sample]["site"], sheet[sample]["collection_date"])
+        c.check(sample in aggregated, f"{sample} is in freyja_aggregated.tsv (never filtered)")
+        c.check(
+            (point in ts_points) == include,
+            f"{sample} {'is' if include else 'is not'} in freyja_timeseries.tsv",
+            str(sorted(ts_points)),
+        )
+        c.check(
+            data["demix"][sample]["status"] == "low_confidence" and sample in html,
+            f"report: {sample} is shown with status low_confidence",
+        )
+    flag = next((f for f in data["run_flags"] if f["code"] == "demix_low_confidence"), None)
+    c.check(
+        flag is not None and flag["level"] == "info" and flag.get("samples") == real,
+        "report: one info flag demix_low_confidence naming the non-control low_confidence samples",
+        str(flag),
+    )
+    c.check(
+        bool(low) and "low confidence</span>" in html,
+        "report.html shows the low confidence badge",
+    )
+
+
 def main(argv=None):
     here = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -989,6 +1046,16 @@ def main(argv=None):
         help="present: the run had a Freyja dataset with a lineage hierarchy, so the lineage summary files must exist",
     )
     parser.add_argument(
+        "--low-confidence",
+        default="",
+        help="comma list of samples that must be low_confidence: run the band checks instead of the standard ones",
+    )
+    parser.add_argument(
+        "--include-low-confidence",
+        action="store_true",
+        help="with --low-confidence: the run used --include_low_confidence true",
+    )
+    parser.add_argument(
         "--tolerance",
         type=float,
         default=None,
@@ -1022,6 +1089,11 @@ def main(argv=None):
         return 0 if c.failures == 0 else 1
 
     check_run_info(c, out, args.mode)
+    if args.low_confidence:
+        low = {s for s in args.low_confidence.split(",") if s}
+        check_low_confidence(c, out, samples, low, args.include_low_confidence)
+        print(f"\n{c.total - c.failures}/{c.total} checks passed")
+        return 0 if c.failures == 0 else 1
     if args.mode in ("full", "demix"):
         have_amplicons = args.protocol == "amplicon" and (
             args.mode == "full" or not args.no_amplicons

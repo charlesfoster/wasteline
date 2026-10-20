@@ -34,7 +34,7 @@ results/
 │   ├── report_data.json             machine-readable input of the report (docs/report_data.md)
 │   ├── qc_summary.tsv               one QC row per sample (incl. negative controls), complete (demix/consensus/barcode filled in)
 │   ├── amplicon_coverage.tsv        per-amplicon depth and dropout, long format
-│   ├── demix_status.tsv             demix outcome per sample (ok / failed / skipped_low_coverage / missing)
+│   ├── demix_status.tsv             demix outcome per sample (ok / low_confidence / failed / skipped_low_coverage / missing)
 │   ├── freyja_aggregated.tsv        Freyja aggregate: lineage abundances per sample (negative controls excluded)
 │   ├── freyja_aggregated_controls.tsv  the same table for the negative controls that demixed
 │   ├── freyja_plot.pdf              `freyja plot` stacked bars
@@ -184,10 +184,10 @@ and the remaining columns of the same file (the demix, consensus and barcode col
 
 ```
 sample         qc_status  qc_reasons                      demix_status          demix_reason                                   consensus_length  consensus_n_pct  barcode_version
-LOWCOV_D       FAIL       low_coverage;amplicon_dropout   skipped_low_coverage  less than 50% of the genome covered at >= 10x  29903             100.00           custom
+LOWCOV_D       FAIL       low_coverage;amplicon_dropout   skipped_low_coverage  less than 25% of the genome covered at >= 10x  29903             100.00           custom
 MIX_A          PASS                                       ok                    NA                                             29903             1.38             custom
 NEG_CONTAM     FAIL       ntc_reads                       ok                    NA                                             NA                NA               custom
-NEG_E          PASS                                       skipped_low_coverage  less than 50% of the genome covered at >= 10x  NA                NA               custom
+NEG_E          PASS                                       skipped_low_coverage  less than 25% of the genome covered at >= 10x  NA                NA               custom
 Site_1_week_2  WARN       amplicon_dropout                ok                    NA                                             29903             6.94             custom
 ```
 
@@ -281,26 +281,37 @@ One row per sample, **whatever happened to it**. Sorted by `sample`. Real conten
 
 ```
 sample         status                reason                                          genome_coverage_pct  barcode_version  barcode_version_iso
-LOWCOV_D       skipped_low_coverage  less than 50% of the genome covered at >= 10x   0.0                  custom
+LOWCOV_D       skipped_low_coverage  less than 25% of the genome covered at >= 10x   0.0                  custom
 MIX_A          ok                                                                    99.3345              custom
 NEG_CONTAM     ok                                                                    94.5457              custom
-NEG_E          skipped_low_coverage  less than 50% of the genome covered at >= 10x   0.0                  custom
+NEG_E          skipped_low_coverage  less than 25% of the genome covered at >= 10x   0.0                  custom
 Site_1_week_2  ok                                                                    93.0576              custom
 ```
 
-| Column                | Meaning                                                                                                                                                                                                                                                                                                                                                |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `sample`              | Sample ID.                                                                                                                                                                                                                                                                                                                                             |
-| `status`              | `ok`: demix ran and a `.demix` file exists. `failed`: `freyja demix` errored or the depths file was unreadable (the reason holds the tail of the error); no `.demix`. `skipped_low_coverage`: the coverage gate stopped the sample (below). `missing`: a `demix`/`aggregate` run found the sample in earlier results but could not use it (see below). |
-| `reason`              | Empty for `ok`; otherwise a human-readable reason.                                                                                                                                                                                                                                                                                                     |
-| `genome_coverage_pct` | % of the genome at depth >= `--freyja_covcut` (default 10x), the value compared with `--min_genome_coverage_for_demix`. Empty for `missing`.                                                                                                                                                                                                           |
-| `barcode_version`     | Barcode dataset used: the verbatim `last_barcode_update.txt` (`MM_DD_YYYY-HH-MM`, e.g. `09_17_2026-00-46`) or `custom` for a bare `.csv`/`.feather` file.                                                                                                                                                                                              |
-| `barcode_version_iso` | The same version as `YYYY-MM-DDTHH-MM`; empty for `custom`.                                                                                                                                                                                                                                                                                            |
+| Column                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`              | Sample ID.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `status`              | `ok`: demix ran and a `.demix` file exists. `low_confidence`: demixed (a `.demix` file exists) but with less of the genome covered than `--min_genome_coverage_for_demix` and at least `--demix_floor_coverage`; the reason says so. `failed`: `freyja demix` errored or the depths file was unreadable (the reason holds the tail of the error); no `.demix`. `skipped_low_coverage`: the coverage gate stopped the sample (below). `missing`: a `demix`/`aggregate` run found the sample in earlier results but could not use it (see below). |
+| `reason`              | Empty for `ok`; otherwise a human-readable reason.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `genome_coverage_pct` | % of the genome at depth >= `--freyja_covcut` (default 10x), the value compared with `--min_genome_coverage_for_demix`. Empty for `missing`.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `barcode_version`     | Barcode dataset used: the verbatim `last_barcode_update.txt` (`MM_DD_YYYY-HH-MM`, e.g. `09_17_2026-00-46`) or `custom` for a bare `.csv`/`.feather` file.                                                                                                                                                                                                                                                                                                                                                                                       |
+| `barcode_version_iso` | The same version as `YYYY-MM-DDTHH-MM`; empty for `custom`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 The coverage gate exists because Freyja reports a confident-looking answer even at very low depth (the 0.6x sample
 `LOWCOV_D` demixes to a single lineage with Freyja `coverage` 0.0); only the gate keeps such a result out. It is on by
 default (`--min_genome_coverage_for_demix 50`). A sample with essentially no mapped reads (`NEG_E`) is routed to
 `skipped_low_coverage` as well, because `freyja demix` would crash on its header-only variants file.
+
+**Low-confidence band (PLAN D18).** Samples with at least `--demix_floor_coverage` (default 25) but less than
+`--min_genome_coverage_for_demix` of the genome covered are demixed and get `low_confidence`; below the floor they are
+`skipped_low_coverage`. Where the `low_confidence` samples appear:
+
+| File                                                                       | `low_confidence` samples                                                    |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `demix_status.tsv`, `freyja_aggregated.tsv`, `lineage_summary.csv`/`.xlsx` | included (the lineage summary shows the status and reason)                  |
+| the report                                                                 | included, with a `low confidence` badge and the `demix_low_confidence` flag |
+| `freyja_plot.pdf`                                                          | hidden by Freyja's own `--freyja_plot_mincov` (60)                          |
+| `freyja_timeseries*.tsv`, growth rates, the dashboard, site aggregation    | excluded unless `--include_low_confidence true`                             |
 
 `missing` rows appear in `demix`/`aggregate` runs for samples found in `--previous_results` that cannot be used: a
 legacy zero-byte `.demix` file (written by the old Snakemake pipeline when demix failed; reason
@@ -477,9 +488,9 @@ coverage gate skipped is `skipped_low_coverage` again):
 
 ```
 sample         status                reason                                         barcode_version
-LOWCOV_D       skipped_low_coverage  less than 50% of the genome covered at >= 10x  09_17_2026-00-46
+LOWCOV_D       skipped_low_coverage  less than 25% of the genome covered at >= 10x  09_17_2026-00-46
 MIX_A          ok                                                                   09_17_2026-00-46
-NEG_E          skipped_low_coverage  less than 50% of the genome covered at >= 10x  09_17_2026-00-46
+NEG_E          skipped_low_coverage  less than 25% of the genome covered at >= 10x  09_17_2026-00-46
 ```
 
 A second demix that fails is never fatal: it is `failed` here and in `.compare.demix_status.json`, the sample has no
@@ -665,17 +676,17 @@ MIX_A     SiteA  2026-01-05       ok       99.33                                
 PURE_C    SiteB  2026-01-19       ok       99.37                1.000000                                                              1.000000            JN.1            1.000000
 ```
 
-| Column                               | Meaning                                                                                                                                                                                   |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sample`, `site`, `collection_date`  | From the samplesheet in effect.                                                                                                                                                           |
-| `status`, `status_reason`            | The sample's `demix_status.tsv` status (`ok`, `failed`, `skipped_low_coverage`, `missing`) and reason. A sample that is not `ok` keeps its row; all value columns are empty.              |
-| `genome_coverage_pct`                | From `demix_status.tsv` (else the aggregate's `coverage`), 2 decimals.                                                                                                                    |
-| one column per group                 | The abundance (0-1) summed over every lineage of the sample's Freyja solution that matches the group; empty when zero (`--lineage_summary_zeros zero` writes `0.000000`).                 |
-| `other`                              | The abundance of lineages that match no `in_total` group.                                                                                                                                 |
-| `proportion_summary`                 | The `in_total` groups plus `other`: about 1 (0.98-1.00 on real data, because Freyja drops the tail of the lineage list). Above 1 when two `in_total` groups overlap (the log says which). |
-| `major_lineages`, `major_abundances` | Lineages at or above `--lineage_major_threshold` (0.10), most abundant first, with their abundances in the same order. Only individual lineages, never Freyja's summarized groups.        |
-| `minor_lineages`, `minor_abundances` | The rest, down to `--lineage_min_abundance` (0.001).                                                                                                                                      |
-| `ungrouped_lineages`                 | The lineages behind `other` (at or above `--lineage_min_abundance`) as `NAME:abundance`: where to look when the list needs a new row.                                                     |
+| Column                               | Meaning                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sample`, `site`, `collection_date`  | From the samplesheet in effect.                                                                                                                                                                                                                                                                           |
+| `status`, `status_reason`            | The sample's `demix_status.tsv` status (`ok`, `low_confidence`, `failed`, `skipped_low_coverage`, `missing`) and reason. A `low_confidence` sample has its values filled like an `ok` one (with its own status and reason); any other sample that is not `ok` keeps its row with all value columns empty. |
+| `genome_coverage_pct`                | From `demix_status.tsv` (else the aggregate's `coverage`), 2 decimals.                                                                                                                                                                                                                                    |
+| one column per group                 | The abundance (0-1) summed over every lineage of the sample's Freyja solution that matches the group; empty when zero (`--lineage_summary_zeros zero` writes `0.000000`).                                                                                                                                 |
+| `other`                              | The abundance of lineages that match no `in_total` group.                                                                                                                                                                                                                                                 |
+| `proportion_summary`                 | The `in_total` groups plus `other`: about 1 (0.98-1.00 on real data, because Freyja drops the tail of the lineage list). Above 1 when two `in_total` groups overlap (the log says which).                                                                                                                 |
+| `major_lineages`, `major_abundances` | Lineages at or above `--lineage_major_threshold` (0.10), most abundant first, with their abundances in the same order. Only individual lineages, never Freyja's summarized groups.                                                                                                                        |
+| `minor_lineages`, `minor_abundances` | The rest, down to `--lineage_min_abundance` (0.001).                                                                                                                                                                                                                                                      |
+| `ungrouped_lineages`                 | The lineages behind `other` (at or above `--lineage_min_abundance`) as `NAME:abundance`: where to look when the list needs a new row.                                                                                                                                                                     |
 
 ### `summary/lineage_groups_used.csv`, `lineage_groups_resolved.tsv` and `lineage_ungrouped_summary.tsv`
 

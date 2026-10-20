@@ -313,6 +313,19 @@ defaults to `0.0` ([migration_from_snakemake.md](migration_from_snakemake.md)).
 
 ## Per-sample results
 
+### A sample is `low_confidence`
+
+**Symptom.** `summary/demix_status.tsv` has, for the sample, `low_confidence   45.0% of the genome covered at >= 10x: below the
+high-confidence threshold of 50%; treat the estimate with care`. It has a `.demix` file and a row in `freyja_aggregated.tsv`,
+`lineage_summary.csv` and the report (amber `low confidence` badge, `demix_low_confidence` flag), but it is missing from
+`freyja_timeseries.tsv`, the growth rates, the dashboard and the site aggregates.
+
+**Cause.** Its genome coverage (% of positions at depth >= `--freyja_covcut`) lies between `--demix_floor_coverage` (default 25)
+and `--min_genome_coverage_for_demix` (default 50), so it was demixed but is not trusted as much as an `ok` sample (typically
+amplicon dropout: check `amplicons_dropped` in `qc_summary.tsv`). **Fix.** Nothing is wrong with the run. To trend these samples
+anyway, set `--include_low_confidence true`; to treat them as skipped (the behaviour before D18), set `--demix_floor_coverage 0`
+or to the value of `--min_genome_coverage_for_demix`.
+
 ### A sample is `skipped_low_coverage`
 
 **Symptom.** `summary/demix_status.tsv` has, for the sample,
@@ -320,11 +333,11 @@ defaults to `0.0` ([migration_from_snakemake.md](migration_from_snakemake.md)).
 `freyja_aggregated.tsv` and the plots (and `qc_summary.tsv` shows `low_coverage` or `no_reads`). Negative controls with almost
 no reads are skipped by design and are fine.
 
-**Cause.** The coverage gate: fewer than `--min_genome_coverage_for_demix` (default 50) percent of the genome has depth >=
-`--freyja_covcut` (default 10). Freyja would otherwise return a confident-looking lineage from far too little data.
+**Cause.** The coverage gate: fewer than `--demix_floor_coverage` (default 25) percent of the genome has depth >=
+`--freyja_covcut` (default 10) (samples from there up to `--min_genome_coverage_for_demix`, default 50, are `low_confidence`, see above). Freyja would otherwise return a confident-looking lineage from far too little data.
 **Fix.** Look at `mean_depth` and `pct_genome_ge_10x` in `qc_summary.tsv` and the coverage track in the report. Usually the
 library needs resequencing, or amplicons dropped out (`amplicons_dropped`). If a lower coverage is acceptable for you, lower
-`--min_genome_coverage_for_demix` (and/or `--freyja_covcut`), keeping in mind that low-coverage abundances are unreliable;
+`--demix_floor_coverage` (and/or `--freyja_covcut`), keeping in mind that low-coverage abundances are unreliable;
 setting it to 0 turns the gate off, and then a sample with 0% coverage is reported as `ok`.
 
 ### A sample is `failed` with a pandas traceback (`freyja demix` crash on near-empty samples)

@@ -36,6 +36,9 @@
                 "FASTP": {
                     "fastp": "1.3.6"
                 },
+                "FILTER_AGGREGATED": {
+                    "python": "3.12.12"
+                },
                 "FREYJA_AGGREGATE_CONTROLS": {
                     "freyja": "2.0.6"
                 },
@@ -107,7 +110,7 @@
                 }
             }
         ],
-        "timestamp": "2026-10-19T13:04:05.1941",
+        "timestamp": "2026-10-20T13:36:20.49557",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

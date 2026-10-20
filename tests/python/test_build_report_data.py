@@ -324,6 +324,27 @@ def test_sample_without_demix_result_is_flagged_missing(tmp_path):
     assert data["demix"]["NTC_01"]["status"] is None
 
 
+def test_low_confidence_is_shown_like_ok_with_its_own_info_flag(tmp_path):
+    shutil.copytree(FIX / "a_full", tmp_path / "a")
+    status = tmp_path / "a" / "demix_status.tsv"
+    status.write_text(status.read_text().replace("WW_002\tok\t", "WW_002\tlow_confidence\t45%\t"))
+    data = run_builder(tmp_path / "a", tmp_path / "r.json")
+    assert data["demix"]["WW_002"]["status"] == "low_confidence"
+    assert data["demix"]["WW_002"]["groups"]  # lineages are kept, not blanked
+    flag = next(f for f in data["run_flags"] if f["code"] == "demix_low_confidence")
+    assert flag["level"] == "info" and flag["samples"] == ["WW_002"]
+    skipped = next(f for f in data["run_flags"] if f["code"] == "demix_skipped")
+    assert skipped["samples"] == ["WW_004"]  # skipped means below the floor, never low_confidence
+    # like the time series tables, the derived series leaves it out unless --include_low_confidence
+    baseline = run_builder("a_full", tmp_path / "base.json")["time_series"]["n_samples"]
+    assert data["time_series"]["n_samples"] == baseline - 1
+    info = json.loads((tmp_path / "a" / "run_info.json").read_text())
+    info["params"]["include_low_confidence"] = True
+    (tmp_path / "a" / "run_info.json").write_text(json.dumps(info))
+    both = run_builder(tmp_path / "a", tmp_path / "r2.json")
+    assert both["time_series"]["n_samples"] == baseline
+
+
 def test_bad_values_degrade_to_flag(tmp_path):
     qc = tmp_path / "qc.tsv"
     qc.write_text(

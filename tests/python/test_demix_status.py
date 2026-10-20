@@ -46,7 +46,8 @@ def barcode_file(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "status,reason", [("ok", ""), ("failed", "x"), ("skipped_low_coverage", "y")]
+    "status,reason",
+    [("ok", ""), ("low_confidence", "w"), ("failed", "x"), ("skipped_low_coverage", "y")],
 )
 def test_every_status_carries_the_barcode_version(tmp_path, status, reason):
     out = tmp_path / "S1.demix_status.json"

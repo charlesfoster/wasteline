@@ -78,7 +78,9 @@ FLOAT_COLUMNS = {
     "primer_scheme_enrichment",
 }
 QC_STATUSES = ("PASS", "WARN", "FAIL")
-DEMIX_STATUSES = ("ok", "failed", "skipped_low_coverage", "missing")
+DEMIX_STATUSES = ("ok", "low_confidence", "failed", "skipped_low_coverage", "missing")
+# statuses with a demix result: lineages are shown and used (low_confidence is flagged, PLAN D18)
+DEMIXED_STATUSES = ("ok", "low_confidence")
 NEGATIVE_ID_RE = re.compile(r"NEG_|NC_")
 LABEL_SUFFIXES = (".variants.tsv", ".variants", ".demix", ".tsv")
 
@@ -912,7 +914,7 @@ def build_lineage_groups(audit, summary_rows, params, threshold=UNGROUPED_FLAG_T
         return None
     audit = audit or {}
     configured = params.get("lineage_groups") if isinstance(params, dict) else None
-    ok_rows = [r for r in (summary_rows or []) if r["status"] == "ok"]
+    ok_rows = [r for r in (summary_rows or []) if r["status"] in DEMIXED_STATUSES]
     with_ungrouped = [r for r in ok_rows if r["ungrouped"]]
     top = {}
     for r in with_ungrouped:
@@ -1191,14 +1193,16 @@ def build_thresholds(run_info):
     return thresholds
 
 
-def build_time_series(samples, demix, top_n=6):
-    """Per site: mean abundance per summarized group per collection date (ok samples only)."""
+def build_time_series(samples, demix, top_n=6, include_low_confidence=False):
+    """Per site: mean abundance per summarized group per collection date (ok samples only; low_confidence
+    ones only with `include_low_confidence`, like the time series tables)."""
+    used = DEMIXED_STATUSES if include_low_confidence else ("ok",)
     points = defaultdict(lambda: defaultdict(list))  # site -> date -> [group dicts]
     totals = Counter()
     count = 0
     for sample in samples:
         info = demix.get(sample["sample"])
-        if sample["sample_type"] == "negative" or not info or info["status"] != "ok":
+        if sample["sample_type"] == "negative" or not info or info["status"] not in used:
             continue
         if not sample["collection_date"] or not info["groups"]:
             continue
@@ -1396,6 +1400,17 @@ def build_run_flags(ctx):
         ids = by_status["failed"]
         flag(
             "error", "demix_failed", f"Demixing failed for {len(ids)} sample(s): {_ids(ids)}.", ids
+        )
+    if by_status.get("low_confidence"):
+        ids = by_status["low_confidence"]
+        threshold = thr.get("min_genome_coverage_for_demix")
+        below = f" below the {threshold:g} % high-confidence threshold" if threshold else ""
+        flag(
+            "info",
+            "demix_low_confidence",
+            f"{len(ids)} sample(s) were demixed with low genome coverage{below}: treat their "
+            f"lineage estimates with care: {_ids(ids)}.",
+            ids,
         )
     if by_status.get("skipped_low_coverage"):
         ids = by_status["skipped_low_coverage"]
@@ -2041,7 +2056,7 @@ def build(
         # A negative control is demixed but not aggregated (PLAN D8): "ok" without lineages in the
         # main aggregate is expected for it, never a failure.
         if (
-            entry["status"] == "ok"
+            entry["status"] in DEMIXED_STATUSES
             and not entry["groups"]
             and not entry["lineages"]
             and rec["sample_type"] != "negative"
@@ -2107,7 +2122,7 @@ def build(
         unexplained_rows = [r for r in unexplained if r["sample"] in known]
         counts = Counter(r["sample"] for r in unexplained_rows)
         for rec in sample_list:
-            has_demix = demix[rec["sample"]]["status"] == "ok"
+            has_demix = demix[rec["sample"]]["status"] in DEMIXED_STATUSES
             rec["n_unexplained"] = counts.get(rec["sample"], 0) if has_demix else None
     timeseries_out = None
     if timeseries is not None:
@@ -2128,7 +2143,7 @@ def build(
             continue
         info = demix[sid]
         found = (controls or {}).get(sid) or (aggregated or {}).get(sid)
-        if info["status"] not in ("ok", "missing") and not found:
+        if info["status"] not in (*DEMIXED_STATUSES, "missing") and not found:
             continue
         found = found or {}
         negative_controls.append(
@@ -2187,7 +2202,9 @@ def build(
         "lineage_groups": lineage_groups is not None,
         "site_aggregates": bool(site_aggregates),
     }
-    time_series = build_time_series(sample_list, demix)
+    time_series = build_time_series(
+        sample_list, demix, include_low_confidence=bool(params.get("include_low_confidence"))
+    )
     available["time_series"] = time_series is not None or bool(
         timeseries_out and len(timeseries_out["dates"]) >= 2
     )

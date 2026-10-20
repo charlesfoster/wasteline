@@ -218,6 +218,16 @@ def test_all_failed_samples(tmp_path):
     assert "skipped_low_coverage" in html
 
 
+def test_low_confidence_gets_a_warn_badge_and_keeps_its_bar(tmp_path):
+    data = build_fixture("a_full", tmp_path)
+    data["demix"]["WW_002"].update(status="low_confidence", reason="45.0% of the genome covered")
+    html = render(data)
+    assert_valid(html)
+    assert 'class="badge b-warn" title="45.0% of the genome covered">low confidence</span>' in html
+    assert 'than the high-confidence threshold">low confidence</span>' in html  # counter tile
+    assert 'aria-label="Lineage abundance of WW_002"' in html  # still drawn like an ok sample
+
+
 # --------------------------------------------------------------------------- (e) zero samples
 def test_zero_samples(tmp_path):
     html = render(build_fixture("e_zero_samples", tmp_path))

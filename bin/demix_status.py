@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Write the per-sample `<sample>.demix_status.json` record.
 
-status is one of ok | failed | skipped_low_coverage. A non-ok status must carry a reason.
+status is one of ok | low_confidence | failed | skipped_low_coverage. A non-ok status must carry a reason.
 """
 
 import argparse
 import json
 import sys
 
-STATUSES = ("ok", "failed", "skipped_low_coverage")
+STATUSES = ("ok", "low_confidence", "failed", "skipped_low_coverage")
 MAX_REASON_CHARS = 500
 
 

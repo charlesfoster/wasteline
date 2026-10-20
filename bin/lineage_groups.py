@@ -534,7 +534,8 @@ def sample_rows(args, groups, hierarchy, fmt, ungrouped=None):
             except ValueError:
                 pass
         values = [""] * width
-        if state == "ok":
+        # low_confidence (PLAN D18) is demixed like ok: values filled, own status text and reason kept
+        if state in ("ok", "low_confidence"):
             if agg is None:
                 state, reason = "missing", "no row for this sample in the aggregated table"
             elif agg["error"]:
@@ -603,7 +604,7 @@ UNGROUPED_COLUMNS = ["lineage", "n_samples", "mean_abundance", "max_abundance", 
 
 
 def ungrouped_table(ungrouped, fmt):
-    """Rows of the ungrouped table: lineages that fell into `other` in at least one ok sample."""
+    """Rows of the ungrouped table: lineages that fell into `other` in at least one demixed sample."""
     items = sorted(ungrouped.items(), key=lambda kv: (-max(kv[1]), kv[0].casefold(), kv[0]))
     return [
         [
@@ -618,7 +619,7 @@ def ungrouped_table(ungrouped, fmt):
 
 
 def write_ungrouped(path, ungrouped, fmt):
-    """Lineages that fell into `other` in at least one ok sample, biggest first (max abundance)."""
+    """Lineages that fell into `other` in at least one demixed sample, biggest first (max abundance)."""
     with open(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(UNGROUPED_COLUMNS)

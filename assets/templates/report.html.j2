@@ -4,9 +4,9 @@
 {% macro qcbadge(s) -%}
 <span class="badge b-{{ (s or 'NA')|lower }}">{{ s or 'NA' }}</span>
 {%- endmacro %}
-{% macro dxbadge(s) -%}
-{%- set cls = {'ok': 'pass', 'failed': 'fail', 'skipped_low_coverage': 'warn', 'missing': 'warn'}.get(s, 'na') -%}
-<span class="badge b-{{ cls }}">{{ s or 'n/a' }}</span>
+{% macro dxbadge(s, reason='') -%}
+{%- set cls = {'ok': 'pass', 'low_confidence': 'warn', 'failed': 'fail', 'skipped_low_coverage': 'warn', 'missing': 'warn'}.get(s, 'na') -%}
+<span class="badge b-{{ cls }}"{% if s == 'low_confidence' %} title="{{ reason or 'Demixed with low genome coverage: treat the estimate with care' }}"{% endif %}>{{ 'low confidence' if s == 'low_confidence' else (s or 'n/a') }}</span>
 {%- endmacro %}
 {% macro filterbar(scope, with_qc=false) -%}
 <div class="filterbar" data-scope="#{{ scope }}">
@@ -33,7 +33,7 @@
   <div class="bars" id="{{ id }}-bars">
     {% for row in v.rows %}
     <div class="brow" data-sample="{{ row.sample }}" data-qc="{{ row.qc }}" data-ntc="{{ 1 if row.ntc else 0 }}">
-      <span class="lbl" title="{{ row.sample }}">{{ row.sample }}{% if row.ntc %} <em class="chip">NTC</em>{% endif %}</span>
+      <span class="lbl" title="{{ row.sample }}">{{ row.sample }}{% if row.ntc %} <em class="chip">NTC</em>{% endif %}{% if row.status == 'low_confidence' %} <em class="chip" title="{{ row.reason }}">low conf.</em>{% endif %}</span>
       {% if row.segs %}
       <svg viewBox="0 0 1000 14" preserveAspectRatio="none" role="img" aria-label="Lineage abundance of {{ row.sample }}">
         <rect class="track" x="0" y="0" width="1000" height="14"/>
@@ -427,7 +427,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
       <td class="n" data-v="{{ s.pct_genome_ge_10x|sortval }}">{{ s.pct_genome_ge_10x|pct }}</td>
       <td class="n" data-v="{{ s.pct_genome_ge_min_depth|sortval }}">{{ s.pct_genome_ge_min_depth|pct }}</td>
       <td class="n" data-v="{{ s.amplicons_dropped|sortval }}">{% if s.amplicons_total is not none %}{{ s.amplicons_dropped|num }} / {{ s.amplicons_total|num }}{% else %}&ndash;{% endif %}</td>
-      <td data-v="{{ s._demix.status or '' }}">{{ dxbadge(s._demix.status) }}</td>
+      <td data-v="{{ s._demix.status or '' }}">{{ dxbadge(s._demix.status, s._demix.reason) }}</td>
       <td data-v="{{ s._top[0] if s._top else '' }}">{% if s._top %}{{ s._top[0] }} <span class="reasons">{{ s._top[1]|frac(0) }}%</span>{% else %}&ndash;{% endif %}</td>
       <td class="n" data-v="{{ s.consensus_n_pct|sortval }}">{{ s.consensus_n_pct|pct }}</td>
       {% if qc_extra.trim %}<td class="n" data-v="{{ s.primer_trimmed_pct|sortval }}" title="{{ qc_extra.trim_title }}">{{ s.primer_trimmed_pct|pct }}</td>{% endif %}
@@ -628,10 +628,15 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
   {% if has_demix %}
   <div class="cards">
     <div class="stat"><b>{{ demix_counts.get('ok', 0) }}</b><span>ok</span></div>
+    {% if demix_counts.get('low_confidence', 0) %}<div class="stat"><b>{{ demix_counts.get('low_confidence', 0) }}</b><span title="Demixed, but with less genome coverage than the high-confidence threshold">low confidence</span></div>{% endif %}
     <div class="stat"><b>{{ demix_counts.get('skipped_low_coverage', 0) }}</b><span>skipped (low coverage)</span></div>
     <div class="stat"><b>{{ demix_counts.get('failed', 0) }}</b><span>failed</span></div>
     {% if demix_counts.get('missing', 0) %}<div class="stat"><b>{{ demix_counts.get('missing', 0) }}</b><span>no result</span></div>{% endif %}
   </div>
+  {% if demix_counts.get('low_confidence', 0) %}
+  {% set high_conf = (d.thresholds or {}).get('min_genome_coverage_for_demix') %}
+  <p class="note"><span class="badge b-warn">low confidence</span> Demixed, but with less of the genome covered than the high-confidence threshold{% if high_conf is not none %} ({{ high_conf }}%){% endif %}: the estimate rests on fewer lineage-defining sites, so treat it with care. These samples are in <code>freyja_aggregated.tsv</code> and the lineage summary, but left out of the time series, growth rates, dashboard and site aggregates unless the run used <code>--include_low_confidence true</code>.</p>
+  {% endif %}
   <div class="scroll">
   <table class="sortable">
     <thead><tr><th data-sort>Sample</th><th data-sort>Status</th><th>Reason</th><th data-sort>Barcode version</th><th class="n" data-sort>Genome coverage %</th><th class="n" data-sort>Residual</th></tr></thead>
@@ -640,7 +645,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
     {% set x = s._demix %}
     <tr{% if s._ntc %} class="ntc"{% endif %}>
       <td>{{ s.sample }}{% if s._ntc %}<em class="chip">NTC</em>{% endif %}</td>
-      <td data-v="{{ x.status or '' }}">{{ dxbadge(x.status) }}</td>
+      <td data-v="{{ x.status or '' }}">{{ dxbadge(x.status, x.reason) }}</td>
       <td>{{ x.reason|dash }}</td>
       <td class="mono" >{{ x.barcode_version|dash }}</td>
       <td class="n" data-v="{{ x.coverage|sortval }}">{{ x.coverage|pct }}</td>

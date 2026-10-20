@@ -36,6 +36,7 @@ include { FREYJA_BOOT            } from '../modules/local/freyja_boot/main'
 include { FREYJA_AGGREGATE_CONTROLS } from '../modules/local/freyja_aggregate_controls/main'
 include { ANNOTATE_VARIANTS      } from '../modules/local/annotate_variants/main'
 include { FREYJA_AGGREGATE_PLOT  } from '../modules/local/freyja_aggregate_plot/main'
+include { FILTER_AGGREGATED      } from '../modules/local/filter_aggregated/main'
 include { AMPLICON_COVERAGE      } from '../modules/local/amplicon_coverage/main'
 include { QC_SAMPLE              } from '../modules/local/qc_sample/main'
 include { QC_CONCAT              } from '../modules/local/qc_concat/main'
@@ -657,15 +658,30 @@ workflow WASTELINE {
             }
         }
 
+        // Time-based analyses (time series, growth rates, dashboard) leave out low_confidence samples (PLAN D18)
+        // unless --include_low_confidence: they get a copy of the aggregate without those rows, and the
+        // two-dates test below does not count them. freyja_aggregated.tsv itself stays complete. Only in modes
+        // that demix: given .demix files (aggregate mode) have no coverage information, so are all ok.
+        def ch_ts_samples = ch_aggregate_in
+        def ch_analysis_agg = FREYJA_AGGREGATE_PLOT.out.aggregated
+        if ((mode == 'full' || mode == 'demix') && !params.include_low_confidence && lowConfidenceBand()) {
+            ch_ts_samples = ch_aggregate_in
+                .join(FREYJA_DEMIX.out.status)
+                .filter { _meta, _demix, status_json -> new groovy.json.JsonSlurper().parse(status_json).status != 'low_confidence' }
+                .map { meta, demix, _status_json -> [ meta, demix ] }
+            FILTER_AGGREGATED(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_demix_status)
+            ch_analysis_agg = FILTER_AGGREGATED.out.aggregated
+        }
+
         // Time series: needs at least two distinct collection dates among the non-negative aggregated samples
         // (growth rates and the dashboard check their own, stricter minimum and write a failure note instead)
-        def ch_ts_go = ch_aggregate_in
+        def ch_ts_go = ch_ts_samples
             .filter { meta, _demix -> meta.collection_date && meta.sample_type != 'negative' }
             .map { meta, _demix -> meta.collection_date }
             .unique()
             .count()
             .filter { n -> n >= 2 }
-        def ch_ts_agg = FREYJA_AGGREGATE_PLOT.out.aggregated.combine(ch_ts_go).map { agg, _n -> agg }
+        def ch_ts_agg = ch_analysis_agg.combine(ch_ts_go).map { agg, _n -> agg }
         def ch_metadata = ch_samplesheet.first()
 
         if (params.timeseries) {
@@ -676,13 +692,13 @@ workflow WASTELINE {
             ch_timeseries_lineages = TIMESERIES_TABLE_LINEAGES.out.table
         }
         if (params.freyja_growth) {
-            FREYJA_RELGROWTHRATE(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_metadata, FREYJA_DATA.out.dataset)
+            FREYJA_RELGROWTHRATE(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset)
             ch_growth_rates = FREYJA_RELGROWTHRATE.out.growth_rates
             ch_growth_failed = FREYJA_RELGROWTHRATE.out.failed
             ch_growth_inputs = FREYJA_RELGROWTHRATE.out.inputs
         }
         if (params.freyja_dash) {
-            FREYJA_DASH(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_metadata, FREYJA_DATA.out.dataset, params.freyja_dash_title, params.freyja_dash_intro)
+            FREYJA_DASH(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset, params.freyja_dash_title, params.freyja_dash_intro)
             ch_dashboard = FREYJA_DASH.out.dashboard
         }
 
@@ -764,6 +780,14 @@ workflow WASTELINE {
 def optionalFile(results, name) {
     def candidate = file("${results}/summary/${name}")
     return candidate.exists() ? candidate : []
+}
+
+//
+// Is the low-confidence band (PLAN D18) switched on? It is off when the floor is 0 or not below the
+// high-confidence threshold: samples are then either demixed normally or skipped, as before D18.
+//
+def lowConfidenceBand() {
+    return params.demix_floor_coverage > 0 && params.demix_floor_coverage < params.min_genome_coverage_for_demix
 }
 
 //

@@ -93,7 +93,7 @@ barcode_version, barcode_version_iso`) and a fourth status `missing`; `freyja_ag
   removed from scope).
 - **Partial**: F13 (lock file misses the `FREYJA_DEMIX_COMPARE` alias; never used with Singularity), F15, D1 (CI and the
   bot never ran on GitHub), D4 (only Docker was executed; Singularity and conda are config-parsed), the `test_full` profile (placeholder).
-- **D17** (wastewater QC defaults 60/30/50) is implemented in `nextflow.config`, the schema and the docs; **D18** (low-confidence estimates, `demix_floor_coverage`) is not implemented yet.
+- **D17** (wastewater QC defaults 60/30/50) is implemented in `nextflow.config`, the schema and the docs; **D18** (low-confidence estimates: `--demix_floor_coverage`, `--include_low_confidence`, status `low_confidence`, `bin/filter_aggregated.py`) is implemented in `FREYJA_DEMIX`, `FILTER_AGGREGATED`, `bin/site_aggregate.py`, `bin/lineage_groups.py`, the report and the docs; pytest covers `depth_stats`, `filter_aggregated`, `lineage_groups`, `site_aggregate` and the report, and `tests/e2e.sh` runs a demix with `--min_genome_coverage_for_demix 98 --demix_floor_coverage 50`.
 - **Added after the plan** (not plan items): report anonymisation (`--report_anonymize`), the Excel workbook of the lineage summary, `bin/reanalyse_runs.py`, defining-site dropout impact; the lineage-group summary (on by default, `--lineage_summary`, `--lineage_groups`) and
   result-level site aggregation (`--site_aggregation`); see [usage.md](usage.md#lineage-groups).
 - Future work is listed in [development.md](development.md#future-work).

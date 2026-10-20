@@ -5,8 +5,9 @@ The depths file is the tab-separated output of `samtools mpileup -aa` reduced to
 columns (contig, position, reference base, depth) with no header. `-aa` reports every position of
 the reference, so the number of rows is the genome length.
 
-Exit codes: 0 = coverage gate passed (or no gate requested), 10 = coverage below the gate,
-2 = unreadable / empty / malformed input.
+Exit codes: 0 = coverage gate passed (or no gate requested), 10 = coverage below the gate (or, with a
+floor, below the floor), 11 = coverage at or above the floor but below the gate (the low-confidence
+band, PLAN D18), 2 = unreadable / empty / malformed input.
 """
 
 import argparse
@@ -15,6 +16,7 @@ import sys
 
 EXIT_OK = 0
 EXIT_BELOW_GATE = 10
+EXIT_LOW_CONFIDENCE = 11
 EXIT_ERROR = 2
 
 
@@ -68,6 +70,23 @@ def apply_gate(stats, min_genome_coverage):
     return stats
 
 
+def apply_floor(stats, floor_genome_coverage):
+    """Add the low-confidence band fields to `stats` (after `apply_gate`) and return it.
+
+    The band is the coverage range [floor, gate). It is off when the floor is 0 or not below the
+    gate, and when there is no gate: `low_confidence` is then always False.
+    """
+    gate = stats["min_genome_coverage"]
+    stats["floor_genome_coverage"] = floor_genome_coverage
+    stats["low_confidence"] = bool(
+        gate is not None
+        and floor_genome_coverage is not None
+        and 0 < floor_genome_coverage < gate
+        and floor_genome_coverage <= stats["pct_genome_ge_covcut"] < gate
+    )
+    return stats
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("depths", help="depths file (contig, pos, base, depth; no header)")
@@ -79,6 +98,12 @@ def parse_args(argv=None):
         type=float,
         default=None,
         help="gate: exit with code 10 if %% genome >= covcut is below this value",
+    )
+    parser.add_argument(
+        "--floor-genome-coverage",
+        type=float,
+        default=None,
+        help="low-confidence floor: coverage in [floor, gate) exits with code 11 instead of 10",
     )
     parser.add_argument("--sample", default=None, help="sample ID to record in the JSON")
     parser.add_argument("--output", default=None, help="write JSON here (default: stdout)")
@@ -93,6 +118,8 @@ def main(argv=None):
         print(f"depth_stats.py: {err}", file=sys.stderr)
         return EXIT_ERROR
     apply_gate(stats, args.min_genome_coverage)
+    if args.floor_genome_coverage is not None:
+        apply_floor(stats, args.floor_genome_coverage)
     if args.sample is not None:
         stats = {"sample": args.sample, **stats}
     text = json.dumps(stats, indent=2) + "\n"
@@ -101,7 +128,11 @@ def main(argv=None):
             handle.write(text)
     else:
         sys.stdout.write(text)
-    return EXIT_OK if stats["passes_gate"] else EXIT_BELOW_GATE
+    if stats["passes_gate"]:
+        return EXIT_OK
+    if stats.get("low_confidence"):
+        return EXIT_LOW_CONFIDENCE
+    return EXIT_BELOW_GATE
 
 
 if __name__ == "__main__":
