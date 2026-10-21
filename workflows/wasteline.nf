@@ -314,7 +314,7 @@ workflow WASTELINE {
                 def ch_to_check = READ_STARTS.out.tsv.multiMap { meta, tsv ->
                     starts: [ meta, tsv ]
                     declared: meta.primer_scheme
-                    custom_bed: meta.primer_bed ? file(meta.primer_bed, checkIfExists: true) : []
+                    custom_bed: meta.primer_bed ? primerBedFor(meta) : []
                 }
                 PRIMER_SCHEME_CHECK(
                     ch_to_check.starts,

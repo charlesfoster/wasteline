@@ -149,7 +149,11 @@ def test_pathogen_profiles_are_consistent():
             ]
             assert len(names) == 1, f"{fastas[0].name}: {len(names)} sequences"
             for gff in gffs:
-                seqids = {
-                    ln.split("\t")[0] for ln in gff.read_text().splitlines() if ln and ln[0] != "#"
-                }
-                assert seqids == set(names), f"{gff.name} is not on the sequence {names}"
+                records = [
+                    ln.split("\t") for ln in gff.read_text().splitlines() if ln and ln[0] != "#"
+                ]
+                assert {r[0] for r in records} == set(names), (
+                    f"{gff.name} is not on the sequence {names}"
+                )
+                # bcftools csq needs gene -> mRNA -> exon/CDS ("No usable transcripts" with NCBI's gene + CDS only)
+                assert {"gene", "mRNA", "exon", "CDS"} <= {r[2] for r in records}, gff.name

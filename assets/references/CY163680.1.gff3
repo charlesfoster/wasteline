@@ -1,0 +1,8 @@
+##gff-version 3
+##sequence-region   CY163680.1 1 1737
+# Derived from the NCBI GFF3 of CY163680.1 (A/Wisconsin/67/2005 H3N2 HA): the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon
+# line were added because bcftools csq needs gene -> transcript -> exon/CDS. Gene name is the NCBI gene symbol.
+CY163680.1	NCBI	gene	18	1718	.	+	.	ID=gene:HA;Name=HA;biotype=protein_coding
+CY163680.1	NCBI	mRNA	18	1718	.	+	.	ID=transcript:HA;Parent=gene:HA;Name=HA;biotype=protein_coding;transcript_id=HA
+CY163680.1	NCBI	exon	18	1718	.	+	.	Parent=transcript:HA;Name=HA.exon;exon_id=HA.exon;rank=1
+CY163680.1	NCBI	CDS	18	1718	.	+	0	ID=CDS:HA;Parent=transcript:HA;Name=HA;product=hemagglutinin;protein_id=AHG96407.1

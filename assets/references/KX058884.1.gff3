@@ -1,0 +1,8 @@
+##gff-version 3
+##sequence-region   KX058884.1 1 1885
+# Derived from the NCBI GFF3 of KX058884.1 (B/Brisbane/60/2008 HA): the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon
+# line were added because bcftools csq needs gene -> transcript -> exon/CDS. Gene name is the NCBI gene symbol.
+KX058884.1	NCBI	gene	34	1791	.	+	.	ID=gene:HA;Name=HA;biotype=protein_coding
+KX058884.1	NCBI	mRNA	34	1791	.	+	.	ID=transcript:HA;Parent=gene:HA;Name=HA;biotype=protein_coding;transcript_id=HA
+KX058884.1	NCBI	exon	34	1791	.	+	.	Parent=transcript:HA;Name=HA.exon;exon_id=HA.exon;rank=1
+KX058884.1	NCBI	CDS	34	1791	.	+	0	ID=CDS:HA;Parent=transcript:HA;Name=HA;product=hemagglutinin;protein_id=ANC28539.1

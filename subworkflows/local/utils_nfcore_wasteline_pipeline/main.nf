@@ -306,13 +306,79 @@ def bundledPrimerSchemes() {
 }
 
 //
-// The primer BED of a sample with a primer_scheme
+// The primer BED of a sample with a primer_scheme, as given (the user's file or the bundled scheme)
 //
-def primerBedFor(meta) {
+def sourceBedFor(meta) {
     if (meta.primer_bed) {
         return file(meta.primer_bed, checkIfExists: true)
     }
     return file("${projectDir}/assets/primer_schemes/${meta.primer_scheme}.bed", checkIfExists: true)
+}
+
+//
+// ... as it is used by the processes: restricted to the reference's contig(s) (reconcileBed, PLAN D24)
+//
+def primerBedFor(meta) {
+    return reconcileBed(sourceBedFor(meta)).bed
+}
+
+//
+// A primer BED against the reference (PLAN D24). Whole-genome panels (influenza) list the primers of every segment, while
+// the reference may be one segment (HA): the lines of contigs that are not in the reference FASTA are dropped, and the
+// filtered copy (the same file name, in <workDir>/wasteline_primer_beds/<hash of its content>/) is what trimming, amplicon
+// coverage and provenance use. A BED whose contigs are all in the reference is returned as it is (the same file, byte for
+// byte). Returns [bed: Path, no_match: boolean, dropped_lines: n, dropped_contigs: [names]]. Comment, track and browser
+// lines are kept. A BED none of whose lines is on the reference is returned unchanged with no_match = true (the callers
+// refuse it with their own message).
+//
+def reconcileBed(bed) {
+    if (!params.fasta) {
+        return [ bed: bed, no_match: false, dropped_lines: 0, dropped_contigs: [] ]
+    }
+    def contigs = fastaContigs(file(params.fasta, checkIfExists: true))
+    def keep = []
+    def kept = 0
+    def dropped_lines = 0
+    def dropped_contigs = []
+    bed.readLines().each { line ->
+        def record = line.trim() && !line.startsWith('#') && !line.startsWith('track') && !line.startsWith('browser')
+        def contig = record ? line.split('\t')[0] : null
+        if (!record) {
+            keep << line
+        }
+        else if (contig in contigs) {
+            keep << line
+            kept += 1
+        }
+        else {
+            dropped_lines += 1
+            if (!(contig in dropped_contigs)) {
+                dropped_contigs << contig
+            }
+        }
+    }
+    if (dropped_lines == 0 || kept == 0) {
+        return [ bed: bed, no_match: kept == 0 && dropped_lines > 0, dropped_lines: dropped_lines, dropped_contigs: dropped_contigs ]
+    }
+    def text = keep.join('\n') + '\n'
+    def digest = java.security.MessageDigest.getInstance('SHA-256').digest(text.getBytes('UTF-8')).collect { b -> String.format('%02x', b) }.join('').substring(0, 12)
+    def filtered = file("${workflow.workDir}/wasteline_primer_beds/${digest}/${bed.name}")
+    if (!filtered.exists()) {
+        filtered.parent.mkdirs()
+        filtered.text = text
+    }
+    return [ bed: filtered, no_match: false, dropped_lines: dropped_lines, dropped_contigs: dropped_contigs ]
+}
+
+//
+// The one warning about primer BED lines dropped because their contig is not in the reference (PLAN D24)
+//
+def warnDroppedBedLines(reports) {
+    def lines = reports.sum { report -> report.dropped_lines } ?: 0
+    if (lines) {
+        def contigs = reports.collectMany { report -> report.dropped_contigs }.unique()
+        log.warn("Primer BED: ${lines} line(s) on ${contigs.size()} contig(s) that are not in the reference FASTA '${file(params.fasta).name}' (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}) were dropped; the reference's own lines are used for trimming and amplicon coverage. Expected for a whole-genome panel run against one segment (for example influenza HA).")
+    }
 }
 
 //
@@ -352,27 +418,26 @@ def libraryInfo(mode, metas) {
 // Every distinct primer BED of the samples must be on a contig of the reference or ivar trim silently trims nothing
 //
 def checkSampleBeds(metas) {
-    def beds = metas.findAll { meta -> meta.primer_scheme }.collect { meta -> primerBedFor(meta) }.unique()
+    def beds = metas.findAll { meta -> meta.primer_scheme }.collect { meta -> sourceBedFor(meta) }.unique()
     if (beds) {
         def fasta_contigs = fastaContigs(file(params.fasta, checkIfExists: true))
-        beds.each { bed ->
-            def unknown = bedContigs(bed) - fasta_contigs
-            if (unknown) {
-                error("Primer BED '${bed}' refers to contig(s) ${unknown} that are not in the reference FASTA '${params.fasta}' (which has ${fasta_contigs}). Use a matching primer scheme or --fasta.")
+        def reports = beds.collect { bed ->
+            def report = reconcileBed(bed)
+            if (report.no_match) {
+                error("Primer BED '${bed}' refers to contig(s) ${bedContigs(bed)} that are not in the reference FASTA '${params.fasta}' (which has ${fasta_contigs}). Use a matching primer scheme or --fasta.")
             }
+            report
         }
+        warnDroppedBedLines(reports)
     }
 }
 
 //
 // Freyja pathogens (`freyja update --pathogen` choices) that wasteline cannot run, with the reason and what would be
 // needed (PLAN D22); null for every other name. The single-contig FASTA check in validateInputParameters catches
-// a multi-segment reference of any other pathogen as well.
+// a multi-segment reference of any other pathogen. The influenza pathogens are supported on the HA segment (PLAN D24).
 //
 def unsupportedPathogenReason(pathogen) {
-    if (pathogen in ['H5Nx', 'H5Nx-cattle', 'H1N1', 'H3N2', 'FLU-B-VIC']) {
-        return "influenza genomes have 8 segments, i.e. a multi-contig reference, and wasteline supports single-contig references only: depth QC, amplicon coverage, low-depth masking, the consensus and the primer checks all assume one contig. Supporting it needs per-segment (per-contig) handling in all of them, plus per-segment Freyja calls (freyja variants --refname); the Freyja documentation also says influenza barcodes are available on request only."
-    }
     if (pathogen == 'MTB') {
         return "Mycobacterium tuberculosis is a 4.4 Mb bacterial genome with feather-only Freyja barcodes. wasteline is built and tested for viral genomes of 10-200 kb (per-position depth tables, QC, consensus and the dropout/mutation tables are not sized for 4.4 Mb), and nothing has been validated on bacterial data. Supporting it needs those steps scaled and checked on real MTB data."
     }
@@ -455,7 +520,7 @@ def validateInputParameters(mode) {
             }
             def contigs = fastaContigs(file(params.fasta, checkIfExists: true))
             if (contigs.size() != 1) {
-                error("The reference FASTA '${params.fasta}' has ${contigs.size()} sequences (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}): wasteline supports single-contig references only (depth QC, amplicon coverage, low-depth masking, consensus and the primer checks assume one contig). Multi-segment genomes need per-contig handling throughout the pipeline, which is not implemented. See docs/other_pathogens.md.")
+                error("The reference FASTA '${params.fasta}' has ${contigs.size()} sequences (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}): wasteline supports single-contig references only (depth QC, amplicon coverage, low-depth masking, consensus and the primer checks assume one contig). Multi-segment genomes need per-contig handling throughout the pipeline, which is not implemented (for influenza, wasteline bundles the single-sequence HA reference of each Freyja influenza pathogen: use --pathogen H1N1, H3N2, FLU-B-VIC, H5Nx or H5Nx-cattle without --fasta). See docs/other_pathogens.md.")
             }
         }
     }
@@ -473,14 +538,18 @@ def validateInputParameters(mode) {
     if (settings.primer_trimming && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed)))) {
         // The default BED must be on the same contig(s) as the reference or ivar trim silently trims nothing
         // (BEDs named in the samplesheet are checked when it is read)
-        def bed_contigs = bedContigs(primerBed())
+        // (PLAN D24: lines of contigs that are not in the reference are dropped; only a BED with no line on it is refused)
+        def bed_report = reconcileBed(primerBed())
         def fasta_contigs = fastaContigs(file(params.fasta, checkIfExists: true))
-        def unknown = bed_contigs - fasta_contigs
+        def unknown = bed_report.no_match ? bedContigs(primerBed()) - fasta_contigs : []
         if (unknown && !params.primer_bed && !params.primer_scheme) {
             error("The bundled default primer scheme '${defaultPrimerScheme()}' is for a different reference (its contig(s) ${unknown} are not in the reference FASTA '${params.fasta}', which has ${fasta_contigs}): the bundled primer schemes belong to one pathogen only. Pass --primer_bed <BED whose first column is ${fasta_contigs.join(' / ')}> (a primer scheme for ${params.pathogen}), or --protocol capture / --skip_primer_trimming for reads that are not primer-trimmed. See docs/other_pathogens.md.")
         }
         if (unknown) {
             error("Primer BED '${primerBed()}' refers to contig(s) ${unknown} that are not in the reference FASTA '${params.fasta}' (which has ${fasta_contigs}). Use a matching --primer_bed/--primer_scheme or --fasta.")
+        }
+        if (!params.input) {
+            warnDroppedBedLines([ bed_report ]) // with a samplesheet, checkSampleBeds warns once for all BEDs
         }
     }
     if (params.lineage_groups && !params.lineage_summary && mode in ['full', 'demix', 'aggregate']) {

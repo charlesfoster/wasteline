@@ -168,8 +168,8 @@
                 },
                 "pathogen": {
                     "type": "string",
-                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome, RSVa and RSVb have a bundled reference; every other single-contig pathogen needs `--fasta`.",
-                    "help_text": "Passed to every Freyja call. The per-pathogen defaults (reference, annotation) come from conf/pathogens/<profile>.config. Without `--fasta` and `--primer_bed` only SARS-CoV-2 runs out of the box; pass `--fasta` = the reference.fasta that the pathogen's Freyja barcodes were built on (a different one gives silently wrong results), `--primer_bed` (or `--protocol capture`), and `--lineage_groups` if you want the lineage-group summary. The influenza pathogens (H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC: 8 segments) and MTB (4.4 Mb) are accepted by Freyja but stop here with an explanation. See docs/other_pathogens.md.",
+                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome, RSVa, RSVb and the five influenza pathogens (H1N1, H3N2, FLU-B-VIC, H5Nx, H5Nx-cattle; HA segment only) have a bundled reference; every other single-contig pathogen needs `--fasta`.",
+                    "help_text": "Passed to every Freyja call. The per-pathogen defaults (reference, annotation) come from conf/pathogens/<profile>.config. Without `--fasta` and `--primer_bed` only SARS-CoV-2 runs out of the box; pass `--fasta` = the reference.fasta that the pathogen's Freyja barcodes were built on (a different one gives silently wrong results), `--primer_bed` (or `--protocol capture`), and `--lineage_groups` if you want the lineage-group summary. Freyja's influenza barcodes (H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC) cover the HA segment only: the bundled reference is the HA sequence, one run per subtype, reads of the other segments do not map. MTB (4.4 Mb) is accepted by Freyja but stops here with an explanation. See docs/other_pathogens.md.",
                     "fa_icon": "fas fa-virus",
                     "enum": [
                         "SARS-CoV-2",
@@ -188,7 +188,7 @@
                         "DENV4",
                         "MTB"
                     ],
-                    "errorMessage": "--pathogen must be one of the Freyja pathogens: SARS-CoV-2, MPX, H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC, MEASLESgenome, RSVa, RSVb, DENV1, DENV2, DENV3, DENV4, MTB (the influenza ones and MTB are not supported, see docs/other_pathogens.md)."
+                    "errorMessage": "--pathogen must be one of the Freyja pathogens: SARS-CoV-2, MPX, H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC, MEASLESgenome, RSVa, RSVb, DENV1, DENV2, DENV3, DENV4, MTB (MTB is not supported, see docs/other_pathogens.md)."
                 },
                 "lineage_groups_bundled": {
                     "type": "string",

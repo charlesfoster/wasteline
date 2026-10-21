@@ -9,15 +9,16 @@ recorded, same commands, same outputs). User view: [../other_pathogens.md](../ot
 while the config is parsed; verified with `--pathogen H1N1` and `--pathogen MEASLESgenome`):
 
 ```groovy
-includeConfig "conf/pathogens/${['SARS-CoV-2': 'sars2', 'MEASLESgenome': 'measles', 'RSVa': 'rsva', 'RSVb': 'rsvb'].get(params.pathogen ?: 'SARS-CoV-2', 'generic')}.config"
+includeConfig "conf/pathogens/${['SARS-CoV-2': 'sars2', 'MEASLESgenome': 'measles', 'RSVa': 'rsva', 'RSVb': 'rsvb', 'H1N1': 'h1n1', 'H3N2': 'h3n2', 'FLU-B-VIC': 'flu_b_vic', 'H5Nx': 'h5nx', 'H5Nx-cattle': 'h5nx_cattle'].get(params.pathogen ?: 'SARS-CoV-2', 'generic')}.config"
 ```
 
-| File                                        | Sets                                                                                                                  |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `conf/pathogens/sars2.config`               | `pathogen`, `fasta`, `gff` (unchanged) plus the two facts below                                                       |
-| `conf/pathogens/measles.config`             | `pathogen = 'MEASLESgenome'`, `fasta = assets/references/NC_001498.1.fasta`, `gff = null`                             |
-| `conf/pathogens/rsva.config`, `rsvb.config` | `pathogen = 'RSVa'` / `'RSVb'`, `fasta` / `gff` = the bundled `PP109421.1` / `OP975389.1` files (PLAN D23)            |
-| `conf/pathogens/generic.config`             | `pathogen = null` (the strict parser needs the key declared; the command line fills it), `fasta = null`, `gff = null` |
+| File                                                           | Sets                                                                                                                         |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `conf/pathogens/sars2.config`                                  | `pathogen`, `fasta`, `gff` (unchanged) plus the two facts below                                                              |
+| `conf/pathogens/measles.config`                                | `pathogen = 'MEASLESgenome'`, `fasta = assets/references/NC_001498.1.fasta`, `gff = null`                                    |
+| `conf/pathogens/rsva.config`, `rsvb.config`                    | `pathogen = 'RSVa'` / `'RSVb'`, `fasta` / `gff` = the bundled `PP109421.1` / `OP975389.1` files (PLAN D23)                   |
+| `conf/pathogens/{h1n1,h3n2,flu_b_vic,h5nx,h5nx_cattle}.config` | `pathogen`, `fasta` / `gff` = the bundled HA record (`CY121680.1`, `CY163680.1`, `KX058884.1`, `AF144305.1` twice; PLAN D24) |
+| `conf/pathogens/generic.config`                                | `pathogen = null` (the strict parser needs the key declared; the command line fills it), `fasta = null`, `gff = null`        |
 
 Every profile also sets two hidden facts (schema entries `hidden: true`, listed in `docs/parameters.md`, filtered out of
 `run_info.json` so a SARS-CoV-2 run records exactly the parameters it did before):
@@ -36,8 +37,8 @@ checks that the map, the files and the schema enum agree.
 
 All fail before any work. Modes `full`, `demix`, `aggregate`, `update_db`:
 
-1. `unsupportedPathogenReason()`: influenza (`H5Nx`, `H5Nx-cattle`, `H1N1`, `H3N2`, `FLU-B-VIC`) and `MTB` stop with the reason and what
-   would be needed (multi-contig handling; scaling to 4.4 Mb).
+1. `unsupportedPathogenReason()`: `MTB` stops with the reason and what would be needed (scaling to 4.4 Mb). Influenza was refused here
+   until PLAN D24 (see the end of this page).
 2. Modes `full`/`demix`: `--fasta` is required when the profile has none (message: must be the reference of the Freyja barcodes);
    a FASTA with other than one sequence is refused (any pathogen, a safety net for segmented genomes).
 3. `--barcodes container` / `--compare_barcodes container` need `freyja_container_pathogen` to equal `--pathogen`.
@@ -104,5 +105,39 @@ Two profiles and four reference files; no pipeline code changed.
   the manual run in [../other_pathogens.md](../other_pathogens.md), made with `tests/simulate_pathogen_mixture.py` (not run by
   any test).
 - Not changed but found: the console banner (`assets/logo.txt`) names SARS-CoV-2 for every pathogen; the influenza refusal text
-  (`unsupportedPathogenReason()`, the schema help text) still gives only the "8 segments" reason although Freyja's influenza
-  barcodes are HA-only (see "Influenza: what it needs" in the user documentation).
+  (`unsupportedPathogenReason()`, the schema help text) still gave only the "8 segments" reason although Freyja's influenza
+  barcodes are HA-only. Resolved by PLAN D24 below.
+
+## Influenza, HA segment only (PLAN D24): what changed
+
+Five profiles, four reference records, one start-up helper; the single-contig pipeline is otherwise untouched.
+
+- `nextflow.config`: the profile map gained `'H1N1': 'h1n1', 'H3N2': 'h3n2', 'FLU-B-VIC': 'flu_b_vic', 'H5Nx': 'h5nx', 'H5Nx-cattle': 'h5nx_cattle'`.
+  `conf/pathogens/<profile>.config` (pattern of `rsva.config`): `pathogen`, `fasta`, `gff` (the `h5nx` and `h5nx_cattle` files name the
+  same `AF144305.1` record) and the two hidden facts as `null`.
+- `assets/references/`: `CY121680.1` (H1N1), `CY163680.1` (H3N2), `KX058884.1` (FLU-B-VIC), `AF144305.1` (H5Nx, H5Nx-cattle): the NCBI
+  FASTA (efetch, unchanged; sequence-identical to Freyja's `reference.fasta`) and a GFF3 that is NCBI's gene + CDS lines with an `mRNA` and
+  an `exon` line added per gene (`bcftools csq`; coordinates unchanged; HA is one CDS per record). The pytest profile guard now also
+  asserts that a bundled GFF3 has gene, mRNA, exon and CDS lines.
+- `unsupportedPathogenReason()` keeps `MTB` only; the schema `help_text` / `errorMessage` and `docs/parameters.md` say HA-only.
+- **Primer BED with several contigs**: `reconcileBed(bed)` (`utils_nfcore_wasteline_pipeline`) reads the reference's contigs
+  (`fastaContigs`) and the BED; lines whose contig is not in the reference are dropped, comment / blank / `track` / `browser` lines are
+  kept, and when anything was dropped (and something is left) the filtered text is written to
+  `<workflow.workDir>/wasteline_primer_beds/<first 12 hex of its sha256>/<BED file name>` unless it exists (idempotent and deterministic,
+  so `-resume` keeps its cache key). It returns `[bed, no_match, dropped_lines, dropped_contigs]`; a BED with no dropped line is
+  returned as the very same Path (SARS-CoV-2 and every matching BED: the staged file and its checksum are unchanged). `sourceBedFor(meta)`
+  is the BED as given; `primerBedFor(meta)` (used by `IVAR_TRIM`, `AMPLICON_COVERAGE`, `PROVENANCE` and now also the custom-BED input of
+  `PRIMER_SCHEME_CHECK`) is `reconcileBed(sourceBedFor(meta)).bed`. Validation: `checkSampleBeds` (samplesheet rows) refuses a BED with
+  `no_match` (the previous message) and calls `warnDroppedBedLines` once for all distinct BEDs; `validateInputParameters` does the same
+  for the run-default BED and warns itself only when there is no samplesheet (`!params.input`), so there is one warning per run. The
+  previous check refused a BED when any of its contigs was missing; now only a BED with no line on the reference is refused.
+- The multi-sequence FASTA refusal stays (any pathogen); its message now points to the bundled influenza HA references.
+- Nothing in the QC, report or consensus code changed. Reviewed for a 1.7 kb reference: `qc_summary.py` has no rule on `mapped_pct`;
+  the coverage rules are percentages of the reference; `build_report_data.py` bins the coverage track by reference length;
+  `unexplained_mutations.py` already scales its significance level; `consensus_*` and `low_depth_mask` take lengths from the data.
+  What does not scale is the negative-control rule (`--ntc_max_mapped_reads` 1000 reads, `--ntc_max_genome_coverage_pct` 10 %): on a
+  1.75 kb reference two read pairs exceed 10 % of the genome. Left as is and documented; a per-length default would be a design change.
+- Tests: none added (the existing profile guard was extended by two assertions); the BED helper is Groovy and was checked manually
+  (stub run with a BED listing `seg4` / `seg6`: warning, 14-line filtered file, run_info checksum of the filtered BED; BED with only
+  `seg4`: the old error; full docker runs in [../other_pathogens.md](../other_pathogens.md)). The simulator
+  `tests/simulate_pathogen_mixture.py` is unchanged.

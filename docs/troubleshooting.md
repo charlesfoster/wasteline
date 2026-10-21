@@ -148,8 +148,10 @@ the inputs: ...`.
 [ERROR] Primer BED '/path/my_scheme.bed' refers to contig(s) [MN908947.3] that are not in the reference FASTA '.../NC_045512.fasta' (which has [NC_045512.2]). Use a matching --primer_bed/--primer_scheme or --fasta.
 ```
 
-**Cause.** The contig name in the first column of a custom `--primer_bed` is not a contig of the reference (a common case: a
-BED made for the `MN908947.3` accession while the bundled reference is `NC_045512.2`). All nine bundled schemes already use
+**Cause.** None of the lines of a custom `--primer_bed` is on a contig of the reference (lines on other contigs alone are only
+dropped, with one warning: `Primer BED: 10 line(s) on 2 contig(s) that are not in the reference FASTA ... were dropped`, which is
+what a whole-genome influenza panel gives against the HA reference). A common case is a
+BED made for the `MN908947.3` accession while the bundled reference is `NC_045512.2`. All nine bundled schemes already use
 `NC_045512.2`, so this only happens with your own BED (or your own `--fasta`). **Fix.** Rename the contig in the BED to the
 reference's name (the coordinates are the same when it is the same sequence), for example
 `sed 's/^MN908947\.3/NC_045512.2/' my_scheme.bed > my_scheme.NC_045512.2.bed`, or pass the matching `--fasta`. Details:
@@ -229,13 +231,13 @@ reads have no primers to trim and no amplicons, so the scheme is not used (and t
 
 ```
 * --pathogen (Foo): Expected any of [[SARS-CoV-2, MPX, H5Nx, ...]] (--pathogen must be one of the Freyja pathogens: ...)
-[ERROR] --pathogen H1N1 is not supported: influenza genomes have 8 segments ...
+[ERROR] --pathogen MTB is not supported: Mycobacterium tuberculosis is a 4.4 Mb bacterial genome ...
 [ERROR] --fasta is required with --pathogen RSVa: wasteline bundles a reference only for the pathogens that have a file in conf/pathogens/ ...
 [ERROR] The bundled default primer scheme 'qiagenv1' is for a different reference ...
 ```
 
-**Cause.** `--pathogen` must be a Freyja pathogen name. The influenza pathogens (8 segments) and MTB (4.4 Mb) are accepted
-by Freyja but not by wasteline; a pathogen without a bundled reference needs `--fasta` (the reference the Freyja barcodes
+**Cause.** `--pathogen` must be a Freyja pathogen name. MTB (4.4 Mb) is accepted by Freyja but not by wasteline (the influenza
+pathogens run on their HA segment, a single 1.7-1.9 kb reference); a pathogen without a bundled reference needs `--fasta` (the reference the Freyja barcodes
 were built on), and the bundled primer schemes only fit SARS-CoV-2, so a primer BED (or `--protocol capture`) is needed.
 **Fix.** See [other_pathogens.md](other_pathogens.md) for what each pathogen needs.
 

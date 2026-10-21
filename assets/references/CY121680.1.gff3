@@ -1,0 +1,8 @@
+##gff-version 3
+##sequence-region   CY121680.1 1 1752
+# Derived from the NCBI GFF3 of CY121680.1 (A/California/07/2009 H1N1 HA): the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon
+# line were added because bcftools csq needs gene -> transcript -> exon/CDS. Gene name is the NCBI gene symbol.
+CY121680.1	NCBI	gene	21	1721	.	+	.	ID=gene:HA;Name=HA;biotype=protein_coding
+CY121680.1	NCBI	mRNA	21	1721	.	+	.	ID=transcript:HA;Parent=gene:HA;Name=HA;biotype=protein_coding;transcript_id=HA
+CY121680.1	NCBI	exon	21	1721	.	+	.	Parent=transcript:HA;Name=HA.exon;exon_id=HA.exon;rank=1
+CY121680.1	NCBI	CDS	21	1721	.	+	0	ID=CDS:HA;Parent=transcript:HA;Name=HA;product=hemagglutinin;protein_id=AFM72832.1

@@ -23,7 +23,7 @@ modules/nf-core/              fastp, bwa/index, bwa/mem, ivar/trim, samtools/{fl
 modules/local/<name>/         27 local modules: main.nf + environment.yml + tests/main.nf.test (+ .snap)
 bin/                          the Python helper scripts (below); on the PATH inside every process
 assets/
-  references/                 bundled NC_045512 FASTA + GFF3, NC_001498.1 (measles) FASTA, PP109421.1 / OP975389.1 (RSV-A / RSV-B) FASTA + GFF3
+  references/                 bundled NC_045512 FASTA + GFF3, NC_001498.1 (measles) FASTA, PP109421.1 / OP975389.1 (RSV-A / RSV-B) FASTA + GFF3, CY121680.1 / CY163680.1 / KX058884.1 / AF144305.1 (influenza HA: H1N1 / H3N2 / FLU-B-VIC / H5Nx and H5Nx-cattle) FASTA + GFF3
   primer_schemes/             bundled BEDs: midnight midnightv2 articv3 articv4.1 articv5.3.2 eden swift qiagenv1 xgen
   templates/report.html.j2    the HTML report template
   schema_input*.json          samplesheet schemas for full / demix / aggregate (nf-schema)
@@ -324,10 +324,10 @@ Pathogens are supported through profile files, `conf/pathogens/<profile>.config`
 [wiring/multi_pathogen.md](wiring/multi_pathogen.md)):
 
 ```groovy
-includeConfig "conf/pathogens/${['SARS-CoV-2': 'sars2', 'MEASLESgenome': 'measles', 'RSVa': 'rsva', 'RSVb': 'rsvb'].get(params.pathogen ?: 'SARS-CoV-2', 'generic')}.config"
+includeConfig "conf/pathogens/${['SARS-CoV-2': 'sars2', 'MEASLESgenome': 'measles', 'RSVa': 'rsva', 'RSVb': 'rsvb', 'H1N1': 'h1n1', 'H3N2': 'h3n2', 'FLU-B-VIC': 'flu_b_vic', 'H5Nx': 'h5nx', 'H5Nx-cattle': 'h5nx_cattle'].get(params.pathogen ?: 'SARS-CoV-2', 'generic')}.config"
 ```
 
-`sars2.config`, `measles.config`, `rsva.config` and `rsvb.config` set the Freyja `pathogen`, the bundled `fasta` / `gff`, and two hidden facts
+`sars2.config`, `measles.config`, `rsva.config`, `rsvb.config` and the five influenza files (`h1n1`, `h3n2`, `flu_b_vic`, `h5nx`, `h5nx_cattle`) set the Freyja `pathogen`, the bundled `fasta` / `gff`, and two hidden facts
 (`lineage_groups_bundled`, `freyja_container_pathogen`); `generic.config` (any other Freyja pathogen) bundles nothing, so
 `--fasta` is required. The pathogen names `NC_045512` / `SARS-CoV-2` are confined to `sars2.config`, `assets/` (including the
 report template's fallback subtitle) and the Python scripts' SARS-CoV-2 defaults (genome length 29903 for the unexplained-mutation
@@ -337,9 +337,9 @@ To add a pathogen with a bundled reference: add `conf/pathogens/<name>.config` (
 map in `nextflow.config` and into the `pathogen` enum of `nextflow_schema.json` (`tests/python/test_boolean_params.py` checks
 the three agree), and bundle the reference (the sequence of the `reference.fasta` in the pathogen's folder of the Freyja-barcodes repository; check that
 the barcodes' reference bases agree with it) under `assets/references/`; a GFF3 must have gene -> mRNA -> exon/CDS lines for
-`bcftools csq` (the NCBI GFF3 does not: see the RSV files). Segmented or multi-contig genomes are not supported
-(the depths/coverage tracks use one contig); influenza and MTB are refused in `unsupportedPathogenReason()`
-(`subworkflows/local/utils_nfcore_wasteline_pipeline`).
+`bcftools csq` (the NCBI GFF3 does not: see the RSV and influenza files; the pytest profile guard checks it). Segmented or multi-contig
+genomes are not supported (the depths/coverage tracks use one contig); influenza is supported as its HA segment only (PLAN D24) and MTB is
+refused in `unsupportedPathogenReason()` (`subworkflows/local/utils_nfcore_wasteline_pipeline`).
 
 ## Future work
 
@@ -354,7 +354,7 @@ Not implemented; see PLAN section 11 and [PLAN_STATUS.md](PLAN_STATUS.md):
 
 - **minibwa as the default aligner**: it is available as `--aligner minibwa` (experimental) but `bwa mem` stays the default until
   minibwa reaches 1.x and a comparison on real wastewater data is clean ([aligner_evaluation.md](aligner_evaluation.md)).
-- **Multi-segment pathogens (influenza) and MTB**: refused at start-up; what is missing is in [other_pathogens.md](other_pathogens.md).
+- **Whole-genome (eight-segment) influenza, and MTB**: influenza runs on the HA segment only (PLAN D24); MTB is refused at start-up; what is missing is in [other_pathogens.md](other_pathogens.md).
 - **Historical barcode versions** resolved from the Freyja git history (today an old dataset can only be used if it
   is still in `--db_dir` or on disk).
 - **Optional kraken2 screening** of negative controls (`--kraken2_db`; opt-in, not the default test).

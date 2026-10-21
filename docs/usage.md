@@ -188,11 +188,12 @@ validate a sheet before queuing a long run and to check files without starting N
 
 **Reference.** The default is the bundled SARS-CoV-2 reference `NC_045512.2` (`assets/references/NC_045512.fasta`) and its
 GFF3 annotation. Override with `--fasta` and `--gff`. The pathogen defaults live in `conf/pathogens/*.config`, selected by
-`--pathogen`. RSV-A (`--pathogen RSVa`), RSV-B (`--pathogen RSVb`) and measles (`--pathogen MEASLESgenome`) bundle their reference (RSV also an
+`--pathogen`. RSV-A (`--pathogen RSVa`), RSV-B (`--pathogen RSVb`), measles (`--pathogen MEASLESgenome`) and the five influenza pathogens
+(`H1N1`, `H3N2`, `FLU-B-VIC`, `H5Nx`, `H5Nx-cattle`; HA segment only, one run per subtype) bundle their reference (all but measles also an
 annotation) and need only a primer BED (`--primer_bed`) or `--protocol capture`. Other Freyja pathogens with a single-sequence genome
 (dengue, mpox) can be run with `--pathogen <name> --fasta <the reference of the Freyja barcodes> --primer_bed <BED>`: see
-[other_pathogens.md](other_pathogens.md) (support matrix, how to run RSV and measles, the validation results). The influenza
-pathogens and MTB are refused at start-up.
+[other_pathogens.md](other_pathogens.md) (support matrix, how to run RSV, influenza and measles, the validation results). MTB is refused at
+start-up.
 
 **Primer scheme** (modes `full`, and `demix` if you want per-amplicon coverage): choose a bundled scheme with
 `--primer_scheme`, or give your own BED with `--primer_bed <file>` (which overrides `--primer_scheme`). The default in
@@ -1344,8 +1345,8 @@ that is bumped automatically:
 ## 17. Not implemented
 
 These are in [PLAN.md](PLAN.md) or discussed as future work but are **not** available (they are not in
-[parameters.md](parameters.md)): the optional `--kraken2_db` screen of negative controls, multi-segment pathogens
-(influenza) and MTB (see [other_pathogens.md](other_pathogens.md); the other Freyja pathogens run), resolving historical
+[parameters.md](parameters.md)): the optional `--kraken2_db` screen of negative controls, whole-genome (all eight segments) influenza and MTB (see
+[other_pathogens.md](other_pathogens.md); influenza runs on the HA segment, and the other Freyja pathogens run), resolving historical
 barcode versions from the Freyja git history, and an alternative aligner. See [development.md](development.md#future-work).
 
 ## Where next

@@ -1,0 +1,8 @@
+##gff-version 3
+##sequence-region   AF144305.1 1 1760
+# Derived from the NCBI GFF3 of AF144305.1 (A/Goose/Guangdong/1/96 H5N1 HA): the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon
+# line were added because bcftools csq needs gene -> transcript -> exon/CDS. Gene name is the NCBI gene symbol.
+AF144305.1	NCBI	gene	22	1728	.	+	.	ID=gene:HA;Name=HA;biotype=protein_coding
+AF144305.1	NCBI	mRNA	22	1728	.	+	.	ID=transcript:HA;Parent=gene:HA;Name=HA;biotype=protein_coding;transcript_id=HA
+AF144305.1	NCBI	exon	22	1728	.	+	.	Parent=transcript:HA;Name=HA.exon;exon_id=HA.exon;rank=1
+AF144305.1	NCBI	CDS	22	1728	.	+	0	ID=CDS:HA;Parent=transcript:HA;Name=HA;product=hemagglutinin;protein_id=AAD51927.1
