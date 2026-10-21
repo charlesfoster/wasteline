@@ -1,0 +1,48 @@
+##gff-version 3
+##sequence-region   PP109421.1 1 15225
+# Derived from the NCBI GFF3 of PP109421.1 (hRSV/A/England/397/2017): the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon
+# line per gene were added because bcftools csq needs gene -> transcript -> exon/CDS. Gene names are the NCBI gene symbols.
+PP109421.1	NCBI	gene	70	489	.	+	.	ID=gene:NS1;Name=NS1;biotype=protein_coding
+PP109421.1	NCBI	mRNA	70	489	.	+	.	ID=transcript:NS1;Parent=gene:NS1;Name=NS1;biotype=protein_coding;transcript_id=NS1
+PP109421.1	NCBI	exon	70	489	.	+	.	Parent=transcript:NS1;Name=NS1.exon;exon_id=NS1.exon;rank=1
+PP109421.1	NCBI	CDS	70	489	.	+	0	ID=CDS:NS1;Parent=transcript:NS1;Name=NS1;product=nonstructural protein 1;protein_id=WTM05205.1
+PP109421.1	NCBI	gene	599	973	.	+	.	ID=gene:NS2;Name=NS2;biotype=protein_coding
+PP109421.1	NCBI	mRNA	599	973	.	+	.	ID=transcript:NS2;Parent=gene:NS2;Name=NS2;biotype=protein_coding;transcript_id=NS2
+PP109421.1	NCBI	exon	599	973	.	+	.	Parent=transcript:NS2;Name=NS2.exon;exon_id=NS2.exon;rank=1
+PP109421.1	NCBI	CDS	599	973	.	+	0	ID=CDS:NS2;Parent=transcript:NS2;Name=NS2;product=nonstructural protein 2;protein_id=WTM05206.1
+PP109421.1	NCBI	gene	1111	2286	.	+	.	ID=gene:N;Name=N;biotype=protein_coding
+PP109421.1	NCBI	mRNA	1111	2286	.	+	.	ID=transcript:N;Parent=gene:N;Name=N;biotype=protein_coding;transcript_id=N
+PP109421.1	NCBI	exon	1111	2286	.	+	.	Parent=transcript:N;Name=N.exon;exon_id=N.exon;rank=1
+PP109421.1	NCBI	CDS	1111	2286	.	+	0	ID=CDS:N;Parent=transcript:N;Name=N;product=nucleoprotein;protein_id=WTM05207.1
+PP109421.1	NCBI	gene	2318	3043	.	+	.	ID=gene:P;Name=P;biotype=protein_coding
+PP109421.1	NCBI	mRNA	2318	3043	.	+	.	ID=transcript:P;Parent=gene:P;Name=P;biotype=protein_coding;transcript_id=P
+PP109421.1	NCBI	exon	2318	3043	.	+	.	Parent=transcript:P;Name=P.exon;exon_id=P.exon;rank=1
+PP109421.1	NCBI	CDS	2318	3043	.	+	0	ID=CDS:P;Parent=transcript:P;Name=P;product=phosphoprotein;protein_id=WTM05208.1
+PP109421.1	NCBI	gene	3226	3996	.	+	.	ID=gene:M;Name=M;biotype=protein_coding
+PP109421.1	NCBI	mRNA	3226	3996	.	+	.	ID=transcript:M;Parent=gene:M;Name=M;biotype=protein_coding;transcript_id=M
+PP109421.1	NCBI	exon	3226	3996	.	+	.	Parent=transcript:M;Name=M.exon;exon_id=M.exon;rank=1
+PP109421.1	NCBI	CDS	3226	3996	.	+	0	ID=CDS:M;Parent=transcript:M;Name=M;product=matrix protein;protein_id=WTM05209.1
+PP109421.1	NCBI	gene	4266	4460	.	+	.	ID=gene:SH;Name=SH;biotype=protein_coding
+PP109421.1	NCBI	mRNA	4266	4460	.	+	.	ID=transcript:SH;Parent=gene:SH;Name=SH;biotype=protein_coding;transcript_id=SH
+PP109421.1	NCBI	exon	4266	4460	.	+	.	Parent=transcript:SH;Name=SH.exon;exon_id=SH.exon;rank=1
+PP109421.1	NCBI	CDS	4266	4460	.	+	0	ID=CDS:SH;Parent=transcript:SH;Name=SH;product=small hydrophobic protein;protein_id=WTM05210.1
+PP109421.1	NCBI	gene	4652	5617	.	+	.	ID=gene:G;Name=G;biotype=protein_coding
+PP109421.1	NCBI	mRNA	4652	5617	.	+	.	ID=transcript:G;Parent=gene:G;Name=G;biotype=protein_coding;transcript_id=G
+PP109421.1	NCBI	exon	4652	5617	.	+	.	Parent=transcript:G;Name=G.exon;exon_id=G.exon;rank=1
+PP109421.1	NCBI	CDS	4652	5617	.	+	0	ID=CDS:G;Parent=transcript:G;Name=G;product=attachment glycoprotein;protein_id=WTM05211.1
+PP109421.1	NCBI	gene	5697	7421	.	+	.	ID=gene:F;Name=F;biotype=protein_coding
+PP109421.1	NCBI	mRNA	5697	7421	.	+	.	ID=transcript:F;Parent=gene:F;Name=F;biotype=protein_coding;transcript_id=F
+PP109421.1	NCBI	exon	5697	7421	.	+	.	Parent=transcript:F;Name=F.exon;exon_id=F.exon;rank=1
+PP109421.1	NCBI	CDS	5697	7421	.	+	0	ID=CDS:F;Parent=transcript:F;Name=F;product=fusion protein;protein_id=WTM05212.1
+PP109421.1	NCBI	gene	7640	8224	.	+	.	ID=gene:M2-1;Name=M2-1;biotype=protein_coding
+PP109421.1	NCBI	mRNA	7640	8224	.	+	.	ID=transcript:M2-1;Parent=gene:M2-1;Name=M2-1;biotype=protein_coding;transcript_id=M2-1
+PP109421.1	NCBI	exon	7640	8224	.	+	.	Parent=transcript:M2-1;Name=M2-1.exon;exon_id=M2-1.exon;rank=1
+PP109421.1	NCBI	CDS	7640	8224	.	+	0	ID=CDS:M2-1;Parent=transcript:M2-1;Name=M2-1;product=M2-1 protein;protein_id=WTM05215.1
+PP109421.1	NCBI	gene	8199	8465	.	+	.	ID=gene:M2-2;Name=M2-2;biotype=protein_coding
+PP109421.1	NCBI	mRNA	8199	8465	.	+	.	ID=transcript:M2-2;Parent=gene:M2-2;Name=M2-2;biotype=protein_coding;transcript_id=M2-2
+PP109421.1	NCBI	exon	8199	8465	.	+	.	Parent=transcript:M2-2;Name=M2-2.exon;exon_id=M2-2.exon;rank=1
+PP109421.1	NCBI	CDS	8199	8465	.	+	0	ID=CDS:M2-2;Parent=transcript:M2-2;Name=M2-2;product=M2-2 protein;protein_id=WTM05214.1
+PP109421.1	NCBI	gene	8532	15029	.	+	.	ID=gene:L;Name=L;biotype=protein_coding
+PP109421.1	NCBI	mRNA	8532	15029	.	+	.	ID=transcript:L;Parent=gene:L;Name=L;biotype=protein_coding;transcript_id=L
+PP109421.1	NCBI	exon	8532	15029	.	+	.	Parent=transcript:L;Name=L.exon;exon_id=L.exon;rank=1
+PP109421.1	NCBI	CDS	8532	15029	.	+	0	ID=CDS:L;Parent=transcript:L;Name=L;product=RNA-dependent RNA polymerase;protein_id=WTM05213.1

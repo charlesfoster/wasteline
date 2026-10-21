@@ -121,7 +121,7 @@
                     "mimetype": "text/plain",
                     "pattern": "^\\S+\\.fn?a(sta)?(\\.gz)?$",
                     "description": "Path to the reference FASTA (one sequence). Default: the bundled reference of the pathogen (conf/pathogens/*.config); required for pathogens without one.",
-                    "help_text": "The BWA index is built from this file once per run. For a pathogen other than SARS-CoV-2 and MEASLESgenome this must be the reference.fasta that the Freyja barcodes were built on (the pathogen's folder in the Freyja-barcodes repository); a FASTA with several sequences (segmented genomes) is refused.",
+                    "help_text": "The BWA index is built from this file once per run. For a pathogen other than SARS-CoV-2, MEASLESgenome, RSVa and RSVb this must be the reference.fasta that the Freyja barcodes were built on (the pathogen's folder in the Freyja-barcodes repository); a FASTA with several sequences (segmented genomes) is refused.",
                     "fa_icon": "far fa-file-code"
                 },
                 "gff": {
@@ -130,7 +130,7 @@
                     "exists": true,
                     "mimetype": "text/plain",
                     "pattern": "^\\S+\\.gff3?(\\.gz)?$",
-                    "description": "Path to the reference annotation (GFF3). Default: the bundled annotation (SARS-CoV-2 only). Optional for the other pathogens; `--annotate_variants` needs it.",
+                    "description": "Path to the reference annotation (GFF3). Default: the bundled annotation (SARS-CoV-2, RSVa, RSVb). Optional for the other pathogens; `--annotate_variants` needs it.",
                     "fa_icon": "far fa-file-code"
                 },
                 "primer_scheme": {
@@ -168,7 +168,7 @@
                 },
                 "pathogen": {
                     "type": "string",
-                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome has a bundled reference; every other single-contig pathogen needs `--fasta`.",
+                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome, RSVa and RSVb have a bundled reference; every other single-contig pathogen needs `--fasta`.",
                     "help_text": "Passed to every Freyja call. The per-pathogen defaults (reference, annotation) come from conf/pathogens/<profile>.config. Without `--fasta` and `--primer_bed` only SARS-CoV-2 runs out of the box; pass `--fasta` = the reference.fasta that the pathogen's Freyja barcodes were built on (a different one gives silently wrong results), `--primer_bed` (or `--protocol capture`), and `--lineage_groups` if you want the lineage-group summary. The influenza pathogens (H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC: 8 segments) and MTB (4.4 Mb) are accepted by Freyja but stop here with an explanation. See docs/other_pathogens.md.",
                     "fa_icon": "fas fa-virus",
                     "enum": [

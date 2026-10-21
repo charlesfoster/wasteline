@@ -9,14 +9,15 @@ recorded, same commands, same outputs). User view: [../other_pathogens.md](../ot
 while the config is parsed; verified with `--pathogen H1N1` and `--pathogen MEASLESgenome`):
 
 ```groovy
-includeConfig "conf/pathogens/${['SARS-CoV-2': 'sars2', 'MEASLESgenome': 'measles'].get(params.pathogen ?: 'SARS-CoV-2', 'generic')}.config"
+includeConfig "conf/pathogens/${['SARS-CoV-2': 'sars2', 'MEASLESgenome': 'measles', 'RSVa': 'rsva', 'RSVb': 'rsvb'].get(params.pathogen ?: 'SARS-CoV-2', 'generic')}.config"
 ```
 
-| File                            | Sets                                                                                                                  |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `conf/pathogens/sars2.config`   | `pathogen`, `fasta`, `gff` (unchanged) plus the two facts below                                                       |
-| `conf/pathogens/measles.config` | `pathogen = 'MEASLESgenome'`, `fasta = assets/references/NC_001498.1.fasta`, `gff = null`                             |
-| `conf/pathogens/generic.config` | `pathogen = null` (the strict parser needs the key declared; the command line fills it), `fasta = null`, `gff = null` |
+| File                                        | Sets                                                                                                                  |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `conf/pathogens/sars2.config`               | `pathogen`, `fasta`, `gff` (unchanged) plus the two facts below                                                       |
+| `conf/pathogens/measles.config`             | `pathogen = 'MEASLESgenome'`, `fasta = assets/references/NC_001498.1.fasta`, `gff = null`                             |
+| `conf/pathogens/rsva.config`, `rsvb.config` | `pathogen = 'RSVa'` / `'RSVb'`, `fasta` / `gff` = the bundled `PP109421.1` / `OP975389.1` files (PLAN D23)            |
+| `conf/pathogens/generic.config`             | `pathogen = null` (the strict parser needs the key declared; the command line fills it), `fasta = null`, `gff = null` |
 
 Every profile also sets two hidden facts (schema entries `hidden: true`, listed in `docs/parameters.md`, filtered out of
 `run_info.json` so a SARS-CoV-2 run records exactly the parameters it did before):
@@ -81,3 +82,27 @@ Three new pytest tests (kept to the minimum on purpose): the profile/schema cons
 other-pathogen dataset names (`test_freyja_dataset_info.py`) and the unexplained-mutations dataset names plus significance scaling
 (`test_unexplained_mutations.py`); one extra assertion in `test_amplicon_coverage.py`. No new nf-test and no new e2e step. The measles
 validation is a manual run recorded in [../other_pathogens.md](../other_pathogens.md).
+
+## RSV-A and RSV-B (PLAN D23): what changed
+
+Two profiles and four reference files; no pipeline code changed.
+
+- `nextflow.config`: the profile map is now `['SARS-CoV-2': 'sars2', 'MEASLESgenome': 'measles', 'RSVa': 'rsva', 'RSVb': 'rsvb']`.
+- `conf/pathogens/rsva.config` / `rsvb.config` (pattern of `measles.config`): `pathogen`, `fasta = assets/references/PP109421.1.fasta` /
+  `OP975389.1.fasta`, `gff = ...gff3`, and the two hidden facts as `null` (no lineage groups; the container does not bundle RSV).
+- `assets/references/`: the GenBank FASTA records (NCBI efetch, unchanged) and GFF3 files. The GFF3 is NCBI's with one synthetic
+  `mRNA` and `exon` line added per gene (and the NCBI `gene` / `CDS` lines rewritten with `gene:` / `transcript:` IDs), because
+  `bcftools csq` stops with "No usable transcripts" on a file that has only `gene` and `CDS` lines. `read_cds_models()` in
+  `bin/mutations_of_interest.py` reads the converted file as it does the SARS-CoV-2 one (feature name = the transcript's Name).
+- Existing D22 behaviour that was exercised for the first time with a pathogen that ships no `lineages.yml`: `latest` downloads
+  `<P>_barcodes.csv` only; `freyja_data.json` records `lineages_yml_sha256: null`; the lineage summary is off with one `INFO` line
+  (no groups bundled) or one `WARN` line (`--lineage_groups` given); dropout impact and unexplained mutations read the barcodes
+  CSV; the default-primer-scheme start-up error fires for `qiagenv1` with the RSV contig name; per-sample `protocol` /
+  `primer_scheme` (BED path) cells mix capture and amplicon samples in one run. All behaved as designed; nothing needed changing.
+- Tests: the guard `test_pathogen_profiles_are_consistent` (`tests/python/test_boolean_params.py`) now also checks that a profile's
+  bundled FASTA exists and has one sequence and that a bundled GFF3 is on that sequence. No other test was added; the validation is
+  the manual run in [../other_pathogens.md](../other_pathogens.md), made with `tests/simulate_pathogen_mixture.py` (not run by
+  any test).
+- Not changed but found: the console banner (`assets/logo.txt`) names SARS-CoV-2 for every pathogen; the influenza refusal text
+  (`unsupportedPathogenReason()`, the schema help text) still gives only the "8 segments" reason although Freyja's influenza
+  barcodes are HA-only (see "Influenza: what it needs" in the user documentation).

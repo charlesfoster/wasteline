@@ -1,0 +1,48 @@
+##gff-version 3
+##sequence-region   OP975389.1 1 15222
+# Derived from the NCBI GFF3 of OP975389.1 (hRSV/B/Australia/VIC-RCH056/2019): the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon
+# line per gene were added because bcftools csq needs gene -> transcript -> exon/CDS. Gene names are the NCBI gene symbols.
+OP975389.1	NCBI	gene	57	476	.	+	.	ID=gene:NS1;Name=NS1;biotype=protein_coding
+OP975389.1	NCBI	mRNA	57	476	.	+	.	ID=transcript:NS1;Parent=gene:NS1;Name=NS1;biotype=protein_coding;transcript_id=NS1
+OP975389.1	NCBI	exon	57	476	.	+	.	Parent=transcript:NS1;Name=NS1.exon;exon_id=NS1.exon;rank=1
+OP975389.1	NCBI	CDS	57	476	.	+	0	ID=CDS:NS1;Parent=transcript:NS1;Name=NS1;product=nonstructural protein 1;protein_id=WBQ20019.1
+OP975389.1	NCBI	gene	584	958	.	+	.	ID=gene:NS2;Name=NS2;biotype=protein_coding
+OP975389.1	NCBI	mRNA	584	958	.	+	.	ID=transcript:NS2;Parent=gene:NS2;Name=NS2;biotype=protein_coding;transcript_id=NS2
+OP975389.1	NCBI	exon	584	958	.	+	.	Parent=transcript:NS2;Name=NS2.exon;exon_id=NS2.exon;rank=1
+OP975389.1	NCBI	CDS	584	958	.	+	0	ID=CDS:NS2;Parent=transcript:NS2;Name=NS2;product=nonstructural protein 2;protein_id=WBQ20020.1
+OP975389.1	NCBI	gene	1097	2272	.	+	.	ID=gene:N;Name=N;biotype=protein_coding
+OP975389.1	NCBI	mRNA	1097	2272	.	+	.	ID=transcript:N;Parent=gene:N;Name=N;biotype=protein_coding;transcript_id=N
+OP975389.1	NCBI	exon	1097	2272	.	+	.	Parent=transcript:N;Name=N.exon;exon_id=N.exon;rank=1
+OP975389.1	NCBI	CDS	1097	2272	.	+	0	ID=CDS:N;Parent=transcript:N;Name=N;product=nucleocapsid protein;protein_id=WBQ20021.1
+OP975389.1	NCBI	gene	2305	3030	.	+	.	ID=gene:P;Name=P;biotype=protein_coding
+OP975389.1	NCBI	mRNA	2305	3030	.	+	.	ID=transcript:P;Parent=gene:P;Name=P;biotype=protein_coding;transcript_id=P
+OP975389.1	NCBI	exon	2305	3030	.	+	.	Parent=transcript:P;Name=P.exon;exon_id=P.exon;rank=1
+OP975389.1	NCBI	CDS	2305	3030	.	+	0	ID=CDS:P;Parent=transcript:P;Name=P;product=phosphoprotein;protein_id=WBQ20022.1
+OP975389.1	NCBI	gene	3154	3990	.	+	.	ID=gene:M;Name=M;biotype=protein_coding
+OP975389.1	NCBI	mRNA	3154	3990	.	+	.	ID=transcript:M;Parent=gene:M;Name=M;biotype=protein_coding;transcript_id=M
+OP975389.1	NCBI	exon	3154	3990	.	+	.	Parent=transcript:M;Name=M.exon;exon_id=M.exon;rank=1
+OP975389.1	NCBI	CDS	3154	3990	.	+	0	ID=CDS:M;Parent=transcript:M;Name=M;product=matrix protein;protein_id=WBQ20023.1
+OP975389.1	NCBI	gene	4259	4456	.	+	.	ID=gene:SH;Name=SH;biotype=protein_coding
+OP975389.1	NCBI	mRNA	4259	4456	.	+	.	ID=transcript:SH;Parent=gene:SH;Name=SH;biotype=protein_coding;transcript_id=SH
+OP975389.1	NCBI	exon	4259	4456	.	+	.	Parent=transcript:SH;Name=SH.exon;exon_id=SH.exon;rank=1
+OP975389.1	NCBI	CDS	4259	4456	.	+	0	ID=CDS:SH;Parent=transcript:SH;Name=SH;product=small hydrophobic protein;protein_id=WBQ20024.1
+OP975389.1	NCBI	gene	4646	5578	.	+	.	ID=gene:G;Name=G;biotype=protein_coding
+OP975389.1	NCBI	mRNA	4646	5578	.	+	.	ID=transcript:G;Parent=gene:G;Name=G;biotype=protein_coding;transcript_id=G
+OP975389.1	NCBI	exon	4646	5578	.	+	.	Parent=transcript:G;Name=G.exon;exon_id=G.exon;rank=1
+OP975389.1	NCBI	CDS	4646	5578	.	+	0	ID=CDS:G;Parent=transcript:G;Name=G;product=attachment glycoprotein;protein_id=WBQ20025.1
+OP975389.1	NCBI	gene	5676	7400	.	+	.	ID=gene:F;Name=F;biotype=protein_coding
+OP975389.1	NCBI	mRNA	5676	7400	.	+	.	ID=transcript:F;Parent=gene:F;Name=F;biotype=protein_coding;transcript_id=F
+OP975389.1	NCBI	exon	5676	7400	.	+	.	Parent=transcript:F;Name=F.exon;exon_id=F.exon;rank=1
+OP975389.1	NCBI	CDS	5676	7400	.	+	0	ID=CDS:F;Parent=transcript:F;Name=F;product=fusion glycoprotein;protein_id=WBQ20026.1
+OP975389.1	NCBI	gene	7627	8214	.	+	.	ID=gene:M2-1;Name=M2-1;biotype=protein_coding
+OP975389.1	NCBI	mRNA	7627	8214	.	+	.	ID=transcript:M2-1;Parent=gene:M2-1;Name=M2-1;biotype=protein_coding;transcript_id=M2-1
+OP975389.1	NCBI	exon	7627	8214	.	+	.	Parent=transcript:M2-1;Name=M2-1.exon;exon_id=M2-1.exon;rank=1
+OP975389.1	NCBI	CDS	7627	8214	.	+	0	ID=CDS:M2-1;Parent=transcript:M2-1;Name=M2-1;product=transcription elongation factor M2-1;protein_id=WBQ20027.1
+OP975389.1	NCBI	gene	8180	8452	.	+	.	ID=gene:M2-2;Name=M2-2;biotype=protein_coding
+OP975389.1	NCBI	mRNA	8180	8452	.	+	.	ID=transcript:M2-2;Parent=gene:M2-2;Name=M2-2;biotype=protein_coding;transcript_id=M2-2
+OP975389.1	NCBI	exon	8180	8452	.	+	.	Parent=transcript:M2-2;Name=M2-2.exon;exon_id=M2-2.exon;rank=1
+OP975389.1	NCBI	CDS	8180	8452	.	+	0	ID=CDS:M2-2;Parent=transcript:M2-2;Name=M2-2;product=transcription elongation factor M2-2;protein_id=WBQ20028.1
+OP975389.1	NCBI	gene	8518	15018	.	+	.	ID=gene:L;Name=L;biotype=protein_coding
+OP975389.1	NCBI	mRNA	8518	15018	.	+	.	ID=transcript:L;Parent=gene:L;Name=L;biotype=protein_coding;transcript_id=L
+OP975389.1	NCBI	exon	8518	15018	.	+	.	Parent=transcript:L;Name=L.exon;exon_id=L.exon;rank=1
+OP975389.1	NCBI	CDS	8518	15018	.	+	0	ID=CDS:L;Parent=transcript:L;Name=L;product=RNA-directed RNA polymerase;protein_id=WBQ20029.1

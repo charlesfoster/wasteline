@@ -135,3 +135,21 @@ def test_pathogen_profiles_are_consistent():
         named = re.search(r"^\s*pathogen\s*=\s*'([^']+)'", text, re.MULTILINE)
         if named:
             assert named.group(1) in props["pathogen"]["enum"], stem
+        # a bundled reference is one sequence and its bundled annotation is on that sequence
+        paths = re.findall(
+            r'^\s*(?:fasta|gff)\s*=\s*"\$\{projectDir\}/([^"]+)"', text, re.MULTILINE
+        )
+        gffs = [ROOT / p for p in paths if p.endswith((".gff3", ".gff"))]
+        fastas = [ROOT / p for p in paths if not p.endswith((".gff3", ".gff"))]
+        for path in fastas + gffs:
+            assert path.is_file(), f"{stem}.config names {path}, which does not exist"
+        if fastas:
+            names = [
+                ln[1:].split()[0] for ln in fastas[0].read_text().splitlines() if ln.startswith(">")
+            ]
+            assert len(names) == 1, f"{fastas[0].name}: {len(names)} sequences"
+            for gff in gffs:
+                seqids = {
+                    ln.split("\t")[0] for ln in gff.read_text().splitlines() if ln and ln[0] != "#"
+                }
+                assert seqids == set(names), f"{gff.name} is not on the sequence {names}"
