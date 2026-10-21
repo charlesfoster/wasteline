@@ -26,7 +26,7 @@ Run `nextflow run charlesfoster/wasteline --help` for the same list at the termi
 | `report`    | `--results_dir`                                                   | re-render the HTML report only                                                                     |
 | `update_db` | `--db_dir` (optional)                                             | download the latest Freyja data into `--db_dir` and exit                                           |
 
-The library options (`--protocol`, `--skip_primer_trimming`, `--duplicates`) act in `full`; in `demix` only `--protocol` has an effect (amplicon coverage is never computed for `capture`).
+The library options (`--protocol`, `--skip_primer_trimming`, `--duplicates`) act in `full`; `--protocol`, `--primer_scheme` and `--primer_bed` are the defaults for samples whose samplesheet `protocol` / `primer_scheme` cells are blank (see [usage](usage.md#mixed-libraries-in-one-run-per-sample-protocol-and-primer_scheme)); in `demix` only `--protocol` has an effect (amplicon coverage is never computed for `capture`).
 
 Which parameters matter depends on the mode: the read-trimming and BAM options only act in `full`; the Freyja,
 QC, consensus and report options act in `full` and `demix`; QC needs a primer scheme in `demix` for amplicon dropout.

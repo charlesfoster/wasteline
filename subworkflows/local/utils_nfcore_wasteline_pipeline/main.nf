@@ -94,21 +94,24 @@ workflow PIPELINE_INITIALISATION {
     // Empty when no samplesheet is used (demix/aggregate from results directories, report, update_db):
     // the RESULTS_INPUT subworkflow produces the same rows from --previous_results / --demix_dir.
     //
+    // The rows are built eagerly, so a bad `protocol` / `primer_scheme` cell stops the run here, naming the sample.
     def ch_samplesheet = channel.empty()
+    def rows = []
     if (input && mode == 'full') {
-        ch_samplesheet = channel
-            .fromList(samplesheetToList(input, "${projectDir}/assets/schema_input.json"))
-            .map { meta, fastq_1, fastq_2 -> [ sampleMeta(meta), [ fastq_1, fastq_2 ] ] }
+        rows = samplesheetToList(input, "${projectDir}/assets/schema_input.json")
+            .collect { meta, fastq_1, fastq_2 -> [ sampleMeta(meta, mode), [ fastq_1, fastq_2 ] ] }
     }
     else if (input && mode == 'demix') {
-        ch_samplesheet = channel
-            .fromList(samplesheetToList(input, "${projectDir}/assets/schema_input_demix.json"))
-            .map { meta, variants, depths, fastp_json -> [ sampleMeta(meta), variants, depths, fastp_json ?: [] ] }
+        rows = samplesheetToList(input, "${projectDir}/assets/schema_input_demix.json")
+            .collect { meta, variants, depths, fastp_json -> [ sampleMeta(meta, mode), variants, depths, fastp_json ?: [] ] }
     }
     else if (input && mode == 'aggregate') {
-        ch_samplesheet = channel
-            .fromList(samplesheetToList(input, "${projectDir}/assets/schema_input_aggregate.json"))
-            .map { meta, demix -> [ sampleMeta(meta), demix ] }
+        rows = samplesheetToList(input, "${projectDir}/assets/schema_input_aggregate.json")
+            .collect { meta, demix -> [ sampleMeta(meta, mode), demix ] }
+    }
+    if (rows) {
+        checkSampleBeds(rows.collect { row -> row[0] })
+        ch_samplesheet = channel.fromList(rows)
     }
 
     emit:
@@ -218,16 +221,147 @@ def finaliseRunInfo(outdir) {
 }
 
 //
-// Sample meta map shared by every mode
+// Sample meta map shared by every mode. In modes that map or demix (full, demix) it also carries the library
+// settings of the sample (PLAN D20), see libraryMeta().
 //
-def sampleMeta(meta) {
-    return [
+def sampleMeta(meta, mode) {
+    def sample = [
         id: meta.id,
         sample_type: meta.sample_type ?: 'sample',
         collection_date: meta.collection_date ?: null,
         site: meta.site ?: null,
         viral_load: meta.viral_load ?: null,
     ]
+    if (mode in ['full', 'demix']) {
+        return sample + libraryMeta(meta.id, meta.protocol, meta.primer_scheme, mode)
+    }
+    return sample
+}
+
+//
+// THE effective library settings of one sample, computed here and nowhere else (conf/modules.config spells
+// out the naming conditions it needs, because a config file cannot call a function). `protocol` and
+// `primer_scheme` are the optional samplesheet cells; empty = the run defaults (--protocol, --primer_bed /
+// --primer_scheme, --skip_primer_trimming, --duplicates).
+//   protocol         amplicon | capture
+//   primer_trimming  true only for amplicon reads that are not --skip_primer_trimming
+//   duplicates       mark | none (--duplicates auto = mark for capture, none for amplicon)
+//   primer_scheme    bundled scheme name, or 'custom' (then primer_bed is the BED path); null when the sample has no
+//                    amplicon-level analysis: not primer-trimmed, or demix mode without a named scheme (the scheme
+//                    of old results is unknown). Full mode with nothing named uses the bundled default (D14).
+//
+def libraryMeta(sample, protocol_cell, scheme_cell, mode) {
+    def protocol = protocol_cell ?: params.protocol
+    if (!(protocol in ['amplicon', 'capture'])) {
+        error("Sample '${sample}': protocol '${protocol}' is not one of amplicon, capture")
+    }
+    def settings = protocolSettings(protocol)
+    def scheme = null
+    def bed = null
+    if (settings.primer_trimming) {
+        if (scheme_cell) {
+            def spec = scheme_cell.toString().trim()
+            if (spec.contains('/') || spec.endsWith('.bed')) {
+                bed = file(spec).toAbsolutePath().toString()
+                if (!file(bed).exists()) {
+                    error("Sample '${sample}': primer_scheme BED file '${spec}' does not exist (a relative path is relative to the directory you launch Nextflow from)")
+                }
+                scheme = 'custom'
+            }
+            else if (file("${projectDir}/assets/primer_schemes/${spec}.bed").exists()) {
+                scheme = spec
+            }
+            else {
+                error("Sample '${sample}': primer_scheme '${spec}' is not a bundled scheme (${bundledPrimerSchemes().join(', ')}) and not a path to a BED file")
+            }
+        }
+        else if (params.primer_bed) {
+            scheme = 'custom'
+            bed = params.primer_bed.toString()
+        }
+        else if (params.primer_scheme) {
+            scheme = params.primer_scheme.toString()
+        }
+        else if (mode == 'full') {
+            scheme = defaultPrimerScheme()
+        }
+    }
+    return settings + [ primer_scheme: scheme, primer_bed: bed ]
+}
+
+//
+// protocolSettings: the part of the library settings that depends only on the protocol
+//
+def protocolSettings(protocol) {
+    def capture = protocol == 'capture'
+    return [
+        protocol: protocol,
+        primer_trimming: !capture && !params.skip_primer_trimming,
+        duplicates: params.duplicates == 'auto' ? (capture ? 'mark' : 'none') : params.duplicates,
+    ]
+}
+
+def bundledPrimerSchemes() {
+    return file("${projectDir}/assets/primer_schemes").listFiles().findAll { f -> f.name.endsWith('.bed') }.collect { f -> f.baseName }.sort()
+}
+
+//
+// The primer BED of a sample with a primer_scheme
+//
+def primerBedFor(meta) {
+    if (meta.primer_bed) {
+        return file(meta.primer_bed, checkIfExists: true)
+    }
+    return file("${projectDir}/assets/primer_schemes/${meta.primer_scheme}.bed", checkIfExists: true)
+}
+
+//
+// What run_info.json records about the library settings of the samples (modes full and demix; [] elsewhere):
+//   protocol / primer_trimming / duplicates   the common value, or 'mixed' when the samples differ
+//                                             (primer_trimming and duplicates are only reported for mode full)
+//   sample_libraries                          per sample: protocol, primer_scheme ('custom: <BED name>' for a BED
+//                                             file, null when there is no amplicon-level analysis), primer_trimming, duplicates
+//
+def commonValue(metas, key) {
+    def values = metas.collect { meta -> meta[key] }.unique()
+    return values.size() == 1 ? values[0] : 'mixed'
+}
+
+def libraryInfo(mode, metas) {
+    if (!(mode in ['full', 'demix']) || !metas) {
+        return [ protocol: params.protocol, primer_trimming: null, duplicates: null ]
+    }
+    def libraries = metas.sort { meta -> meta.id }.collectEntries { meta ->
+        [ (meta.id): [
+            protocol: meta.protocol,
+            primer_scheme: meta.primer_bed ? "custom: ${file(meta.primer_bed).name}" : meta.primer_scheme,
+            primer_trimming: meta.primer_trimming,
+            duplicates: meta.duplicates,
+        ] ]
+    }
+    def trimming = commonValue(metas, 'primer_trimming')
+    return [
+        protocol: commonValue(metas, 'protocol'),
+        primer_trimming: mode == 'full' && trimming != 'mixed' ? trimming : null,
+        duplicates: mode == 'full' ? commonValue(metas, 'duplicates') : null,
+        sample_libraries: libraries,
+    ]
+}
+
+//
+// Every distinct primer BED of the samples must be on a contig of the reference or ivar trim silently trims nothing
+//
+def checkSampleBeds(metas) {
+    def beds = metas.findAll { meta -> meta.primer_scheme }.collect { meta -> primerBedFor(meta) }.unique()
+    if (beds) {
+        def fasta_contigs = fastaContigs(file(params.fasta, checkIfExists: true))
+        beds.each { bed ->
+            def unknown = bedContigs(bed) - fasta_contigs
+            if (unknown) {
+                error("Primer BED '${bed}' refers to contig(s) ${unknown} that are not in the reference FASTA '${params.fasta}' (which has ${fasta_contigs}). Use a matching primer scheme or --fasta.")
+            }
+        }
+    }
 }
 
 //
@@ -271,8 +405,8 @@ def validateInputParameters(mode) {
         update_db: [],
     ][mode]
     def hint = [
-        full: "--mode full needs a FASTQ samplesheet: --input samplesheet.csv (columns sample,fastq_1,fastq_2[,sample_type][,collection_date][,site]; make one with bin/make_samplesheet.py <fastq_dir>)",
-        demix: "--mode demix needs existing Freyja variants and depths: --input samplesheet.csv (columns sample,variants,depths[,fastp_json][,sample_type][,collection_date][,site]) or --previous_results <results dir> (new or legacy Snakemake layout; never modified)",
+        full: "--mode full needs a FASTQ samplesheet: --input samplesheet.csv (columns sample,fastq_1,fastq_2[,sample_type][,collection_date][,site][,protocol][,primer_scheme]; make one with bin/make_samplesheet.py <fastq_dir>)",
+        demix: "--mode demix needs existing Freyja variants and depths: --input samplesheet.csv (columns sample,variants,depths[,fastp_json][,sample_type][,collection_date][,site][,protocol][,primer_scheme]) or --previous_results <results dir> (new or legacy Snakemake layout; never modified)",
         aggregate: "--mode aggregate needs existing .demix files: --input samplesheet.csv (columns sample,demix[,sample_type][,collection_date][,site]), --demix_dir <dir of *.demix files>, or --previous_results <dir>[,<dir>...]",
         report: "--mode report needs --results_dir <results directory of a previous run> (it takes no samplesheet)",
         update_db: "--mode update_db takes no input; it downloads the latest Freyja data into --db_dir",
@@ -294,12 +428,14 @@ def validateInputParameters(mode) {
         error("Give only one of ${sources.keySet().join(', ')} with --mode ${mode}. ${hint}")
     }
 
-    def settings = protocolSettings(mode)
+    // Run defaults: samples without a protocol / primer_scheme cell use them. A samplesheet can override them per sample (PLAN D20).
+    def settings = protocolSettings(params.protocol)
     if ((params.protocol == 'capture' || params.skip_primer_trimming) && (params.primer_scheme || params.primer_bed) && mode in ['full', 'demix']) {
-        log.warn("--primer_scheme/--primer_bed are ignored: " + (params.protocol == 'capture' ? "--protocol capture" : "--skip_primer_trimming") + " reads are not primer-trimmed and there is no amplicon-level analysis")
+        log.warn("--primer_scheme/--primer_bed are ignored for samples that are not primer-trimmed (" + (params.protocol == 'capture' ? "--protocol capture" : "--skip_primer_trimming") + "): there is no amplicon-level analysis for them")
     }
-    if (settings.amplicons) {
-        // The BED must be on the same contig(s) as the reference or ivar trim silently trims nothing
+    if (settings.primer_trimming && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed)))) {
+        // The default BED must be on the same contig(s) as the reference or ivar trim silently trims nothing
+        // (BEDs named in the samplesheet are checked when it is read)
         def bed_contigs = bedContigs(primerBed())
         def fasta_contigs = fastaContigs(file(params.fasta, checkIfExists: true))
         def unknown = bed_contigs - fasta_contigs
@@ -443,26 +579,6 @@ def previousRuns(mode) {
 }
 
 //
-// THE effective library settings, computed here and nowhere else (conf/modules.config spells out the two
-// naming conditions it needs, because a config file cannot call a function):
-//   protocol         amplicon | capture
-//   primer_trimming  true only for amplicon reads that are not --skip_primer_trimming
-//   duplicates       mark | none (--duplicates auto = mark for capture, none for amplicon)
-//   amplicons        amplicon-level QC (primer BED needed): amplicon protocol with trimming; in demix mode
-//                    only when a scheme/BED is given explicitly (the scheme of old results is unknown)
-//
-def protocolSettings(mode) {
-    def capture = params.protocol == 'capture'
-    def trimming = !capture && !params.skip_primer_trimming
-    return [
-        protocol: params.protocol,
-        primer_trimming: trimming,
-        duplicates: params.duplicates == 'auto' ? (capture ? 'mark' : 'none') : params.duplicates,
-        amplicons: trimming && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed))),
-    ]
-}
-
-//
 // The bundled scheme used when neither --primer_scheme nor --primer_bed is given (PLAN D14: QIAseq)
 //
 def defaultPrimerScheme() {
@@ -470,23 +586,13 @@ def defaultPrimerScheme() {
 }
 
 //
-// Primer BED: --primer_bed, else the bundled --primer_scheme
+// Primer BED of the run default: --primer_bed, else the bundled --primer_scheme (samples may name their own)
 //
 def primerBed() {
     if (params.primer_bed) {
         return file(params.primer_bed, checkIfExists: true)
     }
     return file("${projectDir}/assets/primer_schemes/${params.primer_scheme ?: defaultPrimerScheme()}.bed", checkIfExists: true)
-}
-
-//
-// ivar trim -x: explicit --ivar_offset wins; the bundled swift scheme implies 5; otherwise 0
-//
-def ivarOffset() {
-    if (params.ivar_offset != null) {
-        return params.ivar_offset as int
-    }
-    return (!params.primer_bed && params.primer_scheme == 'swift') ? 5 : 0
 }
 
 //

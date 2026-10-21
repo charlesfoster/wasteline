@@ -61,7 +61,7 @@ workflow RESULTS_INPUT {
             .fromList(found.collect { entry -> "${entry.sample},${entry.file},${entry.sample_type},," })
             .collectFile(name: 'demix_dir_samplesheet.csv', seed: 'sample,demix,sample_type,collection_date,site', sort: true, newLine: true)
         ch_rows = channel.fromList(found.collect { entry ->
-            [ sampleMeta([ id: entry.sample, sample_type: entry.sample_type ]), entry.file ]
+            [ sampleMeta([ id: entry.sample, sample_type: entry.sample_type ], mode), entry.file ]
         })
     }
 
@@ -88,12 +88,15 @@ workflow RESULTS_INPUT {
 // Row of a discovered samplesheet (strings) -> channel item for the mode
 //
 def resultsRow(mode, row) {
+    // protocol / primer_scheme: carried over from the samplesheet of the previous run when it had the columns
     def meta = sampleMeta([
         id: row.sample,
         sample_type: row.sample_type,
         collection_date: row.collection_date,
         site: row.site,
-    ])
+        protocol: row.protocol,
+        primer_scheme: row.primer_scheme,
+    ], mode)
     if (mode == 'demix') {
         return [ meta, file(row.variants), file(row.depths), row.fastp_json ? file(row.fastp_json) : [] ]
     }

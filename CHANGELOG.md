@@ -11,6 +11,7 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Added`
 
+- Per-sample library settings (PLAN D20): optional samplesheet columns `protocol` (`amplicon`|`capture`) and `primer_scheme` (a bundled scheme name or a primer BED path) for modes `full` and `demix`, so one run can mix amplicon and probe-capture libraries or several primer schemes. Empty cells use the run defaults (`--protocol`, `--primer_scheme`/`--primer_bed`, `--skip_primer_trimming`, `--duplicates`); a sheet without the columns behaves as before. Primer trimming, primer scheme check, amplicon coverage, duplicate marking and the amplicon QC rule are applied per sample; `run_info.json` gets `protocol: mixed` and `sample_libraries` for mixed runs (and `input_checksums.primer_beds` for several BEDs), the report header says `mixed`. `bin/check_samplesheet.py` validates the columns; `bin/make_samplesheet.py` carries them over from a metadata table and from the `summary/samplesheet.csv` of earlier results. `ivarOffset()` was removed (unused); `protocolSettings()` now takes a protocol. `tests/e2e.sh` step 6 is a mixed run (`check_outputs.py --protocol mixed`).
 - Cross-run store and alerts (PLAN D21): `bin/runs_store.py add|runs|alerts` (standard library, host Python) ingests finished results
   directories into one SQLite file (idempotent per directory; all runs of a sample kept with their barcode version, queries use the latest)
   and applies four documented rules (emerging lineage/group, sustained growth, recurring unexplained mutation with its `in_dataset` flag,

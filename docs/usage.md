@@ -83,6 +83,9 @@ Rules common to all modes:
   load-weighted time series and, with `--freyja_growth_scale_by_viral_load`, the growth-rate fit
   ([below](#time-series-growth-rates-and-the-dashboard)). `bin/make_samplesheet.py --metadata` accepts the column and carries it
   over from `summary/samplesheet.csv` of earlier results; it is written to the sheet only when some sample has a value.
+- `protocol` and `primer_scheme` (optional, modes `full` and `demix`) set the library of one sample, so a run can mix
+  amplicon and probe-capture libraries or several primer schemes ([below](#mixed-libraries-in-one-run-per-sample-protocol-and-primer_scheme)).
+  Blank or absent means the run defaults (`--protocol`, `--primer_scheme`/`--primer_bed`).
 - Relative file paths are resolved against the **directory you launch Nextflow from**, not the samplesheet's location.
   Use absolute paths (the default of `make_samplesheet.py`).
 
@@ -94,7 +97,7 @@ MIX_A,/data/run7/MIX_A_R1.fastq.gz,/data/run7/MIX_A_R2.fastq.gz,sample,2026-01-0
 NEG_E,/data/run7/NEG_E_R1.fastq.gz,/data/run7/NEG_E_R2.fastq.gz,negative,2026-01-05,SiteA
 ```
 
-Required: `sample,fastq_1,fastq_2`. **Paired-end reads only** (`fastq_2` may not be empty). FASTQ paths must end in
+Required: `sample,fastq_1,fastq_2`. Optional: `sample_type,collection_date,site,viral_load,protocol,primer_scheme`. **Paired-end reads only** (`fastq_2` may not be empty). FASTQ paths must end in
 `.fastq.gz` or `.fq.gz` and contain no whitespace; the files must exist.
 
 ### `--mode demix`: existing Freyja variants and depths
@@ -153,14 +156,14 @@ python bin/make_samplesheet.py --from-results results/ --mode aggregate -o aggre
 ```
 
 ```
-NOTE: carrying over sample_type/collection_date/site from results/summary/samplesheet.csv
+NOTE: carrying over sample_type/collection_date/site/viral_load/protocol/primer_scheme from results/summary/samplesheet.csv
 NOTE: skipped 'LOWCOV_D' (new layout): missing demix
 NOTE: skipped 'NEG_E' (new layout): missing demix
 wrote 5 sample(s) to agg_sheet.csv
 ```
 
 Samples lacking the required files are skipped with a reason; if nothing usable remains the command fails.
-`sample_type`, `collection_date` and `site` are carried over from `results/summary/samplesheet.csv` when present.
+`sample_type`, `collection_date`, `site`, `viral_load` and, when some sample has a value, `protocol` and `primer_scheme` are carried over from `results/summary/samplesheet.csv` when present. A `--metadata` table may also carry `protocol` and `primer_scheme` columns.
 
 ### Checking a samplesheet: `bin/check_samplesheet.py`
 
@@ -273,6 +276,39 @@ capture, no amplicon-level QC (a primer scheme/BED would be ignored). It is impl
 
 **Not available for capture:** per-amplicon coverage/dropout. In mode `demix` the protocol only matters for the optional
 amplicon coverage (it is never computed for `capture`); demix has no BAM, so duplicates are not touched there.
+
+### Mixed libraries in one run: per-sample `protocol` and `primer_scheme`
+
+Two optional samplesheet columns override the run defaults for one sample (PLAN D20):
+
+| Column          | Values                                                                                                                                                                        | Blank means                                                    |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `protocol`      | `amplicon` or `capture`                                                                                                                                                       | `--protocol` (default `amplicon`)                              |
+| `primer_scheme` | a bundled scheme name (`midnight`, `qiagenv1`, ... see [primer schemes](#4-reference-and-primer-schemes)) or the path to a primer BED file (contains a `/` or ends in `.bed`) | `--primer_bed`, else `--primer_scheme`, else `qiagenv1` (full) |
+
+```csv
+sample,fastq_1,fastq_2,sample_type,collection_date,site,protocol,primer_scheme
+WW_AMP_1,/data/WW_AMP_1_R1.fastq.gz,/data/WW_AMP_1_R2.fastq.gz,sample,2026-03-02,SiteA,amplicon,midnight
+WW_AMP_2,/data/WW_AMP_2_R1.fastq.gz,/data/WW_AMP_2_R2.fastq.gz,sample,2026-03-02,SiteB,amplicon,/refs/my_scheme.bed
+WW_CAP_1,/data/WW_CAP_1_R1.fastq.gz,/data/WW_CAP_1_R2.fastq.gz,sample,2026-03-09,SiteA,capture,
+```
+
+Each sample then goes through its own steps: amplicon samples are primer-trimmed with their scheme, checked against it
+([below](#primer-scheme-check)) and get `amplicon_coverage` and the amplicon dropout QC rule; capture samples are not trimmed,
+have their duplicates marked (`--duplicates auto`) and have `NA` amplicon columns and no `amplicon_dropout` reason.
+`--skip_primer_trimming` and `--duplicates` still apply to the whole run (to the amplicon samples and to all samples
+respectively). A `primer_scheme` on a `capture` row (or under `--skip_primer_trimming`) is ignored; a sheet without the
+columns behaves exactly as before. An unknown protocol or scheme name, or a missing BED file, stops the run at start-up
+naming the sample (`bin/check_samplesheet.py` finds the same mistakes beforehand); every BED is checked against the
+reference contig. Relative BED paths follow the same rule as the FASTQ paths (relative to the launch directory).
+
+The report header then shows `mixed (N capture, M amplicon; ...)`, the amplicon section lists the amplicon samples only,
+and `pipeline_info/run_info.json` records `protocol: mixed` plus a `sample_libraries` entry per sample.
+
+**`--mode demix`** reads the two cells from the `summary/samplesheet.csv` of the results given with `--previous_results`
+(or from your `--input` sheet); where they are blank the run defaults apply. A global `--protocol capture` of the earlier run is
+not recorded in that sheet, so give it again when re-analysing (`bin/reanalyse_runs.py` carries it). In demix mode the
+amplicon coverage is computed only for samples with a primer scheme (named in a cell or by `--primer_scheme`/`--primer_bed`).
 
 ### Primer scheme check
 

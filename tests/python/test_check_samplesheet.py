@@ -79,3 +79,26 @@ def test_check_files_fastq(tmp_path):
     assert "(empty)" in text and "empty" in text
     assert "(gone)" in text and "does not exist" in text
     assert "(good)" not in text
+
+
+def test_per_sample_protocol_and_primer_scheme(tmp_path):
+    """PLAN D20: unknown protocol, unknown bundled scheme and a missing BED file are named per row; valid cells pass."""
+    hdr = FULL_HDR.strip() + ",protocol,primer_scheme\n"
+    ok = sheet(
+        tmp_path,
+        hdr + "A,a_R1.fastq.gz,a_R2.fastq.gz,sample,,,amplicon,midnight\n"
+        "C,c_R1.fastq.gz,c_R2.fastq.gz,sample,,,capture,\n",
+    )
+    assert cs.validate(ok, "full")["ok"]
+    bad = sheet(
+        tmp_path,
+        hdr + "A,a_R1.fastq.gz,a_R2.fastq.gz,sample,,,hybrid,\n"
+        "B,b_R1.fastq.gz,b_R2.fastq.gz,sample,,,amplicon,nosuchscheme\n"
+        "D,d_R1.fastq.gz,d_R2.fastq.gz,sample,,,amplicon,missing.bed\n",
+    )
+    r = cs.validate(bad, "full", check_files=False)
+    assert "protocol 'hybrid'" in errs(r) and "'nosuchscheme' is not a bundled scheme" in errs(r)
+    assert "missing.bed" not in errs(r)  # a BED path is only looked for with --check-files
+    assert "primer_scheme BED file 'missing.bed' does not exist" in errs(
+        cs.validate(bad, "full", check_files=True)
+    )

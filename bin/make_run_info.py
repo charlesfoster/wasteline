@@ -86,8 +86,12 @@ def build_run_info(
         info["freyja_data_compare"] = dataset_info_compare
     # Only the inputs the mode actually uses are checksummed (demix/aggregate need no BED/FASTA)
     info["input_checksums"] = {"samplesheet": checksum_entry(samplesheet)}
-    if bed:
-        info["input_checksums"]["primer_bed"] = checksum_entry(bed)
+    # one primer BED: primer_bed; samples with different primer schemes (PLAN D20): primer_beds, one entry each
+    beds = [bed] if isinstance(bed, (str, Path)) else list(bed or [])
+    if len(beds) == 1:
+        info["input_checksums"]["primer_bed"] = checksum_entry(beds[0])
+    elif beds:
+        info["input_checksums"]["primer_beds"] = [checksum_entry(b) for b in beds]
     if fasta:
         info["input_checksums"]["reference_fasta"] = checksum_entry(fasta)
     info.setdefault("previous_runs", [])
@@ -99,7 +103,9 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--base", required=True, help="JSON with fields known to Nextflow")
     parser.add_argument("--samplesheet", required=True)
-    parser.add_argument("--bed", default=None, help="primer BED (modes that map reads)")
+    parser.add_argument(
+        "--bed", nargs="+", default=None, help="primer BED(s) of the samples (modes that map reads)"
+    )
     parser.add_argument("--fasta", default=None, help="reference FASTA (modes that map reads)")
     parser.add_argument("--dataset-info", required=True, help="freyja_dataset_info.py JSON")
     parser.add_argument(

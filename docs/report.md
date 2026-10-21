@@ -178,7 +178,8 @@ coverage, orange = dropped (< threshold), then light to dark blue for increasing
 > `full`; in `demix` only with `--primer_scheme`/`--primer_bed`). For `--protocol capture` (and `--skip_primer_trimming`)
 > the section is replaced by the note "Not applicable for protocol capture": there are no amplicons. The header's
 > "Library protocol" fact shows the protocol (and, for capture, that duplicates were marked); genome-wide depth is under
-> Coverage tracks.
+> Coverage tracks. In a run that mixes amplicon and capture samples (per-sample `protocol` column) the fact reads
+> `mixed (N capture, M amplicon; ...)` and the amplicon section lists the amplicon samples only, with a note.
 
 ## Amplicon dropout impact
 

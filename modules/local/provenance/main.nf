@@ -9,7 +9,7 @@ process PROVENANCE {
     input:
     path base_info       // JSON assembled by Nextflow: versions, mode, params, containers, start time
     path samplesheet
-    path primer_bed      // [] in modes that do not map reads
+    path primer_bed, stageAs: 'primer_beds/?/*' // every distinct primer BED of the samples; [] when none
     path fasta           // [] in modes that do not map reads
     path freyja_data     // freyja_data.json from FREYJA_DATASET_INFO (mandatory)
     path versions_yml    // collated software versions

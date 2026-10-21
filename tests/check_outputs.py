@@ -3,7 +3,7 @@
 
   tests/check_outputs.py <outdir> --mode full|aggregate|report [--truth tests/data/truth.json]
                          [--barcodes tests/data/barcodes_test.csv] [--reference assets/references/NC_045512.fasta]
-                         [--protocol capture] [--extras compare,boot,annotate] [--declared-scheme midnight]
+                         [--protocol capture | --protocol mixed --amplicon-samples MIX_A,PURE_C] [--extras compare,boot,annotate] [--declared-scheme midnight]
                          [--site-aggregation sites.csv] [--lineage-groups present]
   tests/check_outputs.py <outdir> --mode demix --low-confidence S1,S2
 
@@ -819,6 +819,69 @@ def check_capture(c, out, samples):
             )
 
 
+def check_mixed(c, out, samples, amplicon_samples):
+    """Mixed run (PLAN D20): `amplicon_samples` were primer-trimmed with their own scheme, the others are probe-capture
+    (the run default); each library gets only the steps and tables that belong to it."""
+    info = json.loads((out / "pipeline_info" / "run_info.json").read_text())
+    libraries = info.get("sample_libraries", {})
+    c.check(info.get("protocol") == "mixed", "run_info.json records protocol mixed")
+    c.check(
+        all(
+            (libraries.get(s, {}).get("protocol"), libraries.get(s, {}).get("primer_scheme"))
+            == (("amplicon", "midnight") if s in amplicon_samples else ("capture", None))
+            for s in samples
+        ),
+        "run_info.json sample_libraries: per-sample protocol and primer scheme",
+        str(libraries),
+    )
+    qc = {r["sample"]: r for r in read_tsv(out / "summary" / "qc_summary.tsv")}
+    for sample, truth in samples.items():
+        status, reasons = expected_qc(truth, sample in amplicon_samples)
+        got = {t for t in qc[sample]["qc_reasons"].split(";") if t}
+        c.check(
+            qc[sample]["qc_status"] == status and got == reasons,
+            f"{sample}: qc {status} {sorted(reasons)} (amplicon dropout rule only for amplicon samples)",
+            f"{qc[sample]['qc_status']} {sorted(got)}",
+        )
+        c.check(
+            (qc[sample]["amplicons_total"] != "NA") == (sample in amplicon_samples),
+            f"{sample}: amplicon columns filled only for amplicon samples",
+            qc[sample]["amplicons_total"],
+        )
+    table = {r["sample"] for r in read_tsv(out / "summary" / "amplicon_coverage.tsv")}
+    c.check(
+        table == amplicon_samples,
+        "amplicon_coverage.tsv has exactly the amplicon samples",
+        str(sorted(table)),
+    )
+    for sample in samples:
+        bam = out / "samples" / sample / "bam"
+        if sample in amplicon_samples:
+            ok = (bam / f"{sample}.primertrimmed.bam").exists() and not list(bam.glob("*markdup*"))
+        else:
+            ok = (bam / f"{sample}.markdup_stats.txt").exists() and not list(
+                bam.glob("*primertrimmed*")
+            )
+        c.check(
+            ok,
+            f"{sample}: BAM outputs of its own protocol"
+            + (" (primer-trimmed)" if sample in amplicon_samples else " (duplicates marked)"),
+        )
+    traces = sorted((out / "pipeline_info").glob("execution_trace_*.txt"))
+    if traces:
+        trimmed = {
+            r["name"].split("(")[-1].rstrip(")")
+            for r in read_tsv(traces[-1])
+            if r["process"].split(":")[-1] == "IVAR_TRIM"
+        }
+        c.check(trimmed == amplicon_samples, "trace: IVAR_TRIM ran for the amplicon samples only")
+    html = (out / "summary" / "report.html").read_text()
+    c.check(
+        "Library protocol" in html and "mixed (" in html and "Mixed run" in html,
+        "report.html: the header says mixed and the amplicon section notes the capture samples",
+    )
+
+
 def check_report(c, out, samples, mode):
     summary = out / "summary"
     data_path, html_path = summary / "report_data.json", summary / "report.html"
@@ -995,9 +1058,15 @@ def main(argv=None):
     parser.add_argument("--mode", required=True, choices=["full", "demix", "aggregate", "report"])
     parser.add_argument(
         "--protocol",
-        choices=["amplicon", "capture"],
+        choices=["amplicon", "capture", "mixed"],
         default="amplicon",
-        help="capture: truth defaults to tests/data_capture and the capture-specific checks run",
+        help="capture: truth defaults to tests/data_capture and the capture-specific checks run; "
+        "mixed: the capture samples plus --amplicon-samples of tests/data, with the mixed-run checks",
+    )
+    parser.add_argument(
+        "--amplicon-samples",
+        default="",
+        help="--protocol mixed: comma list of the tests/data samples that were run as amplicon",
     )
     parser.add_argument("--truth", default=None, help="default: tests/data[_capture]/truth.json")
     parser.add_argument("--barcodes", default=str(here / "data" / "barcodes_test.csv"))
@@ -1035,9 +1104,15 @@ def main(argv=None):
         parser.error("--mode demix is only checked with --low-confidence (and vice versa)")
 
     out = Path(args.outdir)
-    default_truth = here / ("data_capture" if args.protocol == "capture" else "data") / "truth.json"
+    default_truth = (
+        here / ("data" if args.protocol == "amplicon" else "data_capture") / "truth.json"
+    )
     truth = json.loads(Path(args.truth or default_truth).read_text())
     samples = truth["samples"]
+    amplicon_samples = {s for s in args.amplicon_samples.split(",") if s}
+    if args.protocol == "mixed":
+        amplicon_truth = json.loads((here / "data" / "truth.json").read_text())["samples"]
+        samples = {**samples, **{s: amplicon_truth[s] for s in sorted(amplicon_samples)}}
     c = Checker()
 
     if args.mode == "report":
@@ -1061,7 +1136,13 @@ def main(argv=None):
         check_low_confidence(c, out, samples, low)
         print(f"\n{c.total - c.failures}/{c.total} checks passed")
         return 0 if c.failures == 0 else 1
-    if args.mode == "full":
+    if args.mode == "full" and args.protocol == "mixed":
+        check_demix_status(c, out, samples, args.mode)
+        check_aggregate(c, out, samples)
+        check_consensus(c, out, samples, args.barcodes, args.reference)
+        check_published_qc_is_complete(c, out, samples)
+        check_mixed(c, out, samples, amplicon_samples)
+    elif args.mode == "full":
         have_amplicons = args.protocol == "amplicon"
         check_demix_status(c, out, samples, args.mode)
         check_aggregate(c, out, samples)

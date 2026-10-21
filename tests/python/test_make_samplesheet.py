@@ -1,4 +1,5 @@
 import csv
+import shutil
 from pathlib import Path
 
 import make_samplesheet as ms
@@ -95,3 +96,23 @@ def test_zero_byte_legacy_demix_is_reported_in_skipped_out(tmp_path, capsys):
     reasons = {r[0]: r[1] for r in rows[1:]}
     assert reasons["Failed"] == "empty demix file (failed in the old pipeline)"
     assert reasons["NoFiles"].startswith("missing demix")
+
+
+def test_results_demix_carries_per_sample_protocol_and_scheme(tmp_path, capsys):
+    """PLAN D20: a previous run's protocol/primer_scheme cells reach the demix sheet (and only then are the columns written)."""
+    results = tmp_path / "results"
+    shutil.copytree(FIX / "results_new", results)
+    (results / "summary" / "samplesheet.csv").write_text(
+        "sample,fastq_1,fastq_2,sample_type,protocol,primer_scheme\n"
+        "Site_1_week_2,a_R1.fastq.gz,a_R2.fastq.gz,sample,amplicon,midnight\n"
+        "NEG_ntc,n_R1.fastq.gz,n_R2.fastq.gz,negative,capture,\n"
+    )
+    out = tmp_path / "d.csv"
+    rc, _, err = run(["--from-results", results, "--mode", "demix", "-o", out], capsys)
+    assert rc == 0, err
+    rows = by_sample(read(out))
+    assert (rows["Site_1_week_2"]["protocol"], rows["Site_1_week_2"]["primer_scheme"]) == (
+        "amplicon",
+        "midnight",
+    )
+    assert (rows["NEG_ntc"]["protocol"], rows["NEG_ntc"]["primer_scheme"]) == ("capture", "")

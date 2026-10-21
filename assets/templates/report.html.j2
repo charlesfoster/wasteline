@@ -350,7 +350,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
     <div><dt>Samples</dt><dd>{{ n_samples }}{% if n_ntc %} ({{ n_ntc }} control{{ 's' if n_ntc != 1 }}){% endif %}</dd></div>
     <div><dt>Pipeline version</dt><dd>{{ h.pipeline_version|dash }}</dd></div>
     <div><dt>Git commit</dt><dd>{% if h.git_commit %}<code>{{ h.git_commit|string|truncate(12, True, '') }}</code>{% else %}&ndash;{% endif %}</dd></div>
-    {% if h.protocol %}<div><dt>Library protocol</dt><dd>{{ h.protocol }}{% if h.protocol == 'capture' %} (no primer trimming{% if h.duplicates == 'mark' %}, duplicates marked{% endif %}){% endif %}</dd></div>{% endif %}
+    {% if h.protocol %}<div><dt>Library protocol</dt><dd>{{ h.protocol }}{% if h.protocol == 'capture' %} (no primer trimming{% if h.duplicates == 'mark' %}, duplicates marked{% endif %}){% elif h.protocol == 'mixed' %} ({{ h.protocol_counts or 'per sample' }}; capture samples have no primer trimming and no amplicon analysis){% endif %}</dd></div>{% endif %}
     <div><dt>Freyja</dt><dd>{{ h.freyja_version|dash }}</dd></div>
     <div><dt>Nextflow</dt><dd>{{ h.nextflow_version|dash }}</dd></div>
     <div><dt>Run started</dt><dd>{{ h.run_started|dash }}</dd></div>
@@ -507,6 +507,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
     <li><i class="sw d4"></i>&lt;{{ amp.amp_min * 1000 }}x</li><li><i class="sw d5"></i>&ge;{{ amp.amp_min * 1000 }}x</li><li><i class="sw dn"></i>no data</li>
   </ul>
   <p class="note">{{ amp.rows|length }} sample(s) &times; {{ amp.n }} amplicons, in genome order; hover a cell for the amplicon and its mean depth. The top bar shows how often each amplicon dropped out across the {{ amp.considered }} non-control sample(s).</p>
+  {% if h.protocol == 'mixed' %}<p class="note">Mixed run: probe-capture samples have no amplicons and are not listed here.</p>{% endif %}
   {{ filterbar('amp-rows', true) }}
   <div class="arows" id="amp-rows" data-amps='{{ amp.names|tojson }}'>
     <div class="arow"><span class="lbl">dropout frequency</span>

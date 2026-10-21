@@ -7,7 +7,8 @@
 #   3. demix --previous_results with the low-confidence band on (status low_confidence, in the aggregate, not in the time series)
 #   4. aggregate --previous_results (aggregate identical to the full run's), and again from step 3's results (low_confidence carried over)
 #   5. report --results_dir rebuilt with --report_anonymize paths (no path or user name in the report)
-#   6. probe-capture data (--protocol capture)
+#   6. mixed libraries in one samplesheet: probe-capture samples (--protocol capture, the run default) and two amplicon samples
+#      (per-sample protocol / primer_scheme cells)
 #   + two bad CSVs (lineage groups, sites) that must abort the run early (cheap: nothing is mapped)
 #   + bin/reanalyse_runs.py dry run and --diff (no pipeline run)
 #
@@ -180,10 +181,16 @@ sys.exit(0 if ok else 1)
 PYCHECK
 unchanged "report"
 
-# 6. probe-capture data (PLAN D13): no primer trimming, duplicates marked, no amplicon analysis
-sed "s#tests/data_capture/#$REPO/tests/data_capture/#g" "$REPO/tests/data_capture/samplesheet.csv" > "$SCRATCH/samplesheet_capture.csv"
-run capture --mode full --protocol capture --input "$SCRATCH/samplesheet_capture.csv" --barcodes "$BARCODES" "${LS_OFF[@]}"
-check capture --mode full --protocol capture || fail=1
+# 6. mixed libraries in one run (PLAN D13 + D20): the five probe-capture samples take the run default (--protocol capture: no
+#    primer trimming, duplicates marked, no amplicon analysis); MIX_A and PURE_C say protocol=amplicon and primer_scheme=midnight
+#    in their own cells (primer-trimmed with that scheme, amplicon analyses, no duplicate marking)
+{
+    echo "sample,fastq_1,fastq_2,sample_type,collection_date,site,protocol,primer_scheme"
+    tail -n +2 "$REPO/tests/data_capture/samplesheet.csv" | sed "s#tests/data_capture/#$REPO/tests/data_capture/#g; s#\$#,,#"
+    grep -E '^(MIX_A|PURE_C),' "$REPO/tests/data/samplesheet.csv" | sed "s#tests/data/#$REPO/tests/data/#g; s#\$#,amplicon,midnight#"
+} > "$SCRATCH/samplesheet_mixed.csv"
+run mixed --mode full --protocol capture --input "$SCRATCH/samplesheet_mixed.csv" --barcodes "$BARCODES" "${LS_OFF[@]}"
+check mixed --mode full --protocol mixed --amplicon-samples MIX_A,PURE_C || fail=1
 
 # 7. mistakes in the user's CSVs stop the run within the first processes, naming the row/line (no mapping has run)
 printf 'group,include,exclude,in_total\nJN.1*,JN.1*,,yes\nJN.1*,KP.3*,,yes\n' > "$SCRATCH/groups_bad.csv"

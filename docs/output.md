@@ -254,7 +254,8 @@ QC rules (thresholds are parameters; defaults shown):
 
 Long format, one row per sample x amplicon (7 samples x 29 midnight amplicons = 203 rows here), negative controls
 included. Only written when the primer scheme is known (always in `full` with the `amplicon` protocol; in `demix` only
-with `--primer_scheme` / `--primer_bed`). **Never written for `--protocol capture` or `--skip_primer_trimming`**: there
+with `--primer_scheme` / `--primer_bed`). **Never written for `--protocol capture` or `--skip_primer_trimming`** (in a mixed run it holds only the samples with a primer
+scheme): there
 are no amplicons (and then `amplicons_total` / `amplicons_dropped` in `qc_summary.tsv` are `NA` and no `amplicon_dropout`
 reason is raised).
 
@@ -989,7 +990,11 @@ ends (so a run that crashed before completion has no `success` key). Real exampl
 `protocol`, `primer_trimming` and `duplicates` are the **effective** library settings (PLAN D13): `protocol` is
 `amplicon` or `capture`; `primer_trimming` is `false` for `--protocol capture` and `--skip_primer_trimming`; `duplicates` is
 `mark` or `none` after `--duplicates auto` has been resolved. `primer_trimming` and `duplicates` are `null` in modes
-without reads (`demix`, `aggregate`). For capture data `input_checksums` has no `primer_bed`.
+without reads (`demix`, `aggregate`). For capture data `input_checksums` has no `primer_bed`. In a run that mixes libraries
+(per-sample `protocol` / `primer_scheme` cells, PLAN D20) `protocol` is `mixed`, `duplicates` is `mixed` when the samples
+differ, `primer_trimming` is `null`, and `sample_libraries` lists every sample as `{protocol, primer_scheme, primer_trimming,
+duplicates}` (`primer_scheme` is the bundled name, `custom: <file>` for a BED file, `null` without amplicon analysis; modes
+`full` and `demix`). `input_checksums.primer_beds` (a list) replaces `primer_bed` when the samples use more than one BED.
 `lineage_groups_file` (the file name, or `bundled default`), `lineage_groups_source` (`bundled` or `custom`) and `lineage_groups_sha256`
 record the groups file of the lineage summary; all three are `null` when no summary was made (`--lineage_summary false`, a dataset
 without `lineages.yml`, or modes `report` and `update_db`).

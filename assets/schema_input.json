@@ -47,6 +47,17 @@
                 "errorMessage": "site must be a string",
                 "meta": ["site"]
             },
+            "protocol": {
+                "type": "string",
+                "enum": ["amplicon", "capture", ""],
+                "errorMessage": "protocol must be 'amplicon' or 'capture', or left blank for the run's --protocol",
+                "meta": ["protocol"]
+            },
+            "primer_scheme": {
+                "type": "string",
+                "errorMessage": "primer_scheme must be a bundled scheme name or the path to a primer BED file, or left blank for the run's --primer_scheme/--primer_bed",
+                "meta": ["primer_scheme"]
+            },
             "viral_load": {
                 "type": "number",
                 "exclusiveMinimum": 0,

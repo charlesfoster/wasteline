@@ -1132,6 +1132,17 @@ def first_of(obj, keys):
     return None
 
 
+def protocol_counts(run_info):
+    """'5 capture, 2 amplicon' from run_info.sample_libraries when the run mixed protocols, else None."""
+    libraries = run_info.get("sample_libraries") if isinstance(run_info, dict) else None
+    if not isinstance(libraries, dict) or run_info.get("protocol") != "mixed":
+        return None
+    counts = Counter(
+        entry.get("protocol") for entry in libraries.values() if isinstance(entry, dict)
+    )
+    return ", ".join(f"{n} {name}" for name, n in counts.most_common())
+
+
 def build_header(run_info, mode):
     freyja_data = run_info.get("freyja_data") if isinstance(run_info, dict) else None
     freyja_data = freyja_data if isinstance(freyja_data, dict) else {}
@@ -1152,6 +1163,8 @@ def build_header(run_info, mode):
         "protocol": first_of(run_info, ("protocol", "params.protocol")),
         "primer_trimming": run_info.get("primer_trimming"),
         "duplicates": run_info.get("duplicates"),
+        # mixed run (PLAN D20): how many samples per protocol, e.g. "5 capture, 2 amplicon"
+        "protocol_counts": protocol_counts(run_info),
         "run_started": first_of(run_info, ("start", "run_started", "timestamp.start")),
         "run_info_generated": first_of(run_info, ("provenance_generated", "generated")),
     }

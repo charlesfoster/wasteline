@@ -56,14 +56,14 @@ include { PROVENANCE             } from '../modules/local/provenance/main'
 include { FREYJA_DATA            } from '../subworkflows/local/freyja_data/main'
 include { FREYJA_DATA as FREYJA_DATA_COMPARE } from '../subworkflows/local/freyja_data/main'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
-include { primerBed              } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { primerBedFor           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { libraryInfo            } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { protocolSettings       } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { defaultPrimerScheme    } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { mutationTablesUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { lineageGroupsFile      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { lineageGroupsInfo      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { lineageHierarchyUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
-include { ivarOffset             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { previousRuns           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { splitPaths             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
@@ -216,12 +216,11 @@ workflow WASTELINE {
                 report.readLines().findAll { line -> line.contains('warning') }.each { line -> log.warn line }
             }
         }
-        // library settings (protocol, trimming, duplicate handling): see protocolSettings()
-        def settings = protocolSettings(mode)
-        // amplicon-level QC and primer trimming need the primer BED; probe-capture reads have none
-        // (demix mode: the scheme of old results is unknown, so only when the user names one)
-        def use_amplicons = settings.amplicons
-        def ch_bed = use_amplicons ? channel.value(primerBed()) : channel.empty()
+        // Library settings (protocol, primer trimming, duplicate handling, primer scheme) are PER SAMPLE (PLAN D20):
+        // libraryMeta() puts them into every sample's meta (meta.protocol, primer_trimming, duplicates, primer_scheme,
+        // primer_bed). Amplicon-level QC and primer trimming need the sample's primer BED (primerBedFor); probe-capture
+        // reads have none (demix mode: the scheme of old results is unknown, so only when a scheme is named). Each step
+        // below takes its own samples from the shared channels, so a run can mix libraries.
 
         //
         // Per-sample Freyja inputs [ meta, variants, depths ]: made from reads (full) or given (demix)
@@ -272,49 +271,62 @@ workflow WASTELINE {
                     empty: true
                 }
 
-            def ch_final_bam = channel.empty()
-            if (settings.primer_trimming) {
-                // `ivar trim` crashes on a BAM without mapped reads (e.g. a clean negative control): those
-                // samples skip trimming and carry their (empty) BAM on; the coverage gate then records them
-                // as skipped_low_coverage downstream.
-                IVAR_TRIM(ch_mapped.mapped.map { meta, bam, bai, _count -> [ meta, bam, bai ] }, ch_bed)
-                ch_ivar_log = IVAR_TRIM.out.log
-
-                // Does the primer scheme match the reads? Needs the mapped BAM BEFORE trimming (trimming moves
-                // the 5' ends). Declared scheme = the effective one, or the custom BED.
-                if (params.primer_scheme_check) {
-                    READ_STARTS(ch_mapped.mapped.map { meta, bam, _bai, _count -> [ meta, bam ] })
-                    PRIMER_SCHEME_CHECK(
-                        READ_STARTS.out.tsv,
-                        params.primer_bed ? 'custom' : (params.primer_scheme ?: defaultPrimerScheme()),
-                        file("${projectDir}/assets/primer_schemes", checkIfExists: true),
-                        params.primer_bed ? file(params.primer_bed, checkIfExists: true) : [],
-                    )
-                    ch_scheme_summary = PRIMER_SCHEME_CHECK.out.summary
+            // Samples whose reads are primer-trimmed (meta.primer_trimming: amplicon protocol, not
+            // --skip_primer_trimming) go through ivar trim with THEIR primer BED. The BED travels beside the BAM in
+            // a multiMap, which emits both channels in lockstep, so the two queue inputs of IVAR_TRIM stay paired.
+            // `ivar trim` crashes on a BAM without mapped reads (e.g. a clean negative control): those samples skip
+            // trimming and carry their (empty) BAM on; the coverage gate then records them as
+            // skipped_low_coverage downstream.
+            def ch_to_trim = ch_mapped.mapped
+                .filter { meta, _bam, _bai, _count -> meta.primer_trimming }
+                .multiMap { meta, bam, bai, _count ->
+                    reads: [ meta, bam, bai ]
+                    bed: primerBedFor(meta)
                 }
+            IVAR_TRIM(ch_to_trim.reads, ch_to_trim.bed)
+            ch_ivar_log = IVAR_TRIM.out.log
 
-                SAMTOOLS_SORT(IVAR_TRIM.out.bam, [ [:], [], [] ], 'bai')
-
-                ch_final_bam = SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.index)
-                    .mix(ch_mapped.empty.map { meta, bam, bai, _count -> [ meta, bam, bai ] })
-            }
-            else {
-                // Probe-capture (or pre-trimmed) reads are used as aligned: no primer trimming, straight to
-                // the sorted + indexed BAM (empty BAMs sort fine and keep flowing)
-                SAMTOOLS_SORT(
-                    ch_mapped.mapped.mix(ch_mapped.empty).map { meta, bam, _bai, _count -> [ meta, bam ] },
-                    [ [:], [], [] ],
-                    'bai',
+            // Does the primer scheme match the reads? Needs the mapped BAM BEFORE trimming (trimming moves
+            // the 5' ends). Declared scheme = the sample's own (meta.primer_scheme; 'custom' = its BED).
+            if (params.primer_scheme_check) {
+                READ_STARTS(ch_mapped.mapped
+                    .filter { meta, _bam, _bai, _count -> meta.primer_trimming }
+                    .map { meta, bam, _bai, _count -> [ meta, bam ] })
+                def ch_to_check = READ_STARTS.out.tsv.multiMap { meta, tsv ->
+                    starts: [ meta, tsv ]
+                    declared: meta.primer_scheme
+                    custom_bed: meta.primer_bed ? file(meta.primer_bed, checkIfExists: true) : []
+                }
+                PRIMER_SCHEME_CHECK(
+                    ch_to_check.starts,
+                    ch_to_check.declared,
+                    file("${projectDir}/assets/primer_schemes", checkIfExists: true),
+                    ch_to_check.custom_bed,
                 )
-                ch_final_bam = SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.index)
+                ch_scheme_summary = PRIMER_SCHEME_CHECK.out.summary
             }
 
-            // PCR duplicates are flagged (never removed) when --duplicates says so; Freyja's pileup skips
-            // flagged reads. Near-empty BAMs pass through (checked: markdup accepts a header-only BAM).
-            if (settings.duplicates == 'mark') {
-                SAMTOOLS_MARKDUP(ch_final_bam)
-                ch_final_bam = SAMTOOLS_MARKDUP.out.bam
+            // Probe-capture (or pre-trimmed) reads are used as aligned: no primer trimming, straight to the
+            // sorted + indexed BAM (empty BAMs sort fine and keep flowing)
+            def ch_untrimmed = ch_mapped.mapped.mix(ch_mapped.empty)
+                .filter { meta, _bam, _bai, _count -> !meta.primer_trimming }
+                .map { meta, bam, _bai, _count -> [ meta, bam ] }
+            SAMTOOLS_SORT(IVAR_TRIM.out.bam.mix(ch_untrimmed), [ [:], [], [] ], 'bai')
+
+            def ch_final_bam = SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.index)
+                .mix(ch_mapped.empty
+                    .filter { meta, _bam, _bai, _count -> meta.primer_trimming }
+                    .map { meta, bam, bai, _count -> [ meta, bam, bai ] })
+
+            // PCR duplicates are flagged (never removed) for the samples whose meta.duplicates says so (--duplicates
+            // auto: capture samples); Freyja's pileup skips flagged reads. Near-empty BAMs pass through (checked:
+            // markdup accepts a header-only BAM).
+            def ch_to_mark = ch_final_bam.branch { meta, _bam, _bai ->
+                mark: meta.duplicates == 'mark'
+                keep: true
             }
+            SAMTOOLS_MARKDUP(ch_to_mark.mark)
+            ch_final_bam = SAMTOOLS_MARKDUP.out.bam.mix(ch_to_mark.keep)
 
             // --bam_format cram: a reference-based CRAM is published instead of the BAM (a leaf: Freyja, QC and
             // the consensus keep using the BAM, which stays in the work directory)
@@ -496,11 +508,15 @@ workflow WASTELINE {
         def ch_depth_files = channel.value([])
 
         if (mode == 'full' || mode == 'demix') {
-            def ch_amplicons = channel.empty()
-            if (use_amplicons) {
-                AMPLICON_COVERAGE(ch_depths, ch_bed)
-                ch_amplicons = AMPLICON_COVERAGE.out.tsv
-            }
+            // only the samples with a primer scheme (meta.primer_scheme), each against its own BED
+            def ch_to_cover = ch_depths
+                .filter { meta, _depths -> meta.primer_scheme }
+                .multiMap { meta, depths ->
+                    depths: [ meta, depths ]
+                    bed: primerBedFor(meta)
+                }
+            AMPLICON_COVERAGE(ch_to_cover.depths, ch_to_cover.bed)
+            def ch_amplicons = AMPLICON_COVERAGE.out.tsv
 
             def ch_qc_in = ch_depths
                 .join(ch_flagstat, remainder: true)
@@ -581,7 +597,7 @@ workflow WASTELINE {
         def ch_growth_inputs = channel.empty()
         def ch_dashboard = channel.empty()
 
-        if ((mode == 'full' || mode == 'demix') && ((params.dropout_impact && use_amplicons) || params.unexplained_mutations)) {
+        if ((mode == 'full' || mode == 'demix') && (params.dropout_impact || params.unexplained_mutations)) {
             // both need the lineage -> mutation lists of the dataset: warn once and skip when it has none
             def mutation_reason = mutationTablesUnsupportedReason()
             if (mutation_reason) {
@@ -589,7 +605,8 @@ workflow WASTELINE {
             }
             else {
                 // which dropped amplicons would have mattered for the lineages detected?
-                if (params.dropout_impact && use_amplicons) {
+                // (amplicon_coverage.tsv exists only when some sample has a primer scheme; capture samples are not in it)
+                if (params.dropout_impact) {
                     DROPOUT_IMPACT(
                         ch_amplicon_coverage.filter { coverage -> coverage },
                         FREYJA_AGGREGATE_PLOT.out.aggregated,
@@ -737,11 +754,23 @@ workflow WASTELINE {
         //
         // Provenance: run_info.json
         //
-        def ch_base_info = channel.value(runInfoBase(mode)).collectFile(name: 'run_info_base.json')
+        // (the per-sample library settings come from the metas of the rows, so the base info is made after they are known)
+        def ch_base_info = ch_rows
+            .map { row -> row[0] }
+            .toList()
+            .map { metas -> runInfoBase(mode, metas) }
+            .collectFile(name: 'run_info_base.json')
+        // every distinct primer BED the samples use
+        def ch_beds = ch_rows
+            .map { row -> row[0] }
+            .filter { meta -> meta.primer_scheme }
+            .map { meta -> primerBedFor(meta) }
+            .unique()
+            .toSortedList { a, b -> a.name <=> b.name }
         PROVENANCE(
             ch_base_info,
             ch_samplesheet,
-            use_amplicons ? ch_bed : channel.value([]),
+            ch_beds,
             mode == 'aggregate' ? channel.value([]) : ch_fasta,
             FREYJA_DATA.out.freyja_data,
             ch_collated_versions,
@@ -862,7 +891,7 @@ def wrapItem(ch) {
 // Facts known to Nextflow, as JSON for bin/make_run_info.py to extend with checksums,
 // tool versions and the Freyja dataset block
 //
-def runInfoBase(mode) {
+def runInfoBase(mode, metas) {
     def git_commit = workflow.commitId
     if (!git_commit) {
         try {
@@ -879,7 +908,7 @@ def runInfoBase(mode) {
         [ (key.toString()): (value == null || value instanceof Boolean || value instanceof Number) ? value : value.toString() ]
     }
     // the effective primer scheme is recorded even when the default (null = the default scheme, D14) applies
-    if (protocolSettings(mode).amplicons && !params.primer_bed && !params.primer_scheme) {
+    if (mode == 'full' && protocolSettings(params.protocol).primer_trimming && !params.primer_bed && !params.primer_scheme) {
         plain_params.primer_scheme = defaultPrimerScheme()
     }
     // lineage groups: which file made lineage_summary.csv (only when the summary is made)
@@ -898,14 +927,10 @@ def runInfoBase(mode) {
         run_name: workflow.runName,
         start: workflow.start.toString(),
         params: plain_params,
-        // effective library settings (protocolSettings); only meaningful where reads are mapped
-        protocol: params.protocol,
-        primer_trimming: mode == 'full' ? protocolSettings(mode).primer_trimming : null,
-        duplicates: mode == 'full' ? protocolSettings(mode).duplicates : null,
         // earlier runs whose results this run builds on (demix/aggregate); barcode_version 'unknown'
         // for legacy Snakemake results, which recorded none
         previous_runs: previousRuns(mode),
-    ] + groups_info
+    ] + libraryInfo(mode, metas) + groups_info
     if (mode == 'aggregate') {
         info.freyja_data_note = 'aggregate mode demixes nothing: freyja_data describes the dataset whose lineage hierarchy groups the plot, not the barcodes the .demix files were made with (see previous_runs)'
     }

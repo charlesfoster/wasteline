@@ -27,7 +27,11 @@ ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SAMPLE_TYPES = ("sample", "negative")
 FASTQ_EXTS = (".fastq.gz", ".fq.gz")
+PROTOCOLS = ("amplicon", "capture")
 OPTIONAL_META = ["sample_type", "collection_date", "site", "viral_load"]
+# per-sample library settings (PLAN D20); empty = the run's --protocol / --primer_scheme / --primer_bed
+LIBRARY_COLUMNS = ["protocol", "primer_scheme"]
+PRIMER_SCHEME_DIR = Path(__file__).resolve().parent.parent / "assets" / "primer_schemes"
 
 REQUIRED = {
     "full": ["sample", "fastq_1", "fastq_2"],
@@ -35,8 +39,8 @@ REQUIRED = {
     "aggregate": ["sample", "demix"],
 }
 OPTIONAL = {
-    "full": OPTIONAL_META,
-    "demix": ["fastp_json", *OPTIONAL_META],
+    "full": [*OPTIONAL_META, *LIBRARY_COLUMNS],
+    "demix": ["fastp_json", *OPTIONAL_META, *LIBRARY_COLUMNS],
     "aggregate": OPTIONAL_META,
 }
 # Columns holding file paths, per mode (required ones must be non-empty; optional may be empty).
@@ -64,6 +68,15 @@ def valid_viral_load(value: str) -> bool:
     except ValueError:
         return False
     return math.isfinite(number) and number > 0
+
+
+def is_bed_path(value: str) -> bool:
+    """A primer_scheme cell is a BED file path when it has a '/' or ends in .bed, else a bundled scheme name."""
+    return "/" in value or value.endswith(".bed")
+
+
+def bundled_schemes() -> list[str]:
+    return sorted(p.stem for p in PRIMER_SCHEME_DIR.glob("*.bed"))
 
 
 def resolve(value: str, base: Path) -> Path:
@@ -175,6 +188,23 @@ def validate(sheet: Path, mode: str, check_files: bool = False) -> dict:
         load = row.get("viral_load", "").strip()
         if load and not valid_viral_load(load):
             errors.append(f"{tag}: viral_load '{load}' must be a positive number (or blank)")
+
+        protocol = row.get("protocol", "").strip()
+        if protocol and protocol not in PROTOCOLS:
+            errors.append(
+                f"{tag}: protocol '{protocol}' must be one of {'|'.join(PROTOCOLS)} (or blank)"
+            )
+        scheme = row.get("primer_scheme", "").strip()
+        if scheme and protocol == "capture":
+            warnings.append(f"{tag}: primer_scheme '{scheme}' is ignored for protocol capture")
+        elif scheme and is_bed_path(scheme):
+            if check_files and not resolve(scheme, base).is_file():
+                errors.append(f"{tag}: primer_scheme BED file '{scheme}' does not exist")
+        elif scheme and bundled_schemes() and scheme not in bundled_schemes():
+            errors.append(
+                f"{tag}: primer_scheme '{scheme}' is not a bundled scheme "
+                f"({', '.join(bundled_schemes())}) and not a path to a BED file (.bed)"
+            )
 
         for col in path_cols:
             val = row.get(col, "")

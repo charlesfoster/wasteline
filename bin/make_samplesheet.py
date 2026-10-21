@@ -37,7 +37,10 @@ FASTQ_EXTS = (".fastq.gz", ".fq.gz")
 META_COLUMNS = ("sample_type", "collection_date", "site")
 # optional numeric column (e.g. gene copies per litre); written to a sheet only when some sample has a value
 VIRAL_LOAD = "viral_load"
-META_INPUT_COLUMNS = (*META_COLUMNS, VIRAL_LOAD)
+# optional per-sample library columns (PLAN D20): written to a sheet only when some sample has a value
+LIBRARY_COLUMNS = ("protocol", "primer_scheme")
+PROTOCOLS = ("amplicon", "capture")
+META_INPUT_COLUMNS = (*META_COLUMNS, VIRAL_LOAD, *LIBRARY_COLUMNS)
 
 FULL_COLUMNS = ["sample", "fastq_1", "fastq_2", *META_COLUMNS]
 DEMIX_COLUMNS = ["sample", "variants", "depths", "fastp_json", *META_COLUMNS]
@@ -142,6 +145,11 @@ def load_metadata(path: Path) -> tuple[dict[str, dict[str, str]], list[str], lis
                 f"metadata sample '{sample}': sample_type '{entry['sample_type']}' "
                 f"must be one of {'|'.join(SAMPLE_TYPES)}"
             )
+        if entry["protocol"] and entry["protocol"] not in PROTOCOLS:
+            errors.append(
+                f"metadata sample '{sample}': protocol '{entry['protocol']}' "
+                f"must be one of {'|'.join(PROTOCOLS)}"
+            )
         meta[sample] = entry
     return meta, errors, warnings
 
@@ -167,6 +175,9 @@ def apply_metadata(records: list[dict[str, str]], meta: dict[str, dict[str, str]
             rec["sample_type"] = entry["sample_type"]
         if entry[VIRAL_LOAD]:
             rec[VIRAL_LOAD] = entry[VIRAL_LOAD]
+        for col in LIBRARY_COLUMNS:
+            if entry[col]:
+                rec[col] = entry[col]
     if missing:
         warnings.append(
             f"{len(missing)} sample(s) have no metadata row: {', '.join(sorted(missing))}"
@@ -459,7 +470,9 @@ def discover_results(
 
     sheet_meta, sheet_path = load_results_sheet(results)
     if sheet_path:
-        notes.append(f"carrying over sample_type/collection_date/site/viral_load from {sheet_path}")
+        notes.append(
+            f"carrying over sample_type/collection_date/site/viral_load/protocol/primer_scheme from {sheet_path}"
+        )
 
     required = ("variants", "depths") if mode == "demix" else ("demix",)
     records = []
@@ -499,6 +512,7 @@ def discover_results(
             "collection_date": meta.get("collection_date", ""),
             "site": meta.get("site", ""),
             VIRAL_LOAD: carried_viral_load(meta),
+            **{col: meta.get(col, "") for col in LIBRARY_COLUMNS},
         }
         for key in ("variants", "depths", "demix", "fastp_json"):
             rec[key] = str(files[key]) if files[key] is not None else ""
@@ -618,8 +632,9 @@ def run(args: argparse.Namespace) -> int:
     for rec in records:
         for col in path_cols:
             rec[col] = make_path(rec.get(col, ""), rel_to)
-    if any(rec.get(VIRAL_LOAD) for rec in records):
-        columns = [*columns, VIRAL_LOAD]
+    for optional in (VIRAL_LOAD, *LIBRARY_COLUMNS):
+        if any(rec.get(optional) for rec in records):
+            columns = [*columns, optional]
     write_sheet(records, columns, args.output)
     print(
         f"wrote {len(records)} sample(s) to {'stdout' if args.output == '-' else args.output}",
