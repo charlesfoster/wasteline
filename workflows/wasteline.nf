@@ -65,6 +65,7 @@ include { lineageGroupsInfo      } from '../subworkflows/local/utils_nfcore_wast
 include { lineageHierarchyUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { ivarOffset             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { previousRuns           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { splitPaths             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -356,6 +357,8 @@ workflow WASTELINE {
         def ch_compare_status = channel.empty()
         def ch_boot_summary = channel.empty()
         def ch_boot_raw = channel.empty()
+        // aggregate mode with --previous_results: samples that were low_confidence in the earlier run keep that status (PLAN D18)
+        def carried_low = mode == 'aggregate' ? carriedLowConfidence() : [:]
         // demix_status.tsv lines: [ sample, status, reason, genome_coverage_pct, barcode_version, barcode_version_iso ]
         def ch_status_lines = ch_skipped.map { sample, reason, _type, _date, _site -> [ sample, 'missing', reason, '', '', '' ].collect { value -> value.toString().replaceAll('[\t\r\n]+', ' ') }.join('\t') }
 
@@ -426,6 +429,11 @@ workflow WASTELINE {
         }
         else {
             ch_demixed = ch_rows
+            ch_status_lines = ch_status_lines.mix(ch_demixed
+                .filter { meta, _demix -> carried_low.containsKey(meta.id) }
+                .map { meta, _demix ->
+                    [ meta.id, 'low_confidence', carried_low[meta.id].reason, carried_low[meta.id].coverage, '', '' ].join('\t')
+                })
         }
 
         // summary/demix_status.tsv: one row per sample, whatever its status; samples that were found in
@@ -616,10 +624,11 @@ workflow WASTELINE {
         def ch_site_aggregates = channel.empty()
         def ch_site_aggregates_meta = channel.empty()
         if (run_site_aggregation || (run_lineage_groups && !lineage_reason)) {
-            // aggregate mode: the given .demix files are the usable samples (status ok), but the published
+            // aggregate mode: the given .demix files are the usable samples (status ok, except the low_confidence ones
+            // carried over from the earlier run, which are already in ch_status_lines), but the published
             // demix_status.tsv lists only the unusable ones, so the summaries get their own, complete copy
             def ch_given_ok = mode == 'aggregate'
-                ? ch_demixed.map { meta, _demix -> [ meta.id, 'ok', '', '', '', '' ].join('\t') }
+                ? ch_demixed.filter { meta, _demix -> !carried_low.containsKey(meta.id) }.map { meta, _demix -> [ meta.id, 'ok', '', '', '', '' ].join('\t') }
                 : channel.empty()
             // the samplesheet in effect plus the metadata of the samples discovery had to skip (a skipped negative control is
             // only known from there), as one CSV
@@ -665,6 +674,7 @@ workflow WASTELINE {
                         ch_boot_raw.toSortedList { a, b -> a.name <=> b.name }.filter { files -> files }, // nothing when no sample was bootstrapped
                         channel.value(lineageGroupsFile()),
                         FREYJA_DATA.out.dataset,
+                        ch_summary_sheet,
                     )
                 }
             }
@@ -672,8 +682,9 @@ workflow WASTELINE {
 
         // Time-based analyses (time series, growth rates, dashboard) leave out low_confidence samples (PLAN D18)
         // unless --include_low_confidence: they get a copy of the aggregate without those rows, and the
-        // two-dates test below does not count them. freyja_aggregated.tsv itself stays complete. Only in modes
-        // that demix: given .demix files (aggregate mode) have no coverage information, so are all ok.
+        // two-dates test below does not count them. freyja_aggregated.tsv itself stays complete. In aggregate mode
+        // only the samples carried over as low_confidence from --previous_results are affected (given .demix files
+        // have no coverage information of their own).
         def ch_ts_samples = ch_aggregate_in
         def ch_analysis_agg = FREYJA_AGGREGATE_PLOT.out.aggregated
         if ((mode == 'full' || mode == 'demix') && !params.include_low_confidence && lowConfidenceBand()) {
@@ -681,6 +692,11 @@ workflow WASTELINE {
                 .join(FREYJA_DEMIX.out.status)
                 .filter { _meta, _demix, status_json -> new groovy.json.JsonSlurper().parse(status_json).status != 'low_confidence' }
                 .map { meta, demix, _status_json -> [ meta, demix ] }
+            FILTER_AGGREGATED(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_demix_status)
+            ch_analysis_agg = FILTER_AGGREGATED.out.aggregated
+        }
+        else if (mode == 'aggregate' && !params.include_low_confidence && carried_low) {
+            ch_ts_samples = ch_aggregate_in.filter { meta, _demix -> !carried_low.containsKey(meta.id) }
             FILTER_AGGREGATED(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_demix_status)
             ch_analysis_agg = FILTER_AGGREGATED.out.aggregated
         }
@@ -800,6 +816,31 @@ def optionalFile(results, name) {
 //
 def lowConfidenceBand() {
     return params.demix_floor_coverage > 0 && params.demix_floor_coverage < params.min_genome_coverage_for_demix
+}
+
+//
+// Aggregate mode, --previous_results: [ sample: [ reason, coverage ] ] of the samples that summary/demix_status.tsv of
+// an earlier run lists as low_confidence (PLAN D18). Other statuses, other inputs (--input, --demix_dir) and
+// directories without that file give nothing: their .demix files count as ok.
+//
+def carriedLowConfidence() {
+    def carried = [:]
+    splitPaths(params.previous_results).each { dir ->
+        def status_file = file("${dir}/summary/demix_status.tsv")
+        if (status_file.exists()) {
+            def lines = status_file.readLines().findAll { line -> line.trim() }
+            def header = lines ? lines[0].split('\t', -1).collect { column -> column.trim() } : []
+            lines.drop(1).each { line ->
+                def cells = line.split('\t', -1)
+                def row = [:]
+                header.eachWithIndex { column, i -> row[column] = i < cells.size() ? cells[i].trim() : '' }
+                if (row.sample && row.status == 'low_confidence') {
+                    carried[row.sample] = [ reason: row.reason ?: '', coverage: row.genome_coverage_pct ?: '' ]
+                }
+            }
+        }
+    }
+    return carried
 }
 
 //

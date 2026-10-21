@@ -656,8 +656,12 @@ high-confidence threshold of 50%; treat the estimate with care`); a `.demix` fil
 - `--demix_floor_coverage 0`, or a value at or above `--min_genome_coverage_for_demix`, switches the band off: the pipeline
   then behaves exactly as before (demix or skip, nothing in between).
 - Negative controls follow the same rule for their demix status (they are kept out of the aggregate anyway).
-- In `--mode aggregate` with given `.demix` files there is no coverage information, so every sample counts as `ok` and the
-  band does not apply.
+- In `--mode aggregate` a given `.demix` file has no coverage information of its own, so it counts as `ok`, with one
+  exception: with `--previous_results`, a sample that `summary/demix_status.tsv` of that earlier run lists as `low_confidence`
+  stays `low_confidence` (status, reason and coverage are carried over). It is then shown as such in the lineage summary and the
+  report and left out of the time series, growth rates and dashboard like in the run that flagged it (unless
+  `--include_low_confidence true`). Other statuses are not carried over, and `--demix_dir` or `--input` (no status table) always
+  count as `ok`.
 
 ### Bootstrap confidence intervals: `--freyja_boot`
 

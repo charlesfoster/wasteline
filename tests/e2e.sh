@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Minimal end to end on the synthetic data (tests/data): six pipeline runs, about ten minutes, with tests/check_outputs.py
+# Minimal end to end on the synthetic data (tests/data): seven pipeline runs, about ten minutes, with tests/check_outputs.py
 # after the ones that need it. Everything else (legacy layouts, CRAM, time-series fits, replay, ...) is covered by pytest.
 #   1. full: all opt-ins on (compare barcodes, 20 bootstraps, variant annotation, site aggregation); the real end to end
 #   2. demix --previous_results with the bundled (container) barcodes, a custom lineage groups file, site aggregation and
 #      bootstraps: the demix files equal the full run's second-barcode demixes byte for byte, previous results untouched
 #   3. demix --previous_results with the low-confidence band on (status low_confidence, in the aggregate, not in the time series)
-#   4. aggregate --previous_results (aggregate identical to the full run's)
+#   4. aggregate --previous_results (aggregate identical to the full run's), and again from step 3's results (low_confidence carried over)
 #   5. report --results_dir rebuilt with --report_anonymize paths (no path or user name in the report)
 #   6. probe-capture data (--protocol capture)
 #   + two bad CSVs (lineage groups, sites) that must abort the run early (cheap: nothing is mapped)
@@ -138,6 +138,30 @@ run aggregate --mode aggregate --previous_results "$SCRATCH/out_full" --barcodes
 check aggregate --mode aggregate --lineage-groups present || fail=1
 same "freyja_aggregated.tsv (aggregate)" "$SCRATCH/out_full/summary/freyja_aggregated.tsv" "$SCRATCH/out_aggregate/summary/freyja_aggregated.tsv"
 unchanged "aggregate"
+
+# 4b. aggregate from the low-confidence demix results (step 3): the low_confidence status is carried over from summary/demix_status.tsv
+#     (PLAN D18) into the summaries and the report, and the sample is left out of the time series like in the demix run
+run aggregate_low_confidence --mode aggregate --previous_results "$SCRATCH/out_low_confidence" --barcodes container
+"${PY[@]}" - "$SCRATCH/out_aggregate_low_confidence/summary" << 'PYCHECK' || fail=1
+import csv, json, sys
+
+summary = sys.argv[1]
+status = {r["sample"]: r for r in csv.DictReader(open(summary + "/demix_status.tsv"), delimiter="\t")}
+lineage = {r["sample"]: r for r in csv.DictReader(open(summary + "/lineage_summary.csv"))}
+series_sites = {r["site"] for r in csv.DictReader(open(summary + "/freyja_timeseries.tsv"), delimiter="\t")}
+report = json.load(open(summary + "/report_data.json"))
+flag = next((f for f in report["run_flags"] if f["code"] == "demix_low_confidence"), None)
+low = status["Site_1_week_2"]
+ok = (
+    low["status"] == "low_confidence" and "high-confidence threshold" in low["reason"] and low["genome_coverage_pct"] != ""
+    and lineage["Site_1_week_2"]["status"] == "low_confidence" and lineage["MIX_A"]["status"] == "ok"
+    and "Site_1" not in series_sites and "SiteA" in series_sites
+    and flag is not None and flag.get("samples") == ["Site_1_week_2"]
+)
+print(("PASS" if ok else "FAIL") + "  aggregate mode: low_confidence carried over from the previous demix_status.tsv (summaries, report flag), left out of the time series")
+sys.exit(0 if ok else 1)
+PYCHECK
+unchanged "aggregate_low_confidence"
 
 # 5. report mode, rebuilt from the finished full run into a different outdir with --report_anonymize paths (report mode
 #    rebuilds report_data.json, which the results already have, when the report must be anonymised)

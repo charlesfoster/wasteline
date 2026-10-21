@@ -8,6 +8,8 @@ Inputs
   --aggregated  freyja_aggregated.tsv (the point estimates; the same table lineage_groups.py reads)
   --groups      the groups CSV (docs/wiring/lineage_groups.md)
   --dataset     the Freyja dataset directory holding `lineages.yml`
+  --samplesheet optional summary/samplesheet.csv (columns sample, sample_type): negative controls are left
+                out, as in lineage_summary.csv (lineage_groups.py)
   --boots       the RAW bootstrap draws of `freyja boot --rawboots`, one `<sample>.boot_lineages_boot.csv`
                 per sample: a CSV whose first column is an unnamed draw index and with one column per
                 lineage (abundance in that draw, 0 when absent). The sample ID is the file name minus
@@ -120,10 +122,12 @@ def point_estimates(lineages, groups, hierarchy):
     return [math.fsum(s) for s in sums]
 
 
-def interval_rows(boots, aggregate, groups, hierarchy, decimals):
+def interval_rows(boots, aggregate, groups, hierarchy, decimals, negatives=frozenset()):
     labels = [g["group"].replace("\t", " ") for g in groups] + ["other"]
     rows = []
     for sample in sorted(boots):
+        if sample in negatives:
+            continue
         agg = aggregate.get(sample)
         if agg is None or agg["error"]:
             warn(f"{sample}: no usable row in the aggregated table; left out")
@@ -153,6 +157,7 @@ def parse_args(argv=None):
     p.add_argument(
         "--boots", nargs="*", default=[], help="<sample>.boot_lineages_boot.csv files (raw draws)"
     )
+    p.add_argument("--samplesheet", help="summary/samplesheet.csv; negative controls are left out")
     p.add_argument("-o", "--output", required=True, help="lineage_group_intervals.tsv")
     p.add_argument("--decimals", type=int, default=6)
     return p.parse_args(argv)
@@ -172,7 +177,13 @@ def main(argv=None):
             except (OSError, ValueError) as err:
                 warn(f"{sample}: cannot use {Path(path).name} ({err}); left out")
         aggregate = lg.read_aggregate(args.aggregated, set(boots))
-        rows = interval_rows(boots, aggregate, groups, hierarchy, args.decimals)
+        negatives = set()
+        if args.samplesheet:
+            _, records = lg.read_table(args.samplesheet, ",")
+            negatives = {
+                r["sample"] for r in records if r.get("sample_type", "").lower() == "negative"
+            }
+        rows = interval_rows(boots, aggregate, groups, hierarchy, args.decimals, negatives)
     except lg.UserError as err:
         print(f"boot_group_intervals.py: error: {err}", file=sys.stderr)
         return 2

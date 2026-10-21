@@ -17,7 +17,7 @@ for `ok` and `low_confidence`.
   `--include_low_confidence true` (default false).
 - The band is off when `demix_floor_coverage` is 0 or >= `min_genome_coverage_for_demix`: behaviour is then identical to today.
 - Negative controls: same rule for the demix status; they are excluded from the aggregate anyway.
-- Aggregate mode with given `.demix` files treats them as `ok` (there is no coverage information); document this limit.
+- Aggregate mode with given `.demix` files treats them as `ok` (there is no coverage information), except that `--previous_results` carries `low_confidence` over from the earlier run's `summary/demix_status.tsv`.
 
 ## Pieces
 
@@ -27,7 +27,7 @@ for `ok` and `low_confidence`.
 2. `bin/demix_status.py`: add `low_confidence` to `STATUSES` (a reason is required, as for any non-ok status).
 3. `modules/local/freyja_demix/main.nf`: pass `--floor-genome-coverage ${floor}` when `task.ext.floor_genome_coverage` is set;
    gate 11 -> still run `freyja demix`; success -> `write_status low_confidence "<cov>% of the genome covered at >= <covcut>x:
-   below the high-confidence threshold of <min>%; treat the estimate with care"`; a demix failure is still `failed`. Update the
+below the high-confidence threshold of <min>%; treat the estimate with care"`; a demix failure is still `failed`. Update the
    output comment (`.demix` present for ok and low_confidence). Keep the stub as is. FREYJA_DEMIX_COMPARE shares the module and the
    `ext` block (conf/modules.config), so it behaves the same.
 4. Params (`nextflow.config`, `nextflow_schema.json`, typed block in `main.nf`, `conf/modules.config`): `demix_floor_coverage`

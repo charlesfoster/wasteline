@@ -15,7 +15,9 @@ AGGREGATED = (
     "S_1.variants.tsv\t[('Omicron', 1.0)]\tJN.1.16 KP.3.1 BA.5 A.1 ZZ.9\t"
     "0.45 0.35 0.1 0.08 0.02\t1.5\t90.0\tSARS-CoV-2\n"
     "NOBOOT.variants.tsv\t[('Omicron', 1.0)]\tBA.5\t1.0\t1.5\t90.0\tSARS-CoV-2\n"
+    "NEG_1.variants.tsv\t[('Omicron', 1.0)]\tBA.5\t1.0\t1.5\t90.0\tSARS-CoV-2\n"
 )
+SAMPLESHEET = "sample,sample_type\nS_1,sample\nNEG_1,negative\n"
 # 5 draws; columns JN.1.16, KP.3.1, BA.5, A.1 and ZZ.9 (unknown to the dataset, so `other`)
 BOOTS = """,JN.1.16,KP.3.1,BA.5,A.1,ZZ.9
 0,0.5,0.3,0.1,0.1,0.0
@@ -26,8 +28,9 @@ BOOTS = """,JN.1.16,KP.3.1,BA.5,A.1,ZZ.9
 """
 
 
-def run(tmp_path, dataset, boots=("S_1", "NOAGG")):
+def run(tmp_path, dataset, boots=("S_1", "NOAGG", "NEG_1")):
     (tmp_path / "groups.csv").write_text(GROUPS)
+    (tmp_path / "sheet.csv").write_text(SAMPLESHEET)
     (tmp_path / "agg.tsv").write_text(AGGREGATED)
     files = []
     for name in boots:
@@ -37,7 +40,16 @@ def run(tmp_path, dataset, boots=("S_1", "NOAGG")):
     out = tmp_path / "out.tsv"
     code = bgi.main(
         ["--aggregated", str(tmp_path / "agg.tsv"), "--groups", str(tmp_path / "groups.csv")]
-        + ["--dataset", str(dataset), "--boots", *files, "--output", str(out)]
+        + [
+            "--dataset",
+            str(dataset),
+            "--samplesheet",
+            str(tmp_path / "sheet.csv"),
+            "--boots",
+            *files,
+            "--output",
+            str(out),
+        ]
     )
     return code, out
 
@@ -48,7 +60,8 @@ def test_hand_computed_group_intervals(tmp_path):
     lines = out.read_text().splitlines()
     assert lines[0] == "sample\tgroup\tabundance\tlo\thi\tn_boot"
     rows = [line.split("\t") for line in lines[1:]]
-    # NOAGG has a boot file but no aggregate row and NOBOOT the reverse: both are absent
+    # NOAGG has a boot file but no aggregate row, NOBOOT the reverse, NEG_1 is a negative control in the samplesheet
+    # (left out like in lineage_summary.csv): all three are absent
     assert [r[0] for r in rows] == ["S_1"] * 5
     assert [r[1] for r in rows] == ["JN.1.16", "KP.3*", "JN.1* (all)", "BA.5", "other"]
     # point estimate = the demix group sum (KP.3.1 counts in KP.3* and JN.1* (all); A.1 + ZZ.9 = other);

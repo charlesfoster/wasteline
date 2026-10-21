@@ -11,6 +11,7 @@ process BOOT_GROUP_INTERVALS {
     path boots                                        // every sample's raw draws: <id>.boot_lineages_boot.csv (freyja boot --rawboots)
     path groups, stageAs: 'groups.csv'                // the user's lineage groups CSV (--lineage_groups)
     path dataset, stageAs: 'dataset'                  // Freyja dataset directory holding lineages.yml
+    path samplesheet, stageAs: 'samplesheet.csv'      // the summary samplesheet LINEAGE_SUMMARY gets (sample, sample_type): negative controls are left out
 
     output:
     path "lineage_group_intervals.tsv", emit: intervals // sample, group, abundance, lo, hi, n_boot (one row per sample x group + other)
@@ -27,6 +28,7 @@ process BOOT_GROUP_INTERVALS {
         --aggregated freyja_aggregated.tsv \\
         --groups groups.csv \\
         --dataset dataset \\
+        --samplesheet samplesheet.csv \\
         ${args} \\
         --output lineage_group_intervals.tsv \\
         --boots ${boots}
