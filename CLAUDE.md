@@ -53,7 +53,8 @@ Docker Desktop must be running for container tests.
 - Nextflow >= 26.04's strict (v2) parser passes CLI booleans as strings (`--x`, `--x=false`) and nf-schema rejects them;
   `-params-file` works, as does `NXF_SYNTAX_PARSER=v1`. Named entries (`-entry`) are rejected too: dispatch is `--mode` only.
 - `nf-test test --profile docker,test` (not `docker` alone, until resource defaults are fixed).
-- Mac + conda is unreliable; use `-profile docker` on macOS.
+- On macOS use `-profile docker`. `-profile mamba` also works there (verified end to end, outputs byte-identical to docker): use mamba, never
+  plain conda, with `CONDA_SUBDIR=osx-64` (most bioconda packages have no arm64 build) and `NXF_CONDA_CACHEDIR` in a scratch directory.
 - Do not commit or push unless the user asks.
 - Never delete directories wholesale or clean up "empty" directories (`find -empty -delete`, `rmdir` sweeps, `git clean`).
   Empty-directory sweeps once deleted `.git/objects` and `.git/refs` in this repo. Remove only specific paths you created.
