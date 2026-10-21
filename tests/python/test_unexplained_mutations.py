@@ -238,3 +238,16 @@ def test_real_data_spikes_reported_and_chance_call_suppressed(tmp_path):
     # JN.1's own mutations (C241T, S:N501Y = A23063T) are in the input at ~100 % and are not reported
     text = read_gz(FIX / "PURE_C_spiked.variants.tsv.gz")
     assert "\t241\tC\tT\t" in text and "\t23063\tA\tT\t" in text
+
+
+def test_other_pathogen_dataset_and_significance_follows_reference_length(tmp_path):
+    """A dataset directory of another pathogen has X_barcodes.csv; 0.05 / genome length follows the reference (PLAN D22)."""
+    ds = tmp_path / "ds"
+    ds.mkdir()
+    (ds / "MEASLESgenome_barcodes.csv").write_text(",C100T\nLIN_A,1\n")
+    barcodes, _ = um.load_barcodes(str(ds), {"LIN_A"})
+    assert "LIN_A" in barcodes
+    # the pipeline's default level, for the 15.9 kb measles genome
+    assert um.effective_max_pvalue(1.67e-6, 15894) == pytest.approx(0.05 / 15894)
+    assert um.effective_max_pvalue(1.67e-6, 29903) == 1.67e-6  # SARS-CoV-2: untouched
+    assert um.effective_max_pvalue(1e-3, 15894) == 1e-3  # an explicit value is never rescaled

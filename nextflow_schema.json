@@ -120,8 +120,8 @@
                     "exists": true,
                     "mimetype": "text/plain",
                     "pattern": "^\\S+\\.fn?a(sta)?(\\.gz)?$",
-                    "description": "Path to the reference FASTA. Default: the bundled reference (conf/pathogens/sars2.config).",
-                    "help_text": "The BWA index is built from this file once per run.",
+                    "description": "Path to the reference FASTA (one sequence). Default: the bundled reference of the pathogen (conf/pathogens/*.config); required for pathogens without one.",
+                    "help_text": "The BWA index is built from this file once per run. For a pathogen other than SARS-CoV-2 and MEASLESgenome this must be the reference.fasta that the Freyja barcodes were built on (the pathogen's folder in the Freyja-barcodes repository); a FASTA with several sequences (segmented genomes) is refused.",
                     "fa_icon": "far fa-file-code"
                 },
                 "gff": {
@@ -130,7 +130,7 @@
                     "exists": true,
                     "mimetype": "text/plain",
                     "pattern": "^\\S+\\.gff3?(\\.gz)?$",
-                    "description": "Path to the reference annotation (GFF3). Default: the bundled annotation.",
+                    "description": "Path to the reference annotation (GFF3). Default: the bundled annotation (SARS-CoV-2 only). Optional for the other pathogens; `--annotate_variants` needs it.",
                     "fa_icon": "far fa-file-code"
                 },
                 "primer_scheme": {
@@ -168,11 +168,39 @@
                 },
                 "pathogen": {
                     "type": "string",
-                    "description": "Freyja `--pathogen` name (set by conf/pathogens/*.config). Only SARS-CoV-2 is implemented.",
+                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome has a bundled reference; every other single-contig pathogen needs `--fasta`.",
+                    "help_text": "Passed to every Freyja call. The per-pathogen defaults (reference, annotation) come from conf/pathogens/<profile>.config. Without `--fasta` and `--primer_bed` only SARS-CoV-2 runs out of the box; pass `--fasta` = the reference.fasta that the pathogen's Freyja barcodes were built on (a different one gives silently wrong results), `--primer_bed` (or `--protocol capture`), and `--lineage_groups` if you want the lineage-group summary. The influenza pathogens (H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC: 8 segments) and MTB (4.4 Mb) are accepted by Freyja but stop here with an explanation. See docs/other_pathogens.md.",
                     "fa_icon": "fas fa-virus",
+                    "enum": [
+                        "SARS-CoV-2",
+                        "MPX",
+                        "H5Nx",
+                        "H5Nx-cattle",
+                        "H1N1",
+                        "H3N2",
+                        "FLU-B-VIC",
+                        "MEASLESgenome",
+                        "RSVa",
+                        "RSVb",
+                        "DENV1",
+                        "DENV2",
+                        "DENV3",
+                        "DENV4",
+                        "MTB"
+                    ],
+                    "errorMessage": "--pathogen must be one of the Freyja pathogens: SARS-CoV-2, MPX, H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC, MEASLESgenome, RSVa, RSVb, DENV1, DENV2, DENV3, DENV4, MTB (the influenza ones and MTB are not supported, see docs/other_pathogens.md)."
+                },
+                "lineage_groups_bundled": {
+                    "type": "string",
+                    "description": "Set by conf/pathogens/*.config, not for users: the pathogen's bundled lineage groups file (none = the lineage-group summary is off unless `--lineage_groups` is given).",
                     "hidden": true,
-                    "enum": ["SARS-CoV-2"],
-                    "errorMessage": "Only --pathogen SARS-CoV-2 is implemented and validated (reference, primers, Freyja dataset names are SARS-CoV-2 specific)."
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "freyja_container_pathogen": {
+                    "type": "string",
+                    "description": "Set by conf/pathogens/*.config, not for users: the pathogen whose data the pinned Freyja container bundles (`--barcodes container`); its datasets live in <db_dir>/freyja, those of other pathogens in <db_dir>/freyja_<pathogen>.",
+                    "hidden": true,
+                    "fa_icon": "fas fa-virus"
                 }
             }
         },
@@ -805,7 +833,7 @@
                     "exists": true,
                     "pattern": "^\\S+\\.(csv|tsv|txt)$",
                     "mimetype": "text/csv",
-                    "description": "CSV that defines the lineage groups (columns `group`, `include`, optional `exclude`, `in_total`). Default: the bundled `assets/lineage_groups.csv`. A copy of the file used is published as `summary/lineage_groups_used.csv`.",
+                    "description": "CSV that defines the lineage groups (columns `group`, `include`, optional `exclude`, `in_total`). Default: the bundled `assets/lineage_groups.csv` (SARS-CoV-2 only; other pathogens have the summary off unless this is given). A copy of the file used is published as `summary/lineage_groups_used.csv`.",
                     "help_text": "One row per output column; patterns such as `JN.1*` (the lineage and all its descendants), `NB.1.8.1` (exactly that lineage) and `RECOMBINANT*`. Start from the bundled file (or a previous run's `lineage_groups_used.csv`), edit it in Excel and save as CSV UTF-8. Format errors stop the run within minutes; unknown lineages are warnings. See docs/usage.md (Lineage groups).",
                     "fa_icon": "fas fa-layer-group"
                 },

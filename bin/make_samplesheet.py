@@ -52,6 +52,7 @@ RESERVED_DIRS = {"samples", "summary", "pipeline_info", "db"}
 # files that mark a directory as a Freyja dataset (<db_dir>/freyja/...), not as a sample
 DATASET_MARKERS = (
     "last_barcode_update.txt",
+    "last_barcode_update_other.txt",
     "usher_barcodes.feather",
     "usher_barcodes.csv",
     "lineages.yml",

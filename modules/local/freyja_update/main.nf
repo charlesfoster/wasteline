@@ -8,7 +8,9 @@ process FREYJA_UPDATE {
         : 'quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0'}"
 
     input:
-    val source // 'latest': download with `freyja update`; 'container': copy the snapshot bundled in the Freyja package
+    val source // 'latest': download with `freyja update` (ext.args: --pathogen; other pathogens write <X>_barcodes.csv, <X>_lineages.yml,
+               // last_barcode_update_other.txt: see bin/freyja_dataset_info.py); 'container': copy the SARS-CoV-2 snapshot bundled in the Freyja
+               // package (the pipeline refuses `container` for other pathogens, validateInputParameters)
 
     output:
     path "*", type: 'dir', emit: dataset

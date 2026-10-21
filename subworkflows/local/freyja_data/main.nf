@@ -1,7 +1,7 @@
 //
 // Resolve --barcodes into ONE Freyja dataset shared by every sample of the run (PLAN 5.6)
 //
-// latest     -> freyja update (published to <db_dir>/freyja/<YYYY-MM-DDTHH-MM>/)
+// latest     -> freyja update (published to <db_dir>/freyja/<YYYY-MM-DDTHH-MM>/; <db_dir>/freyja_<pathogen>/ for other pathogens, PLAN D22)
 // container  -> snapshot bundled in the pinned Freyja container (offline)
 // stamp/date -> existing dataset in <db_dir>/freyja (error if absent)
 // path       -> dataset directory or .csv/.feather file, used verbatim
@@ -12,6 +12,7 @@ include { FREYJA_UPDATE       } from '../../../modules/local/freyja_update/main'
 include { FREYJA_DATASET_INFO } from '../../../modules/local/freyja_dataset_info/main'
 include { resolveBarcodes     } from '../utils_nfcore_wasteline_pipeline'
 include { dbDir               } from '../utils_nfcore_wasteline_pipeline'
+include { datasetRoot         } from '../utils_nfcore_wasteline_pipeline'
 
 workflow FREYJA_DATA {
 
@@ -28,7 +29,7 @@ workflow FREYJA_DATA {
     if (spec.kind == 'fetch') {
         FREYJA_UPDATE(channel.value(spec.source))
         ch_dataset = FREYJA_UPDATE.out.dataset
-        dataset_path = spec.source == 'latest' ? "${dbDir()}/freyja" : 'bundled in the Freyja container'
+        dataset_path = spec.source == 'latest' ? datasetRoot(dbDir()) : 'bundled in the Freyja container'
     }
     else {
         ch_dataset = channel.value(spec.path)

@@ -201,6 +201,10 @@ def load_dataset(path):
     """Return (Hierarchy, version) for a dataset directory (or a lineages.yml file)."""
     path = Path(path)
     yml = path if path.is_file() else path / "lineages.yml"
+    if not yml.is_file() and path.is_dir():
+        # another pathogen's hierarchy is <PATHOGEN>_lineages.yml (exactly one)
+        others = sorted(path.glob("*_lineages.yml"))
+        yml = others[0] if len(others) == 1 else yml
     if not yml.is_file():
         raise UserError(
             f"no lineages.yml found in {path}; a Freyja dataset directory with the lineage "
@@ -211,6 +215,11 @@ def load_dataset(path):
         raise UserError(f"{yml} contains no lineages")
     version_file = yml.parent / "last_barcode_update.txt"
     version = version_file.read_text().strip() if version_file.is_file() else "NA"
+    other_file = (
+        yml.parent / "last_barcode_update_other.txt"
+    )  # another pathogen: `PATHOGEN:YYYY-MM-DD`
+    if not version_file.is_file() and other_file.is_file():
+        version = other_file.read_text().strip().split(":")[-1].strip()
     return Hierarchy(entries), version or "NA"
 
 

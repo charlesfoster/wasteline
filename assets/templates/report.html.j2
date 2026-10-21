@@ -334,7 +334,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
 <div class="wrap">
 <header class="top">
   <h1>{{ h.pipeline_name or 'wasteline' }} report</h1>
-  <p class="sub">Wastewater SARS-CoV-2 lineage deconvolution &middot; mode <b>{{ mode }}</b>{% if h.pipeline_version %} &middot; pipeline {{ h.pipeline_version }}{% endif %}</p>
+  <p class="sub">Wastewater {{ h.pathogen or 'SARS-CoV-2' }} lineage deconvolution &middot; mode <b>{{ mode }}</b>{% if h.pipeline_version %} &middot; pipeline {{ h.pipeline_version }}{% endif %}</p>
   {% if d.anonymized and d.anonymized != 'none' %}
   <p class="note" id="anonymized-note"><b>Anonymised for sharing ({{ d.anonymized }}).</b> Local paths, home directories and user names were removed{% if d.anonymized == 'full' %}; sample IDs and site names were replaced by pseudonyms (S001, SITE1, ...){% endif %}. Dates, lineage names, barcode versions and QC values are unchanged.</p>
   {% endif %}

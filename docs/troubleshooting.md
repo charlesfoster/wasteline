@@ -228,11 +228,16 @@ reads have no primers to trim and no amplicons, so the scheme is not used (and t
 ### `--pathogen` is rejected
 
 ```
-* --pathogen (Foo): Expected any of [[SARS-CoV-2]] (Only --pathogen SARS-CoV-2 is implemented and validated (reference, primers, Freyja dataset names are SARS-CoV-2 specific).)
+* --pathogen (Foo): Expected any of [[SARS-CoV-2, MPX, H5Nx, ...]] (--pathogen must be one of the Freyja pathogens: ...)
+[ERROR] --pathogen H1N1 is not supported: influenza genomes have 8 segments ...
+[ERROR] --fasta is required with --pathogen RSVa: wasteline bundles a reference only for the pathogens that have a file in conf/pathogens/ ...
+[ERROR] The bundled default primer scheme 'qiagenv1' is for a different reference ...
 ```
 
-**Cause.** Only SARS-CoV-2 is implemented; `--pathogen` is validated against that single value. **Fix.** Leave it at the default.
-Adding another pathogen is future work ([development.md](development.md#the-pathogen-agnostic-structure)).
+**Cause.** `--pathogen` must be a Freyja pathogen name. The influenza pathogens (8 segments) and MTB (4.4 Mb) are accepted
+by Freyja but not by wasteline; a pathogen without a bundled reference needs `--fasta` (the reference the Freyja barcodes
+were built on), and the bundled primer schemes only fit SARS-CoV-2, so a primer BED (or `--protocol capture`) is needed.
+**Fix.** See [other_pathogens.md](other_pathogens.md) for what each pathogen needs.
 
 ### `--annotate_variants` with `--skip_consensus`
 

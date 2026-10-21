@@ -365,6 +365,21 @@ def checkSampleBeds(metas) {
 }
 
 //
+// Freyja pathogens (`freyja update --pathogen` choices) that wasteline cannot run, with the reason and what would be
+// needed (PLAN D22); null for every other name. The single-contig FASTA check in validateInputParameters catches
+// a multi-segment reference of any other pathogen as well.
+//
+def unsupportedPathogenReason(pathogen) {
+    if (pathogen in ['H5Nx', 'H5Nx-cattle', 'H1N1', 'H3N2', 'FLU-B-VIC']) {
+        return "influenza genomes have 8 segments, i.e. a multi-contig reference, and wasteline supports single-contig references only: depth QC, amplicon coverage, low-depth masking, the consensus and the primer checks all assume one contig. Supporting it needs per-segment (per-contig) handling in all of them, plus per-segment Freyja calls (freyja variants --refname); the Freyja documentation also says influenza barcodes are available on request only."
+    }
+    if (pathogen == 'MTB') {
+        return "Mycobacterium tuberculosis is a 4.4 Mb bacterial genome with feather-only Freyja barcodes. wasteline is built and tested for viral genomes of 10-200 kb (per-position depth tables, QC, consensus and the dropout/mutation tables are not sized for 4.4 Mb), and nothing has been validated on bacterial data. Supporting it needs those steps scaled and checked on real MTB data."
+    }
+    return null
+}
+
+//
 // Comma-separated path list (--previous_results) as a list of strings
 //
 def splitPaths(spec) {
@@ -428,6 +443,28 @@ def validateInputParameters(mode) {
         error("Give only one of ${sources.keySet().join(', ')} with --mode ${mode}. ${hint}")
     }
 
+    // The pathogen (PLAN D22): the Freyja pathogens that need more than a reference are refused before any work is done
+    if (mode in ['full', 'demix', 'aggregate', 'update_db']) {
+        def unsupported = unsupportedPathogenReason(params.pathogen)
+        if (unsupported) {
+            error("--pathogen ${params.pathogen} is not supported: ${unsupported} See docs/other_pathogens.md.")
+        }
+        if (mode in ['full', 'demix']) {
+            if (!params.fasta) {
+                error("--fasta is required with --pathogen ${params.pathogen}: wasteline bundles a reference only for the pathogens that have a file in conf/pathogens/. Pass the reference.fasta that the Freyja barcodes of ${params.pathogen} were built on (the pathogen's folder in https://github.com/andersen-lab/Freyja-barcodes): barcodes are tied to their reference and a different one gives silently wrong results. --gff (annotation) is optional. See docs/other_pathogens.md.")
+            }
+            def contigs = fastaContigs(file(params.fasta, checkIfExists: true))
+            if (contigs.size() != 1) {
+                error("The reference FASTA '${params.fasta}' has ${contigs.size()} sequences (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}): wasteline supports single-contig references only (depth QC, amplicon coverage, low-depth masking, consensus and the primer checks assume one contig). Multi-segment genomes need per-contig handling throughout the pipeline, which is not implemented. See docs/other_pathogens.md.")
+            }
+        }
+    }
+    if (params.barcodes == 'container' || params.compare_barcodes == 'container') {
+        if (params.pathogen != params.freyja_container_pathogen) {
+            error("--barcodes container is only available for the default pathogen (the only one the Freyja container bundles barcodes for): the pinned Freyja container bundles no barcodes for ${params.pathogen}. Use --barcodes latest, or a dataset directory or barcode file made by `freyja update --pathogen ${params.pathogen}`.")
+        }
+    }
+
     // Run defaults: samples without a protocol / primer_scheme cell use them. A samplesheet can override them per sample (PLAN D20).
     def settings = protocolSettings(params.protocol)
     if ((params.protocol == 'capture' || params.skip_primer_trimming) && (params.primer_scheme || params.primer_bed) && mode in ['full', 'demix']) {
@@ -439,6 +476,9 @@ def validateInputParameters(mode) {
         def bed_contigs = bedContigs(primerBed())
         def fasta_contigs = fastaContigs(file(params.fasta, checkIfExists: true))
         def unknown = bed_contigs - fasta_contigs
+        if (unknown && !params.primer_bed && !params.primer_scheme) {
+            error("The bundled default primer scheme '${defaultPrimerScheme()}' is for a different reference (its contig(s) ${unknown} are not in the reference FASTA '${params.fasta}', which has ${fasta_contigs}): the bundled primer schemes belong to one pathogen only. Pass --primer_bed <BED whose first column is ${fasta_contigs.join(' / ')}> (a primer scheme for ${params.pathogen}), or --protocol capture / --skip_primer_trimming for reads that are not primer-trimmed. See docs/other_pathogens.md.")
+        }
         if (unknown) {
             error("Primer BED '${primerBed()}' refers to contig(s) ${unknown} that are not in the reference FASTA '${params.fasta}' (which has ${fasta_contigs}). Use a matching --primer_bed/--primer_scheme or --fasta.")
         }
@@ -494,6 +534,9 @@ def validateInputParameters(mode) {
         }
         else if (params.skip_consensus) {
             error("--annotate_variants annotates the variants the consensus is built from: it cannot be combined with --skip_consensus")
+        }
+        else if (!params.gff) {
+            error("--annotate_variants needs the reference annotation: --pathogen ${params.pathogen} has no bundled GFF3, pass --gff")
         }
     }
 }
@@ -602,6 +645,18 @@ def dbDir() {
     return params.db_dir ?: "${System.getProperty('user.home')}/.wasteline/db"
 }
 
+//
+// Do the bundled primer schemes belong to the run's reference (is their contig in the FASTA)? True for the pathogen
+// they were made for. Where they do not, the primer-scheme check (which scores a sample against every bundled scheme)
+// has nothing to compare with and is skipped; a primer BED of the user is still used for trimming and amplicon QC.
+//
+def bundledSchemesApply() {
+    if (!params.fasta) {
+        return false
+    }
+    return !(bedContigs(file("${projectDir}/assets/primer_schemes/${defaultPrimerScheme()}.bed", checkIfExists: true)) - fastaContigs(file(params.fasta, checkIfExists: true)))
+}
+
 def bedContigs(bed) {
     return bed.readLines()
         .findAll { line -> line.trim() && !line.startsWith('#') && !line.startsWith('track') }
@@ -619,10 +674,20 @@ def fastaContigs(fasta) {
 }
 
 //
+// Where the datasets of the run's pathogen live in the local database. The pathogen whose data the pinned Freyja
+// container bundles (conf/pathogens/*.config: freyja_container_pathogen) keeps <db_dir>/freyja; every other pathogen
+// gets <db_dir>/freyja_<pathogen>, so a date such as `--barcodes 2025-05-01` can never pick another pathogen's dataset.
+//
+def datasetRoot(db_dir) {
+    def pathogen = params.pathogen ?: params.freyja_container_pathogen
+    return pathogen == params.freyja_container_pathogen ? "${db_dir}/freyja" : "${db_dir}/freyja_${pathogen}"
+}
+
+//
 // Dataset directory names already stored in the local database
 //
 def availableDatasets(db_dir) {
-    def root = file("${db_dir}/freyja")
+    def root = file(datasetRoot(db_dir))
     return root.isDirectory() ? root.listFiles().findAll { entry -> entry.isDirectory() }.collect { entry -> entry.name }.sort() : []
 }
 
@@ -641,18 +706,18 @@ def resolveBarcodes(barcodes, db_dir, option) {
         def iso = stamp.matches()
             ? "${stamp[0][3]}-${stamp[0][1]}-${stamp[0][2]}T${stamp[0][4]}-${stamp[0][5]}"
             : "${iso_form[0][1]}-${iso_form[0][2]}"
-        def dir = file("${db_dir}/freyja/${iso}")
+        def dir = file("${datasetRoot(db_dir)}/${iso}")
         if (!dir.isDirectory()) {
-            error("Freyja dataset '${spec}' (directory ${iso}) not found in ${db_dir}/freyja. Available: ${availableDatasets(db_dir) ?: 'none'}. Download datasets with ${option} latest (stored there by date and time), or point ${option} at a dataset directory or .csv/.feather file.")
+            error("Freyja dataset '${spec}' (directory ${iso}) not found in ${datasetRoot(db_dir)}. Available: ${availableDatasets(db_dir) ?: 'none'}. Download datasets with ${option} latest (stored there by date and time), or point ${option} at a dataset directory or .csv/.feather file.")
         }
         return [ kind: 'path', source: 'pinned', path: dir ]
     }
     if (spec ==~ /^\d{4}-\d{2}-\d{2}$/) {
         def matches = availableDatasets(db_dir).findAll { name -> name.startsWith("${spec}T") }
         if (!matches) {
-            error("No Freyja dataset from ${spec} found in ${db_dir}/freyja. Available: ${availableDatasets(db_dir) ?: 'none'}. Download one with ${option} latest, or point ${option} at a dataset directory or .csv/.feather file.")
+            error("No Freyja dataset from ${spec} found in ${datasetRoot(db_dir)}. Available: ${availableDatasets(db_dir) ?: 'none'}. Download one with ${option} latest, or point ${option} at a dataset directory or .csv/.feather file.")
         }
-        return [ kind: 'path', source: 'pinned', path: file("${db_dir}/freyja/${matches.last()}") ]
+        return [ kind: 'path', source: 'pinned', path: file("${datasetRoot(db_dir)}/${matches.last()}") ]
     }
     def path = file(spec)
     if (!path.exists()) {
@@ -698,16 +763,28 @@ def lineageHierarchyUnsupportedReason() {
     if (path.isFile()) {
         return "${path.name} is a barcodes file without a lineage hierarchy (lineages.yml)"
     }
-    return file("${path}/lineages.yml").exists() ? null : "${path} has no lineages.yml"
+    // Freyja names the hierarchy of the pathogens other than the default <PATHOGEN>_lineages.yml
+    return (file("${path}/lineages.yml").exists() || path.listFiles()?.any { f -> f.name.endsWith('_lineages.yml') }) ? null : "${path} has no lineages.yml"
 }
 
 //
-// The lineage groups file in effect: --lineage_groups, else the bundled assets/lineage_groups.csv
+// Does a dataset DOWNLOADED during the run (--barcodes latest) possibly lack the lineage hierarchy? Freyja ships a
+// hierarchy for the default pathogen only, and for a few others (not RSV, dengue, ...): then the workflow looks at what
+// was downloaded (lineages_yml_sha256 of freyja_data.json) instead of assuming (PLAN D22).
+//
+def hierarchyMayBeMissing() {
+    return resolveBarcodes(params.barcodes, dbDir(), '--barcodes').kind == 'fetch' && params.pathogen != params.freyja_container_pathogen
+}
+
+//
+// The lineage groups file in effect: --lineage_groups, else the bundled assets/lineage_groups.csv of the pathogen
+// (conf/pathogens/*.config: lineage_groups_bundled). null = none: the lineage-group summary is then off.
 //
 def lineageGroupsFile() {
-    return params.lineage_groups
-        ? file(params.lineage_groups, checkIfExists: true)
-        : file("${projectDir}/assets/lineage_groups.csv", checkIfExists: true)
+    if (params.lineage_groups) {
+        return file(params.lineage_groups, checkIfExists: true)
+    }
+    return params.lineage_groups_bundled ? file(params.lineage_groups_bundled, checkIfExists: true) : null
 }
 
 //
@@ -716,6 +793,9 @@ def lineageGroupsFile() {
 //
 def lineageGroupsInfo() {
     def groups = lineageGroupsFile()
+    if (!groups) {
+        return [ lineage_groups_file: null, lineage_groups_source: null, lineage_groups_sha256: null ]
+    }
     def digest = java.security.MessageDigest.getInstance('SHA-256').digest(groups.bytes)
     def sha = digest.collect { b -> String.format('%02x', b & 0xff) }.join('')
     return [

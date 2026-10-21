@@ -109,3 +109,29 @@ def test_every_schema_number_is_typed_and_agrees_with_the_config():
             assert m and m.group(1) == typed[name][1], (
                 f"{name}: config {m and m.group(1)} vs main.nf {typed[name][1]}"
             )
+
+
+def test_pathogen_profiles_are_consistent():
+    """Every pathogen profile config sets the same per-pathogen facts; nextflow.config maps only to existing files."""
+    config = (ROOT / "nextflow.config").read_text()
+    line = re.search(r'includeConfig "conf/pathogens/.*', config).group(0)
+    profiles = set(re.findall(r"'[^']+': '(\w+)'", line))
+    files = {p.stem: p.read_text() for p in (ROOT / "conf" / "pathogens").glob("*.config")}
+    assert profiles | {"generic"} == set(files)
+    schema = json.loads((ROOT / "nextflow_schema.json").read_text())
+    props = {k: v for group in schema["$defs"].values() for k, v in group["properties"].items()}
+    for stem, text in files.items():
+        for fact in (
+            "pathogen",
+            "fasta",
+            "gff",
+            "lineage_groups_bundled",
+            "freyja_container_pathogen",
+        ):
+            assert re.search(rf"^\s*{fact}\s*=", text, re.MULTILINE), (
+                f"{stem}.config does not set {fact}"
+            )
+            assert fact in props, f"{fact} missing from the schema"
+        named = re.search(r"^\s*pathogen\s*=\s*'([^']+)'", text, re.MULTILINE)
+        if named:
+            assert named.group(1) in props["pathogen"]["enum"], stem

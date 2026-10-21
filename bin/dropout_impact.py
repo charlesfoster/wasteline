@@ -405,6 +405,12 @@ def find_lineages_yml(explicit, dataset_path):
     base = Path(dataset_path)
     base = base if base.is_dir() else base.parent
     candidate = base / "lineages.yml"
+    if not candidate.is_file():
+        # another pathogen's hierarchy is <PATHOGEN>_lineages.yml (exactly one)
+        others = sorted(base.glob("*_lineages.yml"))
+        # (MPX: Freyja saves a GitHub HTML page under that name; a real hierarchy is a YAML list)
+        if len(others) == 1 and others[0].read_text(errors="replace").lstrip().startswith("-"):
+            candidate = others[0]
     return candidate if candidate.is_file() and candidate.stat().st_size > 0 else None
 
 

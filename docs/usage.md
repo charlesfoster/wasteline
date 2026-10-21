@@ -187,8 +187,10 @@ validate a sheet before queuing a long run and to check files without starting N
 ## 4. Reference and primer schemes
 
 **Reference.** The default is the bundled SARS-CoV-2 reference `NC_045512.2` (`assets/references/NC_045512.fasta`) and its
-GFF3 annotation. Override with `--fasta` and `--gff`. Only SARS-CoV-2 is supported at present (the pathogen defaults live in
-`conf/pathogens/sars2.config`).
+GFF3 annotation. Override with `--fasta` and `--gff`. The pathogen defaults live in `conf/pathogens/*.config`, selected by
+`--pathogen`. Other Freyja pathogens with a single-sequence genome (measles, RSV, dengue, mpox) can be run with
+`--pathogen <name> --fasta <the reference of the Freyja barcodes> --primer_bed <BED>`: see [other_pathogens.md](other_pathogens.md)
+(support matrix, how to run measles, the validation result). The influenza pathogens and MTB are refused at start-up.
 
 **Primer scheme** (modes `full`, and `demix` if you want per-amplicon coverage): choose a bundled scheme with
 `--primer_scheme`, or give your own BED with `--primer_bed <file>` (which overrides `--primer_scheme`). The default in
@@ -523,7 +525,9 @@ Gotchas:
 Default `~/.wasteline/db` (so datasets land in `~/.wasteline/db/freyja/<YYYY-MM-DDTHH-MM>/`). Set `--db_dir` to a shared,
 **writable** directory to share datasets between users or runs. Each dataset directory holds `usher_barcodes.feather`,
 `last_barcode_update.txt`, `lineage_mutations.json`, `curated_lineages.json`, `lineages.yml`, `pathogen_config.yml` and a
-small `wasteline_dataset.json` with the download time. If the directory is not writable the run fails (see
+small `wasteline_dataset.json` with the download time. For another `--pathogen` the datasets go to
+`<db_dir>/freyja_<pathogen>/<date>T00-00/` and hold what `freyja update --pathogen X` writes instead
+([other_pathogens.md](other_pathogens.md#freyja-datasets-of-other-pathogens)). If the directory is not writable the run fails (see
 [troubleshooting](troubleshooting.md#the-freyja-database-directory-is-not-writable)).
 
 ### Updating the barcodes before or during runs
@@ -1338,9 +1342,9 @@ that is bumped automatically:
 ## 17. Not implemented
 
 These are in [PLAN.md](PLAN.md) or discussed as future work but are **not** available (they are not in
-[parameters.md](parameters.md)): the optional `--kraken2_db` screen of negative controls, other pathogens than SARS-CoV-2
-(`--pathogen` accepts only `SARS-CoV-2` and rejects anything else at start-up), CRAM output, resolving historical barcode
-versions from the Freyja git history, and an alternative aligner. See [development.md](development.md#future-work).
+[parameters.md](parameters.md)): the optional `--kraken2_db` screen of negative controls, multi-segment pathogens
+(influenza) and MTB (see [other_pathogens.md](other_pathogens.md); the other Freyja pathogens run), resolving historical
+barcode versions from the Freyja git history, and an alternative aligner. See [development.md](development.md#future-work).
 
 ## Where next
 

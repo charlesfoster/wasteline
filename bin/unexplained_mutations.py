@@ -103,6 +103,9 @@ COLUMNS = [
 CONCAT_COLUMNS = [*COLUMNS[:-2], "n_samples", "recurrent", *COLUMNS[-2:]]
 GENOME_LENGTH = 29903  # one test per position; only used for the default significance level
 DEFAULT_MAX_PVALUE = 0.05 / GENOME_LENGTH
+PIPELINE_MAX_PVALUE = (
+    1.67e-6  # what the pipeline passes by default (nextflow.config: unexplained_max_pvalue)
+)
 P_VALUE_FLOOR = 1e-300  # reported p-values are never smaller; `1e-300` reads "at most 1e-300"
 LOG_NEGLIGIBLE = math.log(1e-17)  # stop the tail sum once the next term is this small vs the total
 NA = "NA"
@@ -239,6 +242,10 @@ def load_barcodes(dataset, wanted, all_sites=None):
     if path.is_dir():
         feather = path / "usher_barcodes.feather"
         csv_file = path / "usher_barcodes.csv"
+        if not csv_file.is_file():
+            # another pathogen's dataset: <PATHOGEN>_barcodes.csv (exactly one)
+            others = sorted(path.glob("*_barcodes.csv"))
+            csv_file = others[0] if len(others) == 1 else csv_file
         json_file = path / "lineage_mutations.json"
         json_ok = json_file.is_file() and json_file.stat().st_size > 0
         if feather.exists() and json_ok:
@@ -253,7 +260,7 @@ def load_barcodes(dataset, wanted, all_sites=None):
         elif json_ok:
             table = _json_barcodes(json_file, wanted, counters, all_sites)
         else:
-            raise ValueError(f"{dataset}: no lineage_mutations.json or usher_barcodes.csv")
+            raise ValueError(f"{dataset}: no lineage_mutations.json or barcodes .csv")
     elif path.is_file():
         suffix = path.suffix.lower()
         if suffix == ".csv":
@@ -488,6 +495,18 @@ def write_table(path, columns, rows):
         Path(path).write_text(text)
 
 
+def effective_max_pvalue(max_pvalue, genome_length):
+    """The significance level; the default one (0.05 / 29903, as the pipeline passes it) is rescaled to the
+    reference length (0.05 / length) when --genome-length says the genome is not the SARS-CoV-2 one."""
+    if (
+        genome_length
+        and genome_length != GENOME_LENGTH
+        and max_pvalue in (DEFAULT_MAX_PVALUE, PIPELINE_MAX_PVALUE)
+    ):
+        return 0.05 / genome_length
+    return max_pvalue
+
+
 def run_sample(args):
     thresholds = {
         "min_depth": args.min_depth,
@@ -495,7 +514,7 @@ def run_sample(args):
         "min_freq": args.min_freq,
         "min_excess": args.min_excess,
         "min_alt_qual": args.min_alt_qual,
-        "max_pvalue": args.max_pvalue,
+        "max_pvalue": effective_max_pvalue(args.max_pvalue, args.genome_length),
         "background_rate": args.background_rate,
     }
     if bool(args.gff) != bool(args.reference):
@@ -613,6 +632,12 @@ def main(argv=None):
         type=float,
         default=DEFAULT_MAX_PVALUE,
         help="binomial test; 1 disables (0.05/29903)",
+    )
+    p.add_argument(
+        "--genome-length",
+        type=int,
+        default=None,
+        help="reference length: the default --max-pvalue becomes 0.05 / length when it is not 29903",
     )
     p.add_argument(
         "--background-rate", type=float, default=0.01, help="floor for the null rate (0.01)"

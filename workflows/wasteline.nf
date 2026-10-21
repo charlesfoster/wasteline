@@ -64,6 +64,8 @@ include { mutationTablesUnsupportedReason } from '../subworkflows/local/utils_nf
 include { lineageGroupsFile      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { lineageGroupsInfo      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { lineageHierarchyUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { hierarchyMayBeMissing } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { bundledSchemesApply } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { previousRuns           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { splitPaths             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
@@ -183,8 +185,9 @@ workflow WASTELINE {
         }
     }
     else {
-        def ch_fasta = channel.value(file(params.fasta, checkIfExists: true))
-        def ch_gff = channel.value(file(params.gff, checkIfExists: true))
+        // --fasta is required by modes full and demix (validateInputParameters); --gff is optional for pathogens without a bundled annotation
+        def ch_fasta = channel.value(params.fasta ? file(params.fasta, checkIfExists: true) : [])
+        def ch_gff = channel.value(params.gff ? file(params.gff, checkIfExists: true) : [])
 
         //
         // The lineage groups file (bundled default or --lineage_groups) and the sites CSV are checked FIRST, in parallel with fastp and the mapping, so that a
@@ -192,13 +195,29 @@ workflow WASTELINE {
         // unknown site names are warnings, shown here. A dataset without a lineage hierarchy (custom barcodes file) cannot
         // resolve the groups: the file format is still checked, the summary itself is skipped with one warning.
         //
-        def run_lineage_groups = params.lineage_summary as boolean
+        // A pathogen without bundled lineage groups (conf/pathogens/*.config) has the summary off unless --lineage_groups is given (PLAN D22).
+        def run_lineage_groups = params.lineage_summary && lineageGroupsFile() ? true : false
         def run_site_aggregation = params.site_aggregation as boolean
+        if (params.lineage_summary && !run_lineage_groups) {
+            log.info "Lineage-group summary off: no lineage groups are bundled for --pathogen ${params.pathogen}. Give --lineage_groups <CSV> (and a Freyja dataset with a lineage hierarchy) to get summary/lineage_summary.csv."
+        }
         def lineage_reason = run_lineage_groups ? lineageHierarchyUnsupportedReason() : null
+        // The dataset the hierarchy-dependent steps read. A dataset downloaded during the run for a pathogen that may ship
+        // no hierarchy (RSV, dengue, ...) is looked at first: without lineages.yml those steps are skipped, with ONE warning.
+        def ch_hierarchy_dataset = FREYJA_DATA.out.dataset
+        if (run_lineage_groups && !lineage_reason && hierarchyMayBeMissing()) {
+            def ch_has_hierarchy = FREYJA_DATA.out.freyja_data.map { freyja_data -> new groovy.json.JsonSlurper().parse(freyja_data).lineages_yml_sha256 ? true : false }
+            ch_hierarchy_dataset = FREYJA_DATA.out.dataset.combine(ch_has_hierarchy)
+                .filter { _dataset, has -> has }
+                .map { dataset, _has -> dataset }
+            ch_has_hierarchy.filter { has -> !has }.subscribe { _has ->
+                log.warn "Skipping the lineage-group summary: the Freyja dataset downloaded for --pathogen ${params.pathogen} has no lineage hierarchy (lineages.yml), which the groups need."
+            }
+        }
         if (run_lineage_groups) {
             LINEAGE_GROUPS_CHECK(
                 channel.value(lineageGroupsFile()),
-                lineage_reason ? channel.value([]) : FREYJA_DATA.out.dataset,
+                lineage_reason ? channel.value([]) : ch_hierarchy_dataset.ifEmpty([]),
             )
             LINEAGE_GROUPS_CHECK.out.report.subscribe { report ->
                 report.readLines().findAll { line -> line.contains('WARNING') }.each { line -> log.warn line }
@@ -288,7 +307,7 @@ workflow WASTELINE {
 
             // Does the primer scheme match the reads? Needs the mapped BAM BEFORE trimming (trimming moves
             // the 5' ends). Declared scheme = the sample's own (meta.primer_scheme; 'custom' = its BED).
-            if (params.primer_scheme_check) {
+            if (params.primer_scheme_check && bundledSchemesApply()) {
                 READ_STARTS(ch_mapped.mapped
                     .filter { meta, _bam, _bai, _count -> meta.primer_trimming }
                     .map { meta, bam, _bai, _count -> [ meta, bam ] })
@@ -678,7 +697,7 @@ workflow WASTELINE {
                     ch_status_for_summaries,
                     ch_summary_sheet,
                     channel.value(lineageGroupsFile()),
-                    FREYJA_DATA.out.dataset,
+                    ch_hierarchy_dataset,
                     ch_site_freyja,
                     ch_site_meta,
                 )
@@ -690,7 +709,7 @@ workflow WASTELINE {
                         FREYJA_AGGREGATE_PLOT.out.aggregated,
                         ch_boot_raw.toSortedList { a, b -> a.name <=> b.name }.filter { files -> files }, // nothing when no sample was bootstrapped
                         channel.value(lineageGroupsFile()),
-                        FREYJA_DATA.out.dataset,
+                        ch_hierarchy_dataset,
                         ch_summary_sheet,
                     )
                 }
@@ -904,7 +923,8 @@ def runInfoBase(mode, metas) {
         }
     }
     // pipelines_testdata_base_path is nf-core template plumbing (a URL), not a setting of this pipeline
-    def plain_params = params.findAll { key, _value -> key.toString() != 'pipelines_testdata_base_path' }.collectEntries { key, value ->
+    // (the per-pathogen facts of conf/pathogens/*.config follow from --pathogen and are not recorded either)
+    def plain_params = params.findAll { key, _value -> !(key.toString() in ['pipelines_testdata_base_path', 'lineage_groups_bundled', 'freyja_container_pathogen']) }.collectEntries { key, value ->
         [ (key.toString()): (value == null || value instanceof Boolean || value instanceof Number) ? value : value.toString() ]
     }
     // the effective primer scheme is recorded even when the default (null = the default scheme, D14) applies
@@ -913,7 +933,7 @@ def runInfoBase(mode, metas) {
     }
     // lineage groups: which file made lineage_summary.csv (only when the summary is made)
     def groups_info = [ lineage_groups_file: null, lineage_groups_source: null, lineage_groups_sha256: null ]
-    if (params.lineage_summary && mode in ['full', 'demix', 'aggregate'] && !lineageHierarchyUnsupportedReason()) {
+    if (params.lineage_summary && lineageGroupsFile() && mode in ['full', 'demix', 'aggregate'] && !lineageHierarchyUnsupportedReason()) {
         groups_info = lineageGroupsInfo()
     }
     def info = [

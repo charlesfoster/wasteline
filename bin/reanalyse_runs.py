@@ -60,6 +60,7 @@ RESERVED_DIRS = {"samples", "summary", "pipeline_info", "db"}
 SKIP_WALK = {"work", "db", "node_modules"}
 DATASET_MARKERS = (
     "last_barcode_update.txt",
+    "last_barcode_update_other.txt",
     "usher_barcodes.feather",
     "usher_barcodes.csv",
     "lineages.yml",
@@ -70,6 +71,7 @@ NO_VARIANTS_MODES = {"demix", "aggregate", "report", "update_db"}
 # --- parameters carried over ---------------------------------------------------------------------------
 # Only what matters in `--mode demix` (the run has no reads any more). Everything else is left out.
 CARRY_EXACT = {
+    "pathogen",
     "primer_scheme",
     "primer_bed",
     "protocol",

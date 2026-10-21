@@ -57,6 +57,9 @@ def test_bundled_scheme_amplicon_counts():
         assert len(amplicons) == n, scheme
         assert [a[2] for a in amplicons] == sorted(a[2] for a in amplicons)
         assert all(0 <= a[2] < a[3] <= 29903 for a in amplicons)
+    # primalscheme v3 names (<scheme>_<n>_LEFT_<alt>, e.g. the ARTIC measles panel): the alts share one amplicon
+    assert ac.split_primer_name("177e6ebb_3_LEFT_2") == ("177e6ebb_3", "L")
+    assert ac.split_primer_name("177e6ebb_3_RIGHT_0") == ("177e6ebb_3", "R")
 
 
 def test_single_contig_alias_is_accepted(tmp_path):

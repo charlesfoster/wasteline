@@ -26,6 +26,8 @@ process UNEXPLAINED_MUTATIONS {
     prefix = task.ext.prefix ?: "${meta.id}"
     def demix_arg = demix ? "--demix ${demix}" : ''
     def gff_arg = gff && reference ? "--gff ${gff} --reference ${reference}" : ''
+    // the default significance level (0.05 per tested position) follows the length of the reference
+    def length_arg = reference ? "--genome-length \$(awk '/^>/ { n++; next } n == 1 { total += length(\$0) } END { print total + 0 }' ${reference})" : ''
     """
     unexplained_mutations.py \\
         --variants ${variants} \\
@@ -33,6 +35,7 @@ process UNEXPLAINED_MUTATIONS {
         --sample ${meta.id} \\
         ${demix_arg} \\
         ${gff_arg} \\
+        ${length_arg} \\
         ${args} \\
         --output ${prefix}.unexplained_mutations.tsv
     """

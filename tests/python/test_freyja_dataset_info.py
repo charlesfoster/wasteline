@@ -68,3 +68,26 @@ def test_cli_writes_both_json_files(tmp_path):
     assert small["barcode_version"] == full["barcode_version"] == STAMP
     assert small["barcode_version_iso"] == ISO
     assert small["freyja_version"] == "2.0.5"
+
+
+def test_other_pathogen_dataset_names(tmp_path):
+    """`freyja update --pathogen X` writes X_barcodes.csv, X_lineages.yml and last_barcode_update_other.txt (PLAN D22)."""
+    ds = tmp_path / "ds"
+    ds.mkdir()
+    (ds / "MEASLESgenome_barcodes.csv").write_text(",A1G\nL1,1\n")
+    (ds / "MEASLESgenome_lineages.yml").write_text("- name: L1\n")
+    (ds / "last_barcode_update_other.txt").write_text("MEASLESgenome:2025-05-01\n")
+    info = fdi.describe(ds, "latest", "MEASLESgenome")
+    assert info["barcodes_file"] == "MEASLESgenome_barcodes.csv"
+    assert (info["barcode_version"], info["barcode_version_iso"]) == (
+        "2025-05-01",
+        "2025-05-01T00-00",
+    )
+    assert info["lineages_yml_sha256"] and info["lineage_mutations_sha256"] is None
+    assert [p.name for p in fdi.dataset_paths(ds)] == [
+        "MEASLESgenome_barcodes.csv",
+        "MEASLESgenome_lineages.yml",
+    ]
+    # Freyja saves a GitHub HTML page as the hierarchy of MPX: that is not a lineages.yml
+    (ds / "MEASLESgenome_lineages.yml").write_text("<!DOCTYPE html>\n<html>\n")
+    assert fdi.dataset_paths(ds)[1] is None

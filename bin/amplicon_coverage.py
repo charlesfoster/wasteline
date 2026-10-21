@@ -34,6 +34,7 @@ COLUMNS = [
 
 _DIRECTION_RE = re.compile(r"^(.*?)_?(LEFT|RIGHT|F|R)$")
 _LEFT = {"LEFT", "F"}
+_PRIMALSCHEME_RE = re.compile(r"^(.+)_(LEFT|RIGHT)_\d+$")
 
 
 def read_depths(path):
@@ -70,6 +71,10 @@ def split_primer_name(name, strand=None):
     `covid19genome_..._88_F` / `..._88F` styles. Falls back to the BED strand column when the name has no
     direction suffix.
     """
+    # primalscheme v3 style `<scheme>_<n>_LEFT_<alt>` (e.g. the ARTIC measles panel): the alts share one amplicon
+    alt = _PRIMALSCHEME_RE.match(name)
+    if alt:
+        return alt.group(1), "L" if alt.group(2) == "LEFT" else "R"
     match = _DIRECTION_RE.match(name)
     if match:
         key, direction = match.group(1), "L" if match.group(2) in _LEFT else "R"
