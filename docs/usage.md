@@ -1147,6 +1147,12 @@ mapping) into new `_reanalysis_*` directories and writes `summary/reanalysis_dif
 unless you give `--execute`, and never touches the original results. See [reanalysis.md](reanalysis.md) for the options, what carries
 over, how to read the difference table and a weekly routine.
 
+### Keeping a store of past runs, with alerts
+
+`bin/runs_store.py add store.sqlite <results dirs>` collects the results of many runs in one SQLite file and
+`bin/runs_store.py alerts store.sqlite` flags emerging lineages, sustained growth, recurring unexplained mutations and the mutations
+of a watchlist across runs. These are screening hints, not conclusions. See [runs_store.md](runs_store.md).
+
 ## 11. Resuming a run: `-resume`
 
 Nextflow caches every task in `work/`. After an interruption, or to add a sample you have not changed anything else

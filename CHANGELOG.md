@@ -11,6 +11,10 @@ data. The Snakemake "routine"/clinical workflow is out of scope.
 
 ### `Added`
 
+- Cross-run store and alerts (PLAN D21): `bin/runs_store.py add|runs|alerts` (standard library, host Python) ingests finished results
+  directories into one SQLite file (idempotent per directory; all runs of a sample kept with their barcode version, queries use the latest)
+  and applies four documented rules (emerging lineage/group, sustained growth, recurring unexplained mutation with its `in_dataset` flag,
+  mutation watchlist) to write `alerts.tsv` and an optional Markdown report. Screening hints only; see `docs/runs_store.md`.
 - Low-confidence estimates (PLAN D18): `--demix_floor_coverage` (default 25). Samples with at least that % of the genome at
   `--freyja_covcut` but below `--min_genome_coverage_for_demix` are demixed and reported as `low_confidence` (a `.demix` exists)
   instead of `skipped_low_coverage`. They appear in `freyja_aggregated.tsv`, the lineage summary (status and reason shown) and the

@@ -77,7 +77,7 @@ profiles).
 - **Shareable report.** `--report_anonymize paths|full` removes file paths, user names and (with `full`) sample IDs and site names from
   the report; the lineage summary also comes as a formatted Excel workbook (`summary/lineage_summary.xlsx`).
 - **Optional** mutations-of-interest tracking; `--bam_format cram` for much smaller alignments; `--aligner minibwa` (experimental,
-  see [docs/aligner_evaluation.md](docs/aligner_evaluation.md)); `bin/replay_run.py` rebuilds the exact command of a recorded run, and `bin/reanalyse_runs.py` re-estimates past runs with newer Freyja barcodes (no re-mapping) and shows what changed ([docs/reanalysis.md](docs/reanalysis.md)).
+  see [docs/aligner_evaluation.md](docs/aligner_evaluation.md)); `bin/replay_run.py` rebuilds the exact command of a recorded run, and `bin/reanalyse_runs.py` re-estimates past runs with newer Freyja barcodes (no re-mapping) and shows what changed ([docs/reanalysis.md](docs/reanalysis.md)). `bin/runs_store.py` keeps past runs in one SQLite store and flags emerging lineages, growth, recurring unexplained mutations and watchlist mutations across runs (screening hints, [docs/runs_store.md](docs/runs_store.md)).
 - **One offline HTML report**: run-level flags, QC table, lineage abundance bars and heatmap, coverage tracks, amplicon dropout,
   demix status, negative controls, barcode comparison, provenance. Readable with 100+ samples (see [docs/report.md](docs/report.md)).
 - Helper scripts to make and check samplesheets, including from the results of a previous (or legacy Snakemake) run.
