@@ -46,6 +46,26 @@ the places (depth QC per contig and genome-wide, amplicon coverage, low-depth ma
 variants/mutation tables with a contig column, unexplained mutations restricted to the Freyja contig). Influenza then runs whole-genome (all
 eight segments mapped, QC'd, consensus per segment) while Freyja demixes HA only, so no information is thrown away.
 
+## Reference selection and what is borrowed (2026-10-22, from the user's own pipelines; non-SARS-CoV-2 only)
+
+SARS-CoV-2 runs never select a reference: a single-target panel is mapped as today. Selection only exists for panels with several
+candidate references per target group (HCV genotypes, enterovirus types, RSV-A/B, influenza subtypes). Borrowed, in order of value:
+
+1. `~/Programs/h2seq` (MIT, the user's): `bin/select_reference_from_bam.py` (per-reference stats from a competitive-mapping BAM: mapped
+   reads, aligned bases, breadth, mean MAPQ, identity; ranking; dominant group by summed reads; any other group with >= 5 % of the reads
+   is a secondary, i.e. a mixed sample; an empty result is a `qc_fail` row with a reason) and `bin/filter_mixed_reference_alignments.awk`
+   (a read pair counts for one reference only if its primary alignments agree and MAPQ >= 10; otherwise it is ambiguous and excluded).
+   Adapt: group references by an explicit panel table (`target`, `contig`), not by a name prefix, so segmented genomes work.
+2. `~/Programs/quasispecies_pipeline` `bin/classify_genotype.py`: a read is ambiguous when the best and second-best alignment scores
+   differ by less than a delta (default 20, from the AS and XS tags, which bwa also writes); counts exclude ambiguous reads; a secondary
+   subtype needs >= 5 % of the usable reads. Same competitive-panel idea with minimap2 for long reads: here bwa mem is kept (short reads).
+3. `~/Programs/clustering_workflow`: only the reporting idea (score margin, list of close competing hits, pass/fail with reason) and the
+   238-record HCV panel as a starting point for an HCV panel; its consensus-level clustering is out of scope.
+4. `charlesfoster/rsv_pipeline`: nothing copied (no licence file; it takes the top sylph abundance only, no breadth or depth). Sylph stays a
+   possible fast screening step for very large panels.
+
+Not borrowed: any HCV-only logic, GUI/plots, clustering, per-genotype haplotype callers.
+
 ## Phases (each ends with an e2e pass and a SARS-CoV-2 byte-identity check)
 
 1. **Multi-contig targets** (Route B): per-contig depth/coverage/consensus/report, `freyja_contig` setting, a bundled whole-genome influenza
