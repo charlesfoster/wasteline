@@ -1,7 +1,8 @@
 # In-pipeline multi-target plan (PLAN D25 phase 2, "intermediate plan"): to pick up later on a new branch
 
-Written 2026-10-22 for a later session. Nothing here is built. Start it on a new branch from `main` (suggested name
-`feature/multi-target-in-pipeline`; `main` was `fa3e62f` when this was written; this file and `panel_mode_plan.md` are on `dev`).
+Written 2026-10-22 for a later session. Nothing here is built. Start it on a new branch from the CURRENT head of `dev`, which was made equal to
+`main` (and to the stable clone) when this was written: always check `git log main..dev` is empty first, and if `main` is behind `dev`, bring it up to date
+(fast-forward after a passing e2e) BEFORE branching. Suggested branch name `feature/multi-target-in-pipeline`.
 
 ## Read this first: the non-negotiables
 
@@ -16,7 +17,22 @@ Written 2026-10-22 for a later session. Nothing here is built. Start it on a new
    bootstraps in any new step (`--freyja_boot` off; the two existing bootstrap steps are the only ones; step 1 needs 20 draws, the
    group-intervals step uses 5); new synthetic data tiny (a few hundred read pairs, small genomes); never run the full e2e more than once per
    merged unit of work; run targeted manual checks instead; remove stale `.claude/worktrees` before nf-test (nf-test scans them).
-5. Standing repo rules: sample IDs never rewritten; a failed/absent sample/target is a row with a status and reason, never an empty file;
+5. **Re-demixing, aggregation, reporting and re-analysis must keep working, for every target and for old and new result folders.** The modes
+   `--mode demix` (re-demix finished results without re-mapping, incl. with a newer Freyja barcode dataset), `--mode aggregate`
+   (`--previous_results`, `--demix_dir`), `--mode report` (`--results_dir`, incl. `--report_anonymize`), `--mode update_db`, the replay/provenance
+   (`replay_run.py`), `reanalyse_runs.py` and the cross-run store `runs_store.py` are core features, not extras. Requirements:
+   - results folders written by today's pipeline (legacy layout) stay readable forever by all of them (a compatibility reader if the default layout
+     ever changes: stage S4);
+   - results written in the new multi-target layout are discoverable by `results_input`/`make_samplesheet.py --from-results`
+     (`samples/<id>/<target>/freyja/...`), and re-demix/aggregate/report operate PER TARGET (a `--target`/`--pathogen` choice or all targets in
+     one go), re-using the stored variants/depths so no re-mapping is needed; a newer barcode dataset can be applied per target;
+   - the per-target demix status (`demix_status.tsv`, `low_confidence` carry-over, `--include_low_confidence`) and the group/site summaries,
+     time series, growth rates and the runs store work per target;
+   - the global overview report can be rebuilt from existing per-target results (`--mode report`) without re-running anything;
+   - verification stays cheap: the existing e2e steps 2 (demix), 4/4b (aggregate), 5 (report) cover the SARS legacy layout; the ONE new multi-target
+     e2e step also performs a demix-mode re-run, an aggregate re-run and a report rebuild from its own results (offline tiny barcodes CSV, no
+     bootstraps; ~1 minute), and asserts their outputs equal the originals.
+6. Standing repo rules: sample IDs never rewritten; a failed/absent sample/target is a row with a status and reason, never an empty file;
    containers pinned to exact tags; no pathogen names in pipeline code outside `conf/pathogens/` and `assets/`; use mamba (never plain conda)
    with `CONDA_SUBDIR=osx-64` on macOS; do not commit/push unless asked.
 
@@ -109,6 +125,6 @@ times the work of plan B; the e2e byte-identity guard does not cover multi-targe
 
 ## How to start
 
-1. New branch from `main` (check `git log` first). 2. Run the full e2e once on that commit into a scratch dir as the S1 baseline. 3. Get a
+1. New branch from the current head of `dev` == `main` (check `git log main..dev` is empty; never branch from a stale `main`). 2. Run the full e2e once on that commit into a scratch dir as the S1 baseline. 3. Get a
 fresh read-only planning pass (Plan agent) for S1 only, using this file and `panel_mode_plan.md`, and review it before any coding. 4. Implement
 S1 with strict file ownership, prove byte-identity, merge; only then S2. Keep each coder brief's test limits explicit (hard maxima).
