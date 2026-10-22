@@ -230,6 +230,49 @@ def test_depths_only_input_does_not_leak_track_metadata_as_samples(tmp_path):
     assert not data["run_flags"] or "contig" not in json.dumps(data["run_flags"])
 
 
+def test_multi_contig_run_gets_segments_offsets_and_a_not_covered_flag(tmp_path):
+    """Two contigs (A 600 bp covered, B 400 bp empty): one axis with segments, `<contig>/<name>` amplicons
+    shifted by the contig offset, the segments table and the `segments_not_covered` warning."""
+    (tmp_path / "run_info.json").write_text(
+        '{"mode": "full", "freyja_contig": "A", "contigs": [{"name": "A", "length": 600},'
+        ' {"name": "B", "length": 400}]}'
+    )
+    lines = [f"A\t{p}\tN\t50" for p in range(1, 601)] + [f"B\t{p}\tN\t0" for p in range(1, 401)]
+    (tmp_path / "S1.depths").write_text("\n".join(lines) + "\n")
+    (tmp_path / "amp.tsv").write_text(
+        "sample\tamplicon\tstart\tend\tmean_depth\tdropped\tcontig\n"
+        "S1\tp1\t1\t200\t50\tfalse\tA\nS1\tp1\t1\t200\t0\ttrue\tB\n"
+    )
+    (tmp_path / "cov.tsv").write_text(
+        "sample\tcontig\tlength\tmean_depth\tmedian_depth\tpct_ge_1x\tpct_ge_10x\tpct_ge_min_depth\t"
+        "amplicons_total\tamplicons_dropped\nS1\tA\t600\t50\t50\t100\t100\t100\t1\t0\n"
+        "S1\tB\t400\t0\t0\t0\t0\t0\t1\t1\n"
+    )
+    (tmp_path / "cons.tsv").write_text(
+        "sample\tcontig\tlength\tn_count\tconsensus_coverage_pct\tambiguous_count\tstatus\n"
+        "S1\tA\t600\t0\t100\t0\tok\nS1\tB\t400\t400\t0\t0\tempty\n"
+    )
+    out = tmp_path / "report_data.json"
+    args = ["--run-info", tmp_path / "run_info.json", "--depths", tmp_path, "--amplicons"]
+    args += [tmp_path / "amp.tsv", "--contig-coverage", tmp_path / "cov.tsv"]
+    args += ["--consensus-stats-contigs", tmp_path / "cons.tsv", "--out", out]
+    assert brd.main([str(a) for a in args]) == 0
+    data = json.loads(out.read_text())
+    segs = data["coverage_tracks"]["segments"]
+    assert [(s["contig"], s["offset"], s["length"]) for s in segs] == [
+        ("A", 0, 600),
+        ("B", 600, 400),
+    ]
+    assert data["coverage_tracks"]["genome_length"] == 1000
+    amps = [(a["amplicon"], a["start"], a["contig"]) for a in data["amplicons"]["S1"]]
+    assert amps == [("A/p1", 1, "A"), ("B/p1", 601, "B")]
+    rows = {r["contig"]: r for r in data["segments"]["samples"]["S1"]}
+    assert data["segments"]["freyja_contig"] == "A"
+    assert not rows["A"]["not_covered"] and rows["B"]["not_covered"]
+    flag = next(f for f in data["run_flags"] if f["code"] == "segments_not_covered")
+    assert flag["level"] == "warn" and "S1 (B)" in flag["message"]
+
+
 A = FIX / "i_anonymize"
 A_OPTIONS = {
     "--qc": "qc_summary.tsv",

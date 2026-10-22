@@ -329,12 +329,24 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
 @media print{table.capped tr.more{display:table-row}.tsctl{display:none}}
 </style>
 {% endif %}
+{% if seg %}
+<style>
+.cov svg .segbg{fill:var(--thr);fill-opacity:.07;stroke:none}
+.cov svg .segsep{stroke:var(--muted);stroke-width:1;vector-effect:non-scaling-stroke}
+.cov .segs{position:relative;height:13px;margin-top:1px;font-size:.62rem;line-height:13px;color:var(--muted)}
+.cov .segs span{position:absolute;top:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;box-sizing:border-box;padding-left:2px;border-left:1px solid var(--line)}
+tr.seg-bad td{background:var(--warn-bg)}
+</style>
+{% endif %}
 </head>
 <body>
 <div class="wrap">
 <header class="top">
   <h1>{{ h.pipeline_name or 'wasteline' }} report</h1>
   <p class="sub">Wastewater {{ h.pathogen or 'SARS-CoV-2' }} lineage deconvolution &middot; mode <b>{{ mode }}</b>{% if h.pipeline_version %} &middot; pipeline {{ h.pipeline_version }}{% endif %}</p>
+  {% if seg %}
+  <p class="note" id="segments-note">Freyja demixes <b>{{ seg.freyja or 'one segment' }}</b> only; other segments are QC/consensus only.</p>
+  {% endif %}
   {% if d.anonymized and d.anonymized != 'none' %}
   <p class="note" id="anonymized-note"><b>Anonymised for sharing ({{ d.anonymized }}).</b> Local paths, home directories and user names were removed{% if d.anonymized == 'full' %}; sample IDs and site names were replaced by pseudonyms (S001, SITE1, ...){% endif %}. Dates, lineage names, barcode versions and QC values are unchanged.</p>
   {% endif %}
@@ -406,7 +418,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
   <table class="sortable">
     <thead><tr>
       <th data-sort>Sample</th><th data-sort>Type</th><th data-sort>Date</th><th data-sort>Site</th><th data-sort>QC</th><th>Reasons</th>
-      <th class="n" data-sort>Raw reads</th><th class="n" data-sort>Mapped %</th><th class="n" data-sort>Mean depth</th>
+      <th class="n" data-sort>Raw reads</th><th class="n" data-sort{% if seg %} title="% of trimmed reads mapped to the whole reference (all segments)"{% endif %}>Mapped %</th><th class="n" data-sort>Mean depth</th>
       <th class="n" data-sort>&ge;10x %</th><th class="n" data-sort>&ge;min depth %</th><th class="n" data-sort>Amplicons dropped</th>
       <th data-sort>Demix</th><th data-sort>Top group</th><th class="n" data-sort title="% of the reference positions with a called base (A, C, G, T or an IUPAC code) in the consensus; the rest is N or deleted">Consensus coverage %</th>
       {% if qc_extra.trim %}<th class="n" data-sort title="{{ qc_extra.trim_title }}">Primer trimmed %</th>{% endif %}
@@ -475,7 +487,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
 <section id="sec-coverage">
   <h2>Coverage tracks</h2>
   {% if coverage %}
-  <p class="note">Mean depth per ~{{ coverage.bin_size }} bp bin across {{ coverage.genome_length|num }} bp, log scale (top = {{ coverage.ymax|num }}x).
+  <p class="note">Mean depth per ~{{ coverage.bin_size }} bp bin across {{ coverage.genome_length|num }} bp{% if coverage.segments %} in {{ coverage.segments|length }} segments (alternating shading and labels mark them{% if coverage.segments_numbered %}; where a name does not fit the segment is numbered in reference order, hover for the name{% endif %}){% endif %}, log scale (top = {{ coverage.ymax|num }}x).
     <span class="key"></span>{{ coverage.amp_min }}x amplicon dropout threshold{% if coverage.y_cons is not none %}; dotted line = {{ coverage.cons_min }}x consensus minimum{% endif %}.
     <span class="key drop"></span>amplicon dropped.</p>
   {{ filterbar('cov-grid', true) }}
@@ -484,17 +496,47 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
     <div class="cov" data-sample="{{ c.sample }}" data-qc="{{ c.qc }}" data-ntc="{{ 1 if c.ntc else 0 }}">
       <h4><span class="nm" title="{{ c.sample }}">{{ c.sample }}{% if c.ntc %}<em class="chip">NTC</em>{% endif %}</span>{{ qcbadge(c.qc if c.qc != 'NA' else none) }}</h4>
       <svg viewBox="0 0 {{ coverage.n_bins }} 100" preserveAspectRatio="none" role="img" aria-label="Coverage of {{ c.sample }}">
+        {% for g in coverage.segments if g.alt %}<rect class="segbg" x="{{ g.x }}" y="0" width="{{ g.w }}" height="100"/>{% endfor %}
         {% for r in c.drops %}<rect class="drop" x="{{ r.x }}" y="0" width="{{ r.w }}" height="100"><title>{{ r.title }}</title></rect>{% endfor %}
         <path class="area" d="{{ c.path }}"/>
         <line class="thr" x1="0" x2="{{ coverage.n_bins }}" y1="{{ coverage.y_amp }}" y2="{{ coverage.y_amp }}"/>
         {% if coverage.y_cons is not none %}<line class="thr2" x1="0" x2="{{ coverage.n_bins }}" y1="{{ coverage.y_cons }}" y2="{{ coverage.y_cons }}"/>{% endif %}
+        {% for g in coverage.segments[1:] %}<line class="segsep" x1="{{ g.x }}" x2="{{ g.x }}" y1="0" y2="100"/>{% endfor %}
       </svg>
+      {% if coverage.segments %}
+      <div class="segs">{% for g in coverage.segments %}<span style="left:{{ g.left }}%;width:{{ g.width }}%" title="{{ g.name }} ({{ g.length|num }} bp)">{{ g.label }}</span>{% endfor %}</div>
+      {% endif %}
       <div class="meta"><span>mean {{ c.mean_depth|dec(0) }}x</span><span>&ge;10x: {{ c.pct10|pct(0) }}%</span><span>dropped: {{ c.dropped }}</span></div>
     </div>
     {% endfor %}
   </div>
   {% else %}
   <p class="na-note">Per-position depth was not available ({{ mode_note }}).</p>
+  {% endif %}
+  {% if seg and seg.table.rows %}
+  <h3 id="segments">Segments</h3>
+  <p class="note">Per-segment QC for the {{ seg.n_contigs }} reference contigs. Amber rows: fewer than {{ seg.min_pct|round(1) if seg.min_pct is not none else 'the PASS threshold' }}% of positions at 10x, or an empty consensus; the whole-genome QC can still pass.{% if seg.n_bad %} {{ seg.n_bad }} sample(s) affected.{% endif %} Only <b>{{ seg.freyja or 'one segment' }}</b> is demixed.</p>
+  {{ filterbar('seg-table', true) }}
+  <div class="scroll qc-wrap" id="seg-table">
+  <table class="sortable capped">
+    <thead><tr><th data-sort>Sample</th><th data-sort>Segment</th><th class="n" data-sort>Length (bp)</th><th class="n" data-sort>Mean depth</th><th class="n" data-sort>&ge;10x %</th><th class="n" data-sort title="% of the segment with a called base in the consensus">Consensus coverage %</th><th data-sort>Consensus</th><th class="n" data-sort>Amplicons dropped</th></tr></thead>
+    <tbody>
+    {% for r in seg.table.rows %}
+    <tr data-sample="{{ r.sample }}" data-qc="{{ r.qc }}" data-ntc="{{ 1 if r.ntc else 0 }}" class="{{ 'seg-bad' if r.bad and not r.ntc }}{{ ' more' if loop.index > seg.table.n_visible else '' }}">
+      <td>{{ r.sample }}{% if r.ntc %}<em class="chip">NTC</em>{% endif %}</td>
+      <td>{{ r.contig|dash }}{% if r.contig == seg.freyja %}<em class="chip" title="The segment Freyja demixes">demixed</em>{% endif %}</td>
+      <td class="n" data-v="{{ r.length|sortval }}">{{ r.length|num }}</td>
+      <td class="n" data-v="{{ r.mean_depth|sortval }}">{{ r.mean_depth|dec }}</td>
+      <td class="n" data-v="{{ r.pct10|sortval }}">{{ r.pct10|pct }}</td>
+      <td class="n" data-v="{{ r.cons|sortval }}">{{ r.cons|pct }}</td>
+      <td>{{ r.cons_status|dash }}</td>
+      <td class="n" data-v="{{ r.dropped|sortval }}">{% if r.total is not none %}{{ r.dropped|num }} / {{ r.total|num }}{% else %}&ndash;{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if seg.table.n > seg.table.n_visible %}<p class="note"><button type="button" class="showall" data-target="#seg-table">Show all {{ seg.table.n_shown|num }} rows</button>{% if seg.table.truncated %} (of {{ seg.table.n|num }}; the rest are in <code>contig_coverage.tsv</code>){% endif %}</p>{% endif %}
   {% endif %}
 </section>
 
@@ -532,6 +574,9 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
 {% if dx %}
 <section id="sec-dropout-impact">
   <h2>Amplicon dropout impact</h2>
+  {% if seg %}
+  <p class="note"><b>{{ seg.freyja or 'The demixed segment' }} only.</b> Lineage impact is scored for the segment Freyja demixes; dropped amplicons of the other segments are in the amplicon dropout heatmap but not scored here.</p>
+  {% endif %}
   {% if dx.has_defining %}
   <p class="note">A dropped amplicon hides every mutation inside it. What matters for the lineage estimate are the <b><abbr title="Defining mutations are the mutations a lineage has that its parent lineage lacks: they are what tells it apart from its parent and siblings. Mutations inherited from ancestors do not count.">defining mutations</abbr></b> of the lineages detected in the sample{% if dx.min_abundance is not none %} (abundance &ge; {{ (dx.min_abundance * 100)|round(1) }}%){% endif %}. For each dropped amplicon the table counts the defining sites it hides (primary), the <i>differential</i> sites (carried by some but not all detected lineages) and the lineage-informative sites (secondary context). Amber rows (<i>hides defining sites</i>) mean a lineage detected at {% if dx.min_affect is not none %}&ge; {{ (dx.min_affect * 100)|round(1) }}%{% else %}a noticeable abundance{% endif %} loses defining mutations, so its abundance estimate may be biased. Samples without a lineage estimate (skipped, failed, controls) show &ldquo;no lineage estimate&rdquo;.</p>
   {% else %}

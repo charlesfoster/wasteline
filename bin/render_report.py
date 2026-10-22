@@ -88,6 +88,7 @@ def normalise(data):
     out["demix"] = _as_dict(data.get("demix"))
     out["amplicons"] = _as_dict(data.get("amplicons"))
     out["coverage_tracks"] = _as_dict(data.get("coverage_tracks")) or None
+    out["segments"] = _as_dict(data.get("segments")) or None  # multi-contig runs only
     out["mutations_of_interest"] = data.get("mutations_of_interest")
     out["consensus"] = _as_list(data.get("consensus"))
     out["barcode_comparison"] = _as_dict(data.get("barcode_comparison")) or None
@@ -310,6 +311,32 @@ def coverage_view(data):
         return round(100 - 100 * math.log10(1 + depth) / scale)
 
     by_sample = {rec["sample"]: rec for rec in data["samples"]}
+    segments, numbered = [], False
+    for i, seg in enumerate(s for s in _as_list(tracks.get("segments")) if isinstance(s, dict)):
+        offset, length = _num(seg.get("offset")), _num(seg.get("length"))
+        if offset is None or length is None or not n_bins:
+            continue
+        width = round(100 * length / bin_size / n_bins, 2)
+        name = str(seg.get("contig"))
+        # a card is ~270 px wide and the label ~4 px per character: a name that does not fit becomes
+        # the segment's number in reference order (the full name stays in the tooltip)
+        fits = len(name) <= int(width * 0.6)
+        numbered = numbered or not fits
+        segments.append(
+            {
+                "name": name,
+                "label": name,
+                "length": length,
+                "x": round(offset / bin_size, 2),
+                "w": round(length / bin_size, 2),
+                "left": round(100 * offset / bin_size / n_bins, 2),
+                "width": width,
+                "alt": i % 2 == 1,
+            }
+        )
+    if numbered:  # all or none, so the labels stay consistent
+        for i, seg in enumerate(segments):
+            seg["label"] = str(i + 1)
     cards = []
     for sample in sorted(series):
         track = [float(v) if _num(v) is not None else 0.0 for v in series[sample]]
@@ -360,6 +387,51 @@ def coverage_view(data):
         "amp_min": amp_min,
         "y_cons": ypos(cons_min) if cons_min and cons_min != amp_min else None,
         "cons_min": cons_min,
+        "segments": segments,
+        "segments_numbered": numbered,
+    }
+
+
+def segments_view(data):
+    """Multi-contig runs: the Segments table (per sample and contig) and the contig Freyja demixes."""
+    seg = data.get("segments")
+    if not seg:
+        return None
+    flags = _sample_flags(data["samples"])
+    contigs = [c for c in _as_list(seg.get("contigs")) if isinstance(c, dict)]
+    order = {c.get("name"): i for i, c in enumerate(contigs)}
+    rows = []
+    for sample, entries in sorted(_as_dict(seg.get("samples")).items()):
+        ntc, qc = flags.get(sample, (False, "NA"))
+        for e in _as_list(entries):
+            if not isinstance(e, dict):
+                continue
+            total, dropped = e.get("amplicons_total"), e.get("amplicons_dropped")
+            rows.append(
+                {
+                    "sample": sample,
+                    "ntc": ntc,
+                    "qc": qc,
+                    "contig": e.get("contig"),
+                    "order": order.get(e.get("contig"), len(order)),
+                    "length": e.get("length"),
+                    "mean_depth": e.get("mean_depth"),
+                    "pct10": e.get("pct_ge_10x"),
+                    "cons": e.get("consensus_coverage_pct"),
+                    "cons_status": e.get("consensus_status"),
+                    "dropped": dropped,
+                    "total": total,
+                    "bad": bool(e.get("not_covered")),
+                }
+            )
+    rows.sort(key=lambda r: (not r["bad"] or r["ntc"], r["sample"], r["order"]))
+    return {
+        "freyja": seg.get("freyja_contig"),
+        "n_contigs": len(contigs),
+        "min_pct": _num(seg.get("min_pct_ge_10x")),
+        "table": _capped(rows),
+        "n_samples": len({r["sample"] for r in rows}),
+        "n_bad": len({r["sample"] for r in rows if r["bad"] and not r["ntc"]}),
     }
 
 
@@ -1162,6 +1234,7 @@ def build_context(data):
         "lgi": lineage_groups_info(data),
         "sa": site_aggregates_view(data, {"summ": summ["palette"], "full": full["palette"]}),
         "coverage": coverage_view(data),
+        "seg": segments_view(data),
         "amp": amplicon_view(data),
         "ts": time_series_view(data, summ["palette"]),
         "moi": moi_view(data),

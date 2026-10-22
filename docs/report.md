@@ -87,6 +87,7 @@ the affected samples where relevant. All codes:
 | `lineage_groups_warnings`      | warn  | The groups audit (`lineage_groups_resolved.tsv`) has warnings: a pattern that is not a lineage of the dataset, a group that matches nothing, or in-total groups that overlap; the first three are in the message (see [lineage groups](#lineage-groups)). |
 | `lineage_groups_ungrouped`     | info  | An `ok` sample has 2% or more (`--ungrouped-flag-threshold`) of its lineages outside every in-total group; the message names the top ungrouped lineages and says to add them to your lineage groups file (see `summary/lineage_ungrouped_summary.tsv`).   |
 | `site_aggregate_incomplete`    | info  | Site aggregate periods are missing member sites or used a weaker weighting than requested (see [site aggregates](#site-aggregates)).                                                                                                                      |
+| `segments_not_covered`         | warn  | Multi-contig reference only: a sample has a segment with fewer than `--qc_pass_min_pct` % of its positions at 10x or an empty consensus; the message names the segments. The whole-genome QC can still pass.                                              |
 | `consensus_failed`             | warn  | The consensus genome failed for the listed samples (status `failed`, all-N sequence); the consensus table shows the reason, for example `bcftools consensus failed: The fasta sequence does not match the REF allele at NC_045512.2:11287:`.              |
 | `consensus_warnings`           | info  | The consensus was built (`ok`) with warnings for the listed samples, for example `skipped variant at NC_045512.2:22942 (overlaps another variant)`.                                                                                                       |
 | `qc_warn`                      | info  | One or more samples have QC `WARN`.                                                                                                                                                                                                                       |
@@ -166,6 +167,27 @@ genome on a **log scale** (the note gives the top value). Overlays:
 Under each track: mean depth, % of the genome at 10x and the number of dropped amplicons. Use it to see at a glance where
 a sample lost coverage (`Site_1_week_2` has two dropped amplicons; `LOWCOV_D` and `NEG_E` have all 29 dropped). The data
 come from the depths files (full and `demix` mode).
+
+### Multi-contig references (whole-genome influenza)
+
+When the reference has several contigs (for example the eight influenza segments; see
+[multi_contig_targets](wiring/multi_contig_targets.md)) the report adds, and a single-contig report stays byte-identical:
+
+- under the title: "Freyja demixes `<contig>` only; other segments are QC/consensus only";
+- the coverage cards run over all contigs on one axis, with alternating shading, a separator line at each boundary and a
+  label strip under the track (the contig name, or its number in reference order when the names do not fit; hover for the
+  name). The note says "across N bp in K segments". A bin on a boundary mixes two contigs;
+- a **Segments** table under the cards: per sample and contig, length, mean depth, % of positions at 10x, consensus
+  coverage %, consensus status and dropped amplicons. Amber rows have fewer than `--qc_pass_min_pct` % of positions at 10x
+  or an empty consensus (the `segments_not_covered` run flag). Bad rows sort first;
+- the amplicon dropout heatmap lists the amplicons of every contig as `<contig>/<name>` in genome order;
+- the dropout impact section scores the Freyja contig only (a note says so);
+- the QC table's "Mapped %" is the whole reference (all segments), as its tooltip says.
+
+It needs `contig_coverage.tsv` and `consensus_stats_contigs.tsv` (`--contig-coverage`, `--consensus-stats-contigs`),
+the `contig` column of the amplicon table and `contigs` / `freyja_contig` in `run_info.json`; without them the report still
+builds from the depths files alone (segments in file order; no Segments table, and the header line does not name the
+contig without `freyja_contig`).
 
 ## Amplicon dropout
 

@@ -277,27 +277,120 @@ def load_qc(path, problems):
     return samples
 
 
-def load_amplicons(path, problems):
+def load_amplicons(path, problems, contigs=None):
+    """amplicon_coverage.tsv -> {sample: [rows]}. Multi-contig runs (`contigs` = [{name, length}] with
+    more than one entry): the name becomes `<contig>/<name>` and the contig's offset on the
+    concatenated axis is added to start/end, so the renderer needs no change; rows keep `contig`."""
+    offsets = contig_offsets(contigs) if contigs and len(contigs) > 1 else None
+    seen_contigs = set()
     by_sample = defaultdict(list)
     for number, row in enumerate(read_tsv(path), start=2):
         sample = clean_str(row.get("sample"))
         if sample is None:
             continue
         try:
-            by_sample[sample].append(
-                {
-                    "amplicon": clean_str(row.get("amplicon")),
-                    "start": to_int(row.get("start")),
-                    "end": to_int(row.get("end")),
-                    "mean_depth": round_or_none(to_float(row.get("mean_depth")), 2),
-                    "dropped": to_bool(row.get("dropped")),
-                }
-            )
+            record = {
+                "amplicon": clean_str(row.get("amplicon")),
+                "start": to_int(row.get("start")),
+                "end": to_int(row.get("end")),
+                "mean_depth": round_or_none(to_float(row.get("mean_depth")), 2),
+                "dropped": to_bool(row.get("dropped")),
+            }
+            contig = clean_str(row.get("contig"))
+            seen_contigs.add(contig)
+            if offsets is not None:
+                if contig in offsets:
+                    shift = offsets[contig]
+                    for key in ("start", "end"):
+                        if record[key] is not None:
+                            record[key] += shift
+                    record["amplicon"] = f"{contig}/{record['amplicon']}"
+                else:
+                    problems.add(
+                        "amplicon_coverage.tsv",
+                        f"line {number}: contig {contig!r} is not one of the reference contigs",
+                    )
+                record["contig"] = contig
+            by_sample[sample].append(record)
         except ValueError as err:
             problems.add("amplicon_coverage.tsv", f"line {number}: {err}")
+    seen_contigs.discard(None)
+    if offsets is None and len(seen_contigs) > 1:
+        problems.add(
+            "amplicon_coverage.tsv",
+            "several contigs but no contig lengths (run_info contigs, contig_coverage.tsv or "
+            "depths): amplicon names and positions are per contig",
+        )
     for rows in by_sample.values():
         rows.sort(key=lambda r: (r["start"] if r["start"] is not None else 0, r["amplicon"] or ""))
     return dict(by_sample)
+
+
+def contig_offsets(contigs):
+    """{contig: bp offset on the concatenated axis} for [{name, length}, ...]."""
+    offsets, total = {}, 0
+    for entry in contigs:
+        offsets[entry["name"]] = total
+        total += entry["length"]
+    return offsets
+
+
+def parse_contigs(value):
+    """run_info `contigs` [{name, length}] -> a clean list, or None when absent / unusable."""
+    out = []
+    for entry in value if isinstance(value, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        name = clean_str(entry.get("name"))
+        try:
+            length = to_int(entry.get("length"))
+        except ValueError:
+            length = None
+        if name and length and length > 0:
+            out.append({"name": name, "length": length})
+    return out or None
+
+
+def load_contig_coverage(path, problems):
+    """contig_coverage.tsv -> {sample: {contig: row}} (dict insertion order = file order)."""
+    out = defaultdict(dict)
+    for number, row in enumerate(read_tsv(path), start=2):
+        sample, contig = clean_str(row.get("sample")), clean_str(row.get("contig"))
+        if sample is None or contig is None:
+            continue
+        try:
+            out[sample][contig] = {
+                "length": to_int(row.get("length")),
+                "mean_depth": round_or_none(to_float(row.get("mean_depth")), 2),
+                "median_depth": round_or_none(to_float(row.get("median_depth")), 2),
+                "pct_ge_1x": round_or_none(to_float(row.get("pct_ge_1x")), 2),
+                "pct_ge_10x": round_or_none(to_float(row.get("pct_ge_10x")), 2),
+                "pct_ge_min_depth": round_or_none(to_float(row.get("pct_ge_min_depth")), 2),
+                "amplicons_total": to_int(row.get("amplicons_total")),
+                "amplicons_dropped": to_int(row.get("amplicons_dropped")),
+            }
+        except ValueError as err:
+            problems.add("contig_coverage.tsv", f"line {number}: {err}")
+    return dict(out)
+
+
+def load_consensus_contigs(path, problems):
+    """consensus_stats_contigs.tsv -> {sample: {contig: row}}."""
+    out = defaultdict(dict)
+    for number, row in enumerate(read_tsv(path), start=2):
+        sample, contig = clean_str(row.get("sample")), clean_str(row.get("contig"))
+        if sample is None or contig is None:
+            continue
+        try:
+            out[sample][contig] = {
+                "n_count": to_int(row.get("n_count")),
+                "consensus_coverage_pct": consensus_coverage(row),
+                "ambiguous_count": to_int(row.get("ambiguous_count")),
+                "consensus_status": clean_str(row.get("status")),
+            }
+        except ValueError as err:
+            problems.add("consensus_stats_contigs.tsv", f"line {number}: {err}")
+    return dict(out)
 
 
 def load_demix_status(path, problems):
@@ -1056,9 +1149,9 @@ def sample_from_depth_name(path):
 
 
 def read_depths(path):
-    """Per-position depth list (index = position - 1) for the first contig of a depths file."""
-    contig = None
-    depths = []
+    """Per-position depth lists (index = position - 1) of a depths file: {contig: [depth, ...]} in
+    the order the contigs appear (a single-contig file gives one entry)."""
+    by_contig = {}
     with open(path, encoding="utf-8", errors="replace") as handle:
         for line in handle:
             parts = line.rstrip("\n").split("\t")
@@ -1066,10 +1159,6 @@ def read_depths(path):
                 parts = line.split()
                 if len(parts) < 4:
                     continue
-            if contig is None:
-                contig = parts[0]
-            elif parts[0] != contig:
-                continue
             try:
                 pos = int(parts[1])
                 depth = float(parts[3])
@@ -1077,33 +1166,68 @@ def read_depths(path):
                 continue
             if pos < 1:
                 continue
+            depths = by_contig.setdefault(parts[0], [])
             if pos > len(depths):
                 depths.extend([0.0] * (pos - len(depths)))
             depths[pos - 1] = depth
-    return contig, depths
+    return by_contig
 
 
 def _fmt_depth(value):
     return round(value) if value >= 10 else round(value, 1)
 
 
-def build_coverage_tracks(depth_files, problems, points=TRACK_POINTS):
+def multi_contig_axis(per_sample, contigs):
+    """Concatenate the contigs of every sample onto one axis: (order of [{name, length}], {sample:
+    depths}). `contigs` ([{name, length}] from run_info / contig_coverage.tsv) fixes order and
+    lengths; contigs found only in the depths are appended with their observed length."""
+    lengths = {c["name"]: c["length"] for c in contigs or []}
+    fixed = set(lengths)
+    order = list(lengths)
+    for by_contig in per_sample.values():
+        for name, depths in by_contig.items():
+            if name not in order:
+                order.append(name)
+            if name not in fixed:
+                lengths[name] = max(lengths.get(name, 0), len(depths))
+    flat = {}
+    for sample, by_contig in per_sample.items():
+        track = []
+        for name in order:
+            depths = by_contig.get(name, [])[: lengths[name]]
+            track.extend(depths)
+            track.extend([0.0] * (lengths[name] - len(depths)))
+        flat[sample] = track
+    return [{"name": name, "length": lengths[name]} for name in order], flat
+
+
+def build_coverage_tracks(depth_files, problems, points=TRACK_POINTS, contigs=None):
+    """Binned depth per sample. One contig: the first contig of each file (the original layout).
+    Several contigs (`contigs` has more than one entry, or a file holds several): all contigs are
+    concatenated onto one axis and `segments` lists where each starts."""
     raw = {}
-    contigs = Counter()
+    per_sample = {}
+    contig_names = Counter()
     for path in depth_files:
         sample = sample_from_depth_name(path)
         try:
-            contig, depths = read_depths(path)
+            by_contig = read_depths(path)
         except OSError as err:
             problems.add("depths", f"{path}: {err}")
             continue
-        if not depths:
+        if not any(by_contig.values()):
             problems.add("depths", f"{path}: no usable rows")
             continue
+        per_sample[sample] = by_contig
+        contig, depths = next(iter(by_contig.items()))
         raw[sample] = depths
-        contigs[contig] += 1
+        contig_names[contig] += 1
     if not raw:
         return None
+    axis = None
+    if len(contigs or []) > 1 or any(len(by) > 1 for by in per_sample.values()):
+        axis, raw = multi_contig_axis(per_sample, contigs)
+        contig_names = Counter({axis[0]["name"]: 1})
     genome_length = max(len(d) for d in raw.values())
     bin_size = max(1, math.ceil(genome_length / points))
     n_bins = math.ceil(genome_length / bin_size)
@@ -1116,13 +1240,27 @@ def build_coverage_tracks(depth_files, problems, points=TRACK_POINTS):
             chunk = depths[lo:hi]
             track.append(_fmt_depth(sum(chunk) / (hi - lo)) if hi > lo else 0)
         samples[sample] = track
-    return {
-        "contig": contigs.most_common(1)[0][0],
+    tracks = {
+        "contig": contig_names.most_common(1)[0][0],
         "genome_length": genome_length,
         "bin_size": bin_size,
         "n_bins": n_bins,
         "samples": samples,
     }
+    if axis:
+        # bins run over the concatenated contigs, so a bin at a boundary mixes two contigs; start_bin /
+        # n_bins are the bins a contig touches, offset / length (bp) give the exact boundaries
+        tracks["segments"] = [
+            {
+                "contig": entry["name"],
+                "start_bin": offset // bin_size,
+                "n_bins": math.ceil((offset + entry["length"]) / bin_size) - offset // bin_size,
+                "offset": offset,
+                "length": entry["length"],
+            }
+            for entry, offset in zip(axis, contig_offsets(axis).values(), strict=True)
+        ]
+    return tracks
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1567,6 +1705,28 @@ def build_run_flags(ctx):
             )
         flag("warn", "primer_scheme_mismatch", message, ids)
 
+    # Multi-contig runs: a segment with (almost) no coverage can hide behind a passing whole-genome QC
+    segments = ctx.get("segments")
+    if segments:
+        negative = {s["sample"] for s in negatives}
+        missing = {
+            sid: [r["contig"] for r in rows if r["not_covered"]]
+            for sid, rows in segments["samples"].items()
+            if sid not in negative
+        }
+        missing = {sid: names for sid, names in missing.items() if names}
+        if missing:
+            parts = [f"{sid} ({', '.join(missing[sid])})" for sid in sorted(missing)[:TOP_FLAG_IDS]]
+            more = f" and {len(missing) - TOP_FLAG_IDS} more" if len(missing) > TOP_FLAG_IDS else ""
+            flag(
+                "warn",
+                "segments_not_covered",
+                f"{len(missing)} sample(s) have a segment with less than "
+                f"{segments['min_pct_ge_10x']:g}% of positions at 10x or an empty consensus: "
+                f"{'; '.join(parts)}{more}; the whole-genome QC may still pass.",
+                missing,
+            )
+
     # Amplicon dropout that hides lineage-informative sites of the detected lineages
     affected = sorted(
         sid
@@ -1711,6 +1871,7 @@ class Anonymizer:
         for key in ("demix", "amplicons", "dropout_impact"):
             ids |= {str(k) for k in (data.get(key) or {})}
         ids |= {str(k) for k in ((data.get("coverage_tracks") or {}).get("samples") or {})}
+        ids |= {str(k) for k in ((data.get("segments") or {}).get("samples") or {})}
         for flag in rows("run_flags"):
             ids |= {str(x) for x in flag.get("samples", [])}
         sites |= {str(r["site"]) for r in rows("samples") if r.get("site")}
@@ -1865,6 +2026,8 @@ class Anonymizer:
             d["coverage_tracks"]["samples"] = {
                 i.get(k, k): v for k, v in d["coverage_tracks"]["samples"].items()
             }
+        if d.get("segments"):
+            d["segments"]["samples"] = {i.get(k, k): v for k, v in d["segments"]["samples"].items()}
         for key in (
             "mutations_of_interest",
             "consensus",
@@ -1963,6 +2126,52 @@ def blank_sample(sample_id):
     return record
 
 
+SEGMENT_COLUMNS = (
+    "length",
+    "mean_depth",
+    "median_depth",
+    "pct_ge_1x",
+    "pct_ge_10x",
+    "pct_ge_min_depth",
+    "amplicons_total",
+    "amplicons_dropped",
+    "n_count",
+    "consensus_coverage_pct",
+    "ambiguous_count",
+    "consensus_status",
+)
+
+
+def build_segments(contigs, freyja_contig, coverage, consensus, known, min_pct):
+    """The optional `segments` block of a multi-contig run: the contigs, the contig Freyja demixes and
+    the per-sample, per-contig rows of contig_coverage.tsv + consensus_stats_contigs.tsv. A row is
+    `not_covered` when its % of positions at >= 10x is below `min_pct` (the QC PASS threshold) or its
+    consensus is empty."""
+    samples = {}
+    for sample in sorted((set(coverage or {}) | set(consensus or {})) & known):
+        rows = []
+        for entry in contigs:
+            name = entry["name"]
+            cov = (coverage or {}).get(sample, {}).get(name)
+            cons = (consensus or {}).get(sample, {}).get(name)
+            if cov is None and cons is None:
+                continue
+            row = {"contig": name, **dict.fromkeys(SEGMENT_COLUMNS), **(cov or {}), **(cons or {})}
+            row["length"] = row["length"] or entry["length"]
+            pct10 = row["pct_ge_10x"]
+            row["not_covered"] = row["consensus_status"] == "empty" or (
+                pct10 is not None and pct10 < min_pct
+            )
+            rows.append(row)
+        samples[sample] = rows
+    return {
+        "freyja_contig": freyja_contig,
+        "contigs": contigs,
+        "min_pct_ge_10x": min_pct,
+        "samples": samples,
+    }
+
+
 def build(
     run_info,
     qc=None,
@@ -1984,6 +2193,9 @@ def build(
     dashboard=None,
     lineage_groups=None,
     site_aggregates=None,
+    contigs=None,
+    contig_coverage=None,
+    consensus_contigs=None,
     mode=None,
     now=None,
     problems=None,
@@ -2233,6 +2445,17 @@ def build(
     available["time_series"] = time_series is not None or bool(
         timeseries_out and len(timeseries_out["dates"]) >= 2
     )
+    # multi-contig runs only (several reference contigs): the per-segment block; absent otherwise
+    segments = None
+    if contigs and len(contigs) > 1:
+        segments = build_segments(
+            contigs,
+            clean_str(run_info.get("freyja_contig")) or clean_str(params.get("freyja_contig")),
+            contig_coverage,
+            consensus_contigs,
+            known,
+            num_param(params, "qc_pass_min_pct", 60),
+        )
 
     flags = build_run_flags(
         {
@@ -2248,6 +2471,7 @@ def build(
             "consensus": cons_out,
             "lineage_groups": lineage_groups,
             "site_aggregates": site_aggregates,
+            "segments": segments,
         }
     )
     failed_compare = sorted(
@@ -2292,6 +2516,8 @@ def build(
         "lineage_groups": lineage_groups,
         "site_aggregates": site_aggregates,
     }
+    if segments:
+        data["segments"] = segments
     if anonymize != "none":
         anonymizer = Anonymizer(anonymize, data, extra_ids=stray_ids)
         data = anonymizer.apply(data)
@@ -2317,6 +2543,13 @@ def parse_args(argv=None):
     parser.add_argument("--demix-status", help="demix_status.tsv")
     parser.add_argument("--moi", help="mutations_of_interest.tsv")
     parser.add_argument("--consensus", help="consensus_stats.tsv")
+    parser.add_argument(
+        "--contig-coverage", help="contig_coverage.tsv (multi-contig references only)"
+    )
+    parser.add_argument(
+        "--consensus-stats-contigs",
+        help="consensus_stats_contigs.tsv (multi-contig references only)",
+    )
     parser.add_argument(
         "--depths",
         nargs="+",
@@ -2459,8 +2692,30 @@ def main(argv=None):
     try:
         qc_path = optional_file(args.qc)
         inputs["qc"] = load_qc(qc_path, problems) if qc_path else None
+        cov_path = optional_file(args.contig_coverage)
+        inputs["contig_coverage"] = load_contig_coverage(cov_path, problems) if cov_path else None
+        path = optional_file(args.consensus_stats_contigs)
+        inputs["consensus_contigs"] = load_consensus_contigs(path, problems) if path else None
+        # contig order and lengths: run_info.contigs, else contig_coverage.tsv, else the depths themselves
+        contigs = parse_contigs(run_info.get("contigs"))
+        if not contigs and inputs["contig_coverage"]:
+            seen = {}
+            for rows in inputs["contig_coverage"].values():
+                for name, row in rows.items():
+                    seen.setdefault(name, 0)
+                    seen[name] = max(seen[name], row["length"] or 0)
+            contigs = [{"name": n, "length": v} for n, v in seen.items() if v] or None
+        files = collect_depth_files(args.depths)
+        inputs["depths"] = (
+            build_coverage_tracks(files, problems, contigs=contigs) if files else None
+        )
+        if not contigs and inputs["depths"] and inputs["depths"].get("segments"):
+            contigs = [
+                {"name": s["contig"], "length": s["length"]} for s in inputs["depths"]["segments"]
+            ]
+        inputs["contigs"] = contigs
         path = optional_file(args.amplicons)
-        inputs["amplicons"] = load_amplicons(path, problems) if path else None
+        inputs["amplicons"] = load_amplicons(path, problems, contigs) if path else None
         path = optional_file(args.demix_status)
         inputs["demix_status"] = load_demix_status(path, problems) if path else None
         path = optional_file(args.aggregated)
@@ -2470,8 +2725,6 @@ def main(argv=None):
         inputs["moi"] = load_moi(path, problems) if path else None
         path = optional_file(args.consensus)
         inputs["consensus"] = load_consensus(path, problems) if path else None
-        files = collect_depth_files(args.depths)
-        inputs["depths"] = build_coverage_tracks(files, problems) if files else None
         path = optional_file(args.barcode_compare)
         label_a = dig(run_info, "freyja_data.barcode_version")
         inputs["barcode_compare"] = load_barcode_compare(path, label_a, problems) if path else None

@@ -145,6 +145,41 @@ def test_full_run_content(tmp_path):
     assert re.search(r'class="am" data-v="[0-9.,]*"', html)
 
 
+def test_multi_contig_report_shows_segments_table_labels_and_freyja_contig(tmp_path):
+    segments = [
+        {"contig": "A", "start_bin": 0, "n_bins": 6, "offset": 0, "length": 600},
+        {"contig": "B", "start_bin": 6, "n_bins": 4, "offset": 600, "length": 400},
+    ]
+    row = {"mean_depth": 50, "pct_ge_10x": 100, "consensus_coverage_pct": 100, "not_covered": False}
+    data = {
+        "samples": [{"sample": "S1", "qc_status": "PASS"}],
+        "coverage_tracks": {
+            "genome_length": 1000,
+            "bin_size": 100,
+            "n_bins": 10,
+            "segments": segments,
+            "samples": {"S1": [50] * 10},
+        },
+        "segments": {
+            "freyja_contig": "A",
+            "contigs": [{"name": "A", "length": 600}, {"name": "B", "length": 400}],
+            "min_pct_ge_10x": 60,
+            "samples": {
+                "S1": [
+                    {"contig": "A", "length": 600, **row},
+                    {"contig": "B", "length": 400, **row, "pct_ge_10x": 0, "not_covered": True},
+                ]
+            },
+        },
+    }
+    html = render(data)
+    assert_valid(html)
+    assert "Freyja demixes <b>A</b> only; other segments are QC/consensus only" in html
+    assert "across 1,000 bp in 2 segments" in html and 'class="segsep"' in html
+    assert 'id="seg-table"' in html and html.count('class="seg-bad"') == 1
+    assert "mapped to the whole reference (all segments)" in html
+
+
 def test_failed_and_empty_runs_render_status_and_reason(tmp_path):
     html = render(build_fixture("d_all_failed", tmp_path))
     assert_valid(html)
