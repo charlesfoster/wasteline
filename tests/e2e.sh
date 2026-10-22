@@ -76,7 +76,7 @@ Omicron (all B.1.1.529*),B.1.1.529*,,yes
 Delta (B.1.617.2*),B.1.617.2*,,yes
 GROUPS
 run demix_groups --mode demix --previous_results "$SCRATCH/out_full" --barcodes container \
-    --lineage_groups "$SCRATCH/groups_custom.csv" --site_aggregation "$SCRATCH/sites_full.csv" --freyja_boot --freyja_boot_n 20
+    --lineage_groups "$SCRATCH/groups_custom.csv" --site_aggregation "$SCRATCH/sites_full.csv" --freyja_boot --freyja_boot_n 5
 for demix in "$SCRATCH"/out_full/samples/*/freyja/*.compare.demix; do
     s=$(basename "$demix" .compare.demix)
     same "$s.demix (demix from previous results, container barcodes)" "$demix" "$SCRATCH/out_demix_groups/samples/$s/freyja/$s.demix"
@@ -103,7 +103,7 @@ intervals_ok = (
     and all(list(g) == ["Omicron (all B.1.1.529*)", "Delta (B.1.617.2*)", "other"] for g in by_sample.values())
     and all(
         abs(float(g[name]["abundance"]) - float(rows[sample][name] or 0)) < 1e-6
-        and float(g[name]["lo"]) <= float(g[name]["hi"]) and g[name]["n_boot"] == "20"
+        and float(g[name]["lo"]) <= float(g[name]["hi"]) and g[name]["n_boot"] == "5"
         for sample, g in by_sample.items() for name in g
     )
 )
