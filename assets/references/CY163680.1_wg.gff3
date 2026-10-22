@@ -1,0 +1,62 @@
+##gff-version 3
+##sequence-region   CY163680.1 1 1737
+##sequence-region   CY163687.1 1 2286
+##sequence-region   CY163686.1 1 2311
+##sequence-region   CY163685.1 1 2195
+##sequence-region   CY163683.1 1 1537
+##sequence-region   CY163682.1 1 1435
+##sequence-region   CY163681.1 1 1001
+##sequence-region   CY163684.1 1 865
+# Derived from the NCBI GFF3 of the eight segment records of A/Wisconsin/67/2005 H3N2 (HA first: CY163680.1, CY163687.1, CY163686.1, CY163685.1, CY163683.1, CY163682.1, CY163681.1, CY163684.1):
+# the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon line per exon were added because bcftools csq needs
+# gene -> transcript -> exon/CDS. Gene name is the NCBI gene symbol (M1/M2 and NS1/NEP are named from the product where NCBI gives one gene M or NS).
+# M2 and NEP are two-exon CDSs (one mRNA, two exon lines, two CDS lines with phases). PA-X (ribosomal slippage) is not annotated.
+# The HA feature lines are identical to the single-segment CY163680.1.gff3.
+CY163680.1	NCBI	gene	18	1718	.	+	.	ID=gene:HA;Name=HA;biotype=protein_coding
+CY163680.1	NCBI	mRNA	18	1718	.	+	.	ID=transcript:HA;Parent=gene:HA;Name=HA;biotype=protein_coding;transcript_id=HA
+CY163680.1	NCBI	exon	18	1718	.	+	.	Parent=transcript:HA;Name=HA.exon;exon_id=HA.exon;rank=1
+CY163680.1	NCBI	CDS	18	1718	.	+	0	ID=CDS:HA;Parent=transcript:HA;Name=HA;product=hemagglutinin;protein_id=AHG96407.1
+CY163687.1	NCBI	gene	1	2280	.	+	.	ID=gene:PB2;Name=PB2;biotype=protein_coding
+CY163687.1	NCBI	mRNA	1	2280	.	+	.	ID=transcript:PB2;Parent=gene:PB2;Name=PB2;biotype=protein_coding;transcript_id=PB2
+CY163687.1	NCBI	exon	1	2280	.	+	.	Parent=transcript:PB2;Name=PB2.exon;exon_id=PB2.exon;rank=1
+CY163687.1	NCBI	CDS	1	2280	.	+	0	ID=CDS:PB2;Parent=transcript:PB2;Name=PB2;product=polymerase PB2;protein_id=AHG96418.1
+CY163686.1	NCBI	gene	10	2283	.	+	.	ID=gene:PB1;Name=PB1;biotype=protein_coding
+CY163686.1	NCBI	mRNA	10	2283	.	+	.	ID=transcript:PB1;Parent=gene:PB1;Name=PB1;biotype=protein_coding;transcript_id=PB1
+CY163686.1	NCBI	exon	10	2283	.	+	.	Parent=transcript:PB1;Name=PB1.exon;exon_id=PB1.exon;rank=1
+CY163686.1	NCBI	CDS	10	2283	.	+	0	ID=CDS:PB1;Parent=transcript:PB1;Name=PB1;product=polymerase PB1;protein_id=AHG96416.1
+CY163686.1	NCBI	gene	104	376	.	+	.	ID=gene:PB1-F2;Name=PB1-F2;biotype=protein_coding
+CY163686.1	NCBI	mRNA	104	376	.	+	.	ID=transcript:PB1-F2;Parent=gene:PB1-F2;Name=PB1-F2;biotype=protein_coding;transcript_id=PB1-F2
+CY163686.1	NCBI	exon	104	376	.	+	.	Parent=transcript:PB1-F2;Name=PB1-F2.exon;exon_id=PB1-F2.exon;rank=1
+CY163686.1	NCBI	CDS	104	376	.	+	0	ID=CDS:PB1-F2;Parent=transcript:PB1-F2;Name=PB1-F2;product=PB1-F2 protein;protein_id=AHG96417.1
+CY163685.1	NCBI	gene	9	2159	.	+	.	ID=gene:PA;Name=PA;biotype=protein_coding
+CY163685.1	NCBI	mRNA	9	2159	.	+	.	ID=transcript:PA;Parent=gene:PA;Name=PA;biotype=protein_coding;transcript_id=PA
+CY163685.1	NCBI	exon	9	2159	.	+	.	Parent=transcript:PA;Name=PA.exon;exon_id=PA.exon;rank=1
+CY163685.1	NCBI	CDS	9	2159	.	+	0	ID=CDS:PA;Parent=transcript:PA;Name=PA;product=polymerase PA;protein_id=AHG96414.1
+CY163683.1	NCBI	gene	31	1527	.	+	.	ID=gene:NP;Name=NP;biotype=protein_coding
+CY163683.1	NCBI	mRNA	31	1527	.	+	.	ID=transcript:NP;Parent=gene:NP;Name=NP;biotype=protein_coding;transcript_id=NP
+CY163683.1	NCBI	exon	31	1527	.	+	.	Parent=transcript:NP;Name=NP.exon;exon_id=NP.exon;rank=1
+CY163683.1	NCBI	CDS	31	1527	.	+	0	ID=CDS:NP;Parent=transcript:NP;Name=NP;product=nucleocapsid protein;protein_id=AHG96411.1
+CY163682.1	NCBI	gene	8	1417	.	+	.	ID=gene:NA;Name=NA;biotype=protein_coding
+CY163682.1	NCBI	mRNA	8	1417	.	+	.	ID=transcript:NA;Parent=gene:NA;Name=NA;biotype=protein_coding;transcript_id=NA
+CY163682.1	NCBI	exon	8	1417	.	+	.	Parent=transcript:NA;Name=NA.exon;exon_id=NA.exon;rank=1
+CY163682.1	NCBI	CDS	8	1417	.	+	0	ID=CDS:NA;Parent=transcript:NA;Name=NA;product=neuraminidase;protein_id=AHG96410.1
+CY163681.1	NCBI	gene	14	995	.	+	.	ID=gene:M2;Name=M2;biotype=protein_coding
+CY163681.1	NCBI	mRNA	14	995	.	+	.	ID=transcript:M2;Parent=gene:M2;Name=M2;biotype=protein_coding;transcript_id=M2
+CY163681.1	NCBI	exon	14	39	.	+	.	Parent=transcript:M2;Name=M2.exon1;exon_id=M2.exon1;rank=1
+CY163681.1	NCBI	exon	728	995	.	+	.	Parent=transcript:M2;Name=M2.exon2;exon_id=M2.exon2;rank=2
+CY163681.1	NCBI	CDS	14	39	.	+	0	ID=CDS:M2;Parent=transcript:M2;Name=M2;product=matrix protein 2;protein_id=AHG96409.1
+CY163681.1	NCBI	CDS	728	995	.	+	1	ID=CDS:M2;Parent=transcript:M2;Name=M2;product=matrix protein 2;protein_id=AHG96409.1
+CY163681.1	NCBI	gene	14	772	.	+	.	ID=gene:M1;Name=M1;biotype=protein_coding
+CY163681.1	NCBI	mRNA	14	772	.	+	.	ID=transcript:M1;Parent=gene:M1;Name=M1;biotype=protein_coding;transcript_id=M1
+CY163681.1	NCBI	exon	14	772	.	+	.	Parent=transcript:M1;Name=M1.exon;exon_id=M1.exon;rank=1
+CY163681.1	NCBI	CDS	14	772	.	+	0	ID=CDS:M1;Parent=transcript:M1;Name=M1;product=matrix protein 1;protein_id=AHG96408.1
+CY163684.1	NCBI	gene	15	852	.	+	.	ID=gene:NEP;Name=NEP;biotype=protein_coding
+CY163684.1	NCBI	mRNA	15	852	.	+	.	ID=transcript:NEP;Parent=gene:NEP;Name=NEP;biotype=protein_coding;transcript_id=NEP
+CY163684.1	NCBI	exon	15	44	.	+	.	Parent=transcript:NEP;Name=NEP.exon1;exon_id=NEP.exon1;rank=1
+CY163684.1	NCBI	exon	517	852	.	+	.	Parent=transcript:NEP;Name=NEP.exon2;exon_id=NEP.exon2;rank=2
+CY163684.1	NCBI	CDS	15	44	.	+	0	ID=CDS:NEP;Parent=transcript:NEP;Name=NEP;product=nuclear export protein;protein_id=AHG96413.1
+CY163684.1	NCBI	CDS	517	852	.	+	0	ID=CDS:NEP;Parent=transcript:NEP;Name=NEP;product=nuclear export protein;protein_id=AHG96413.1
+CY163684.1	NCBI	gene	15	707	.	+	.	ID=gene:NS1;Name=NS1;biotype=protein_coding
+CY163684.1	NCBI	mRNA	15	707	.	+	.	ID=transcript:NS1;Parent=gene:NS1;Name=NS1;biotype=protein_coding;transcript_id=NS1
+CY163684.1	NCBI	exon	15	707	.	+	.	Parent=transcript:NS1;Name=NS1.exon;exon_id=NS1.exon;rank=1
+CY163684.1	NCBI	CDS	15	707	.	+	0	ID=CDS:NS1;Parent=transcript:NS1;Name=NS1;product=nonstructural protein 1;protein_id=AHG96412.1

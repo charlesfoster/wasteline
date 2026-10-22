@@ -1,0 +1,58 @@
+##gff-version 3
+##sequence-region   AF144305.1 1 1760
+##sequence-region   AF144300.1 1 2341
+##sequence-region   AF144301.1 1 2341
+##sequence-region   AF144302.1 1 2233
+##sequence-region   AF144303.1 1 1565
+##sequence-region   AF144304.1 1 1458
+##sequence-region   AF144306.1 1 1027
+##sequence-region   AF144307.1 1 865
+# Derived from the NCBI GFF3 of the eight segment records of A/Goose/Guangdong/1/96 H5N1 (HA first: AF144305.1, AF144300.1, AF144301.1, AF144302.1, AF144303.1, AF144304.1, AF144306.1, AF144307.1):
+# the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon line per exon were added because bcftools csq needs
+# gene -> transcript -> exon/CDS. Gene name is the NCBI gene symbol (M1/M2 and NS1/NEP are named from the product where NCBI gives one gene M or NS).
+# M2 and NEP are two-exon CDSs (one mRNA, two exon lines, two CDS lines with phases). PA-X (ribosomal slippage) is not annotated.
+# The HA feature lines are identical to the single-segment AF144305.1.gff3.
+AF144305.1	NCBI	gene	22	1728	.	+	.	ID=gene:HA;Name=HA;biotype=protein_coding
+AF144305.1	NCBI	mRNA	22	1728	.	+	.	ID=transcript:HA;Parent=gene:HA;Name=HA;biotype=protein_coding;transcript_id=HA
+AF144305.1	NCBI	exon	22	1728	.	+	.	Parent=transcript:HA;Name=HA.exon;exon_id=HA.exon;rank=1
+AF144305.1	NCBI	CDS	22	1728	.	+	0	ID=CDS:HA;Parent=transcript:HA;Name=HA;product=hemagglutinin;protein_id=AAD51927.1
+AF144300.1	NCBI	gene	28	2307	.	+	.	ID=gene:PB2;Name=PB2;biotype=protein_coding
+AF144300.1	NCBI	mRNA	28	2307	.	+	.	ID=transcript:PB2;Parent=gene:PB2;Name=PB2;biotype=protein_coding;transcript_id=PB2
+AF144300.1	NCBI	exon	28	2307	.	+	.	Parent=transcript:PB2;Name=PB2.exon;exon_id=PB2.exon;rank=1
+AF144300.1	NCBI	CDS	28	2307	.	+	0	ID=CDS:PB2;Parent=transcript:PB2;Name=PB2;product=polymerase;protein_id=AAD51922.1
+AF144301.1	NCBI	gene	25	2298	.	+	.	ID=gene:PB1;Name=PB1;biotype=protein_coding
+AF144301.1	NCBI	mRNA	25	2298	.	+	.	ID=transcript:PB1;Parent=gene:PB1;Name=PB1;biotype=protein_coding;transcript_id=PB1
+AF144301.1	NCBI	exon	25	2298	.	+	.	Parent=transcript:PB1;Name=PB1.exon;exon_id=PB1.exon;rank=1
+AF144301.1	NCBI	CDS	25	2298	.	+	0	ID=CDS:PB1;Parent=transcript:PB1;Name=PB1;product=polymerase;protein_id=AAD51923.1
+AF144302.1	NCBI	gene	25	2175	.	+	.	ID=gene:PA;Name=PA;biotype=protein_coding
+AF144302.1	NCBI	mRNA	25	2175	.	+	.	ID=transcript:PA;Parent=gene:PA;Name=PA;biotype=protein_coding;transcript_id=PA
+AF144302.1	NCBI	exon	25	2175	.	+	.	Parent=transcript:PA;Name=PA.exon;exon_id=PA.exon;rank=1
+AF144302.1	NCBI	CDS	25	2175	.	+	0	ID=CDS:PA;Parent=transcript:PA;Name=PA;product=polymerase;protein_id=AAD51924.1
+AF144303.1	NCBI	gene	46	1542	.	+	.	ID=gene:NP;Name=NP;biotype=protein_coding
+AF144303.1	NCBI	mRNA	46	1542	.	+	.	ID=transcript:NP;Parent=gene:NP;Name=NP;biotype=protein_coding;transcript_id=NP
+AF144303.1	NCBI	exon	46	1542	.	+	.	Parent=transcript:NP;Name=NP.exon;exon_id=NP.exon;rank=1
+AF144303.1	NCBI	CDS	46	1542	.	+	0	ID=CDS:NP;Parent=transcript:NP;Name=NP;product=nucleocapsid protein;protein_id=AAD51925.1
+AF144304.1	NCBI	gene	21	1430	.	+	.	ID=gene:NA;Name=NA;biotype=protein_coding
+AF144304.1	NCBI	mRNA	21	1430	.	+	.	ID=transcript:NA;Parent=gene:NA;Name=NA;biotype=protein_coding;transcript_id=NA
+AF144304.1	NCBI	exon	21	1430	.	+	.	Parent=transcript:NA;Name=NA.exon;exon_id=NA.exon;rank=1
+AF144304.1	NCBI	CDS	21	1430	.	+	0	ID=CDS:NA;Parent=transcript:NA;Name=NA;product=neuraminidase;protein_id=AAD51926.1
+AF144306.1	NCBI	gene	26	1007	.	+	.	ID=gene:M2;Name=M2;biotype=protein_coding
+AF144306.1	NCBI	mRNA	26	1007	.	+	.	ID=transcript:M2;Parent=gene:M2;Name=M2;biotype=protein_coding;transcript_id=M2
+AF144306.1	NCBI	exon	26	51	.	+	.	Parent=transcript:M2;Name=M2.exon1;exon_id=M2.exon1;rank=1
+AF144306.1	NCBI	exon	740	1007	.	+	.	Parent=transcript:M2;Name=M2.exon2;exon_id=M2.exon2;rank=2
+AF144306.1	NCBI	CDS	26	51	.	+	0	ID=CDS:M2;Parent=transcript:M2;Name=M2;product=matrix protein 2;protein_id=AAD51929.1
+AF144306.1	NCBI	CDS	740	1007	.	+	1	ID=CDS:M2;Parent=transcript:M2;Name=M2;product=matrix protein 2;protein_id=AAD51929.1
+AF144306.1	NCBI	gene	26	784	.	+	.	ID=gene:M1;Name=M1;biotype=protein_coding
+AF144306.1	NCBI	mRNA	26	784	.	+	.	ID=transcript:M1;Parent=gene:M1;Name=M1;biotype=protein_coding;transcript_id=M1
+AF144306.1	NCBI	exon	26	784	.	+	.	Parent=transcript:M1;Name=M1.exon;exon_id=M1.exon;rank=1
+AF144306.1	NCBI	CDS	26	784	.	+	0	ID=CDS:M1;Parent=transcript:M1;Name=M1;product=matrix protein 1;protein_id=AAD51928.1
+AF144307.1	NCBI	gene	15	852	.	+	.	ID=gene:NEP;Name=NEP;biotype=protein_coding
+AF144307.1	NCBI	mRNA	15	852	.	+	.	ID=transcript:NEP;Parent=gene:NEP;Name=NEP;biotype=protein_coding;transcript_id=NEP
+AF144307.1	NCBI	exon	15	44	.	+	.	Parent=transcript:NEP;Name=NEP.exon1;exon_id=NEP.exon1;rank=1
+AF144307.1	NCBI	exon	517	852	.	+	.	Parent=transcript:NEP;Name=NEP.exon2;exon_id=NEP.exon2;rank=2
+AF144307.1	NCBI	CDS	15	44	.	+	0	ID=CDS:NEP;Parent=transcript:NEP;Name=NEP;product=nonstructural protein 2;protein_id=AAD51931.1
+AF144307.1	NCBI	CDS	517	852	.	+	0	ID=CDS:NEP;Parent=transcript:NEP;Name=NEP;product=nonstructural protein 2;protein_id=AAD51931.1
+AF144307.1	NCBI	gene	15	707	.	+	.	ID=gene:NS1;Name=NS1;biotype=protein_coding
+AF144307.1	NCBI	mRNA	15	707	.	+	.	ID=transcript:NS1;Parent=gene:NS1;Name=NS1;biotype=protein_coding;transcript_id=NS1
+AF144307.1	NCBI	exon	15	707	.	+	.	Parent=transcript:NS1;Name=NS1.exon;exon_id=NS1.exon;rank=1
+AF144307.1	NCBI	CDS	15	707	.	+	0	ID=CDS:NS1;Parent=transcript:NS1;Name=NS1;product=nonstructural protein 1;protein_id=AAD51930.1
