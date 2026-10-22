@@ -234,12 +234,12 @@ reads have no primers to trim and no amplicons, so the scheme is not used (and t
 [ERROR] --pathogen MTB is not supported: Mycobacterium tuberculosis is a 4.4 Mb bacterial genome ...
 [ERROR] --fasta is required with --pathogen RSVa: wasteline bundles a reference only for the pathogens that have a file in conf/pathogens/ ...
 [ERROR] The bundled default primer scheme 'qiagenv1' is for a different reference ...
-[ERROR] Sample 'S1' has no primer scheme: --pathogen MPX has no default primer scheme (only the pipeline's default pathogen has one). Name one with --primer_scheme ... (bundled for MPX: bccdc-mpox-v2.3.0; ...)
+[ERROR] Sample 'S1' has no primer scheme: --pathogen MPX has no default primer scheme (only the pipeline's default pathogen has one). Name one with --primer_scheme ... (bundled for MPX: artic-inrb-mpox-2500-v1.0.0-cladeiib, bccdc-mpox-v2.3.0, yale-mpox-2000-v1.0.0-lifted)
 ```
 
 **Cause.** `--pathogen` must be a Freyja pathogen name. MTB (4.4 Mb) is accepted by Freyja but not by wasteline (the influenza
 pathogens run on their HA segment, a single 1.7-1.9 kb reference); a pathogen without a bundled reference needs `--fasta` (the reference the Freyja barcodes
-were built on), and only SARS-CoV-2 has a default primer scheme (bundled schemes are per pathogen: measles and mpox have one each), so a scheme name, a primer BED or
+were built on), and only SARS-CoV-2 has a default primer scheme (bundled schemes are per pathogen: measles one, mpox three, RSV-A and RSV-B two each), so a scheme name, a primer BED or
 `--primer_scheme_dir` (or `--protocol capture`) is needed.
 **Fix.** See [other_pathogens.md](other_pathogens.md) for what each pathogen needs.
 

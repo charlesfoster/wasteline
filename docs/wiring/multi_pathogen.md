@@ -189,3 +189,20 @@ User view: [../other_pathogens.md](../other_pathogens.md) ("Running mpox", "Prim
 - Tests: no new pytest test. `test_pathogen_profiles_are_consistent` checks the two new facts, that a profile's scheme directory has BEDs on the profile's reference contig and that a
   default scheme is one of them; `test_per_sample_protocol_and_primer_scheme` (samplesheet) also covers per-pathogen names and a user directory. No nf-test, no e2e step.
   `tests/simulate_pathogen_mixture.py` gained `--shear` (fragments inside long amplicons).
+
+## Lifted primer schemes (PLAN D27)
+
+No pipeline code changed. What changed:
+
+- `conf/pathogens/rsva.config` and `rsvb.config` set `primer_schemes_bundled = "${projectDir}/assets/primer_schemes/rsva"` (`rsvb`); `primer_scheme_default` stays `null`. The name
+  lookup (`chooseScheme()`, `bundledPrimerSchemes()`, the start-up message, `bin/check_samplesheet.py`, `bin/replay_run.py`'s `rglob`) already follows the directory, so
+  `--primer_scheme rsva-1000-v1.0.0-lifted`, the samplesheet cell and `--primer_scheme_dir` work for RSV as for mpox; a scheme of the other RSV type is refused with the "bundled for another
+  pathogen" hint (checked with `-preview`). The `mpx` directory gained two BEDs, which `bundledPrimerSchemes()` lists (alphabetically: `artic-inrb-mpox-2500-v1.0.0-cladeiib`, `bccdc-mpox-v2.3.0`,
+  `yale-mpox-2000-v1.0.0-lifted`). `PRIMER_SCHEME_CHECK` still globs only the top-level SARS-CoV-2 directory.
+- The `rsva/` and `rsvb/` directories each hold two BEDs: `rsv{a,b}-rsv-pipeline.bed` (native on the Freyja reference; the author's `charlesfoster/rsv_pipeline`, commit `9371277`, contig column rewritten
+  from the GISAID id, `RSVB_4_RIGHT_2` renamed `RSVB_45_RIGHT_2`) and `rsv{a,b}-1000-v1.0.0-lifted.bed` (published scheme, lifted).
+- The new BEDs start with several `#` comment lines (source, licence, change); `ivar trim`, `amplicon_coverage.py` and the contig check skip them (the existing guard
+  `test_pathogen_profiles_are_consistent` reads the contig of every bundled BED and passes for the new ones).
+- `bin/lift_primer_bed.py` is a stand-alone maintenance script (stdlib + `minimap2` on `PATH`). It is not called by any module, not in the container list and has no test (standing rule: the liftover is a
+  documented manual validation, `docs/other_pathogens.md`, "Adapting a published scheme to our reference" and "Validation (lifted primer schemes)").
+- `assets/primer_schemes/README.md`: provenance (commit, md5, licence, credits), per-scheme statistics, dropped primers, and the reasons the other published schemes are not bundled.

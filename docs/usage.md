@@ -190,7 +190,7 @@ validate a sheet before queuing a long run and to check files without starting N
 GFF3 annotation. Override with `--fasta` and `--gff`. The pathogen defaults live in `conf/pathogens/*.config`, selected by
 `--pathogen`. RSV-A (`--pathogen RSVa`), RSV-B (`--pathogen RSVb`), mpox (`--pathogen MPX`), measles (`--pathogen MEASLESgenome`) and the five
 influenza pathogens (`H1N1`, `H3N2`, `FLU-B-VIC`, `H5Nx`, `H5Nx-cattle`; HA segment only, one run per subtype) bundle their reference (all but
-measles also an annotation) and need a primer scheme (`--primer_scheme`, `--primer_bed`; ARTIC/BCCDC schemes are bundled for measles and mpox) or
+measles also an annotation) and need a primer scheme (`--primer_scheme`, `--primer_bed`; ARTIC/BCCDC/Yale schemes are bundled for measles, mpox and RSV) or
 `--protocol capture`. Dengue (`DENV1-4`) can be run with `--pathogen <name> --fasta <the reference of the Freyja barcodes> --primer_bed <BED>`:
 see [other_pathogens.md](other_pathogens.md) (support matrix, how to run each pathogen, the validation results). MTB is refused at
 start-up.
@@ -198,7 +198,7 @@ start-up.
 **Primer scheme** (modes `full`, and `demix` if you want per-amplicon coverage): choose a bundled scheme with
 `--primer_scheme`, or give your own BED with `--primer_bed <file>` (which overrides `--primer_scheme`), or a directory of your own
 schemes with `--primer_scheme_dir` ([below](#using-your-own-primer-scheme)). Bundled schemes are **per pathogen**: `--pathogen X` offers the
-schemes of X only (SARS-CoV-2 below; measles `artic-measles-v1.0.0`, mpox `bccdc-mpox-v2.3.0`; sources and licences in
+schemes of X only (SARS-CoV-2 below; measles `artic-measles-v1.0.0`, mpox `bccdc-mpox-v2.3.0` and two more, RSV-A `rsva-rsv-pipeline` and `rsva-1000-v1.0.0-lifted`, RSV-B `rsvb-rsv-pipeline` and `rsvb-1000-v1.0.0-lifted`; sources and licences in
 [assets/primer_schemes/README.md](../assets/primer_schemes/README.md)). The default in
 `full` mode is **`qiagenv1`** for SARS-CoV-2 (QIAseq Direct SARS-CoV-2; the old Snakemake pipeline defaulted to `midnight`, see
 [migration_from_snakemake.md](migration_from_snakemake.md#the-default-primer-scheme-changed)): if you use another protocol, say
@@ -226,10 +226,16 @@ All nine bundled SARS-CoV-2 BEDs use the contig name `NC_045512.2`, the same as 
 `bin/amplicon_coverage.py` on each bundled BED. The bundled schemes of the other pathogens (CC BY-SA 4.0, from the
 [primerschemes](https://github.com/quick-lab/primerschemes) repository) are:
 
-| `--pathogen`    | `--primer_scheme`      | Amplicons | Contig        | Primer names look like |
-| --------------- | ---------------------- | --------- | ------------- | ---------------------- |
-| `MEASLESgenome` | `artic-measles-v1.0.0` | 47        | `NC_001498.1` | `177e6ebb_0_LEFT_0`    |
-| `MPX`           | `bccdc-mpox-v2.3.0`    | 79        | `NC_063383.1` | `MPXV_1_LEFT_1`        |
+| `--pathogen`    | `--primer_scheme`                      | Amplicons | Contig        | Primer names look like |
+| --------------- | -------------------------------------- | --------- | ------------- | ---------------------- |
+| `MEASLESgenome` | `artic-measles-v1.0.0`                 | 47        | `NC_001498.1` | `177e6ebb_0_LEFT_0`    |
+| `MPX`           | `bccdc-mpox-v2.3.0`                    | 79        | `NC_063383.1` | `MPXV_1_LEFT_1`        |
+| `MPX`           | `yale-mpox-2000-v1.0.0-lifted`         | 163       | `NC_063383.1` | `MPXV_1_LEFT_1`        |
+| `MPX`           | `artic-inrb-mpox-2500-v1.0.0-cladeiib` | 71        | `NC_063383.1` | `359ba5b8_2_LEFT_1`    |
+| `RSVa`          | `rsva-rsv-pipeline`                    | 50        | `PP109421.1`  | `RSVA_1_LEFT`          |
+| `RSVa`          | `rsva-1000-v1.0.0-lifted`              | 20        | `PP109421.1`  | `RSVA_1_LEFT_4`        |
+| `RSVb`          | `rsvb-rsv-pipeline`                    | 50        | `OP975389.1`  | `RSVB_1_LEFT`          |
+| `RSVb`          | `rsvb-1000-v1.0.0-lifted`              | 19        | `OP975389.1`  | `RSVB_1_LEFT_0`        |
 
 **A custom BED must use the contig name of the reference.** A BED copied from elsewhere often names the contig
 `MN908947.3` (the same Wuhan-Hu-1 sequence, a different accession). The run then stops at start-up, before any work is done:
