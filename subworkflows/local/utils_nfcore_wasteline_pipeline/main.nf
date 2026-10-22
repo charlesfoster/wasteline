@@ -221,19 +221,49 @@ def finaliseRunInfo(outdir) {
 }
 
 //
+// The target of the run (the reference a sample is analysed against) from the effective parameters, i.e. after the
+// conf/pathogens/*.config defaults, --fasta / --gff and --whole_genome. With one target every sample carries this map.
+//
+def targetFromParams() {
+    def pathogen = params.pathogen ?: params.freyja_container_pathogen
+    return [
+        name: pathogen,
+        freyja_pathogen: pathogen,
+        fasta: params.fasta,
+        gff: params.gff,
+        freyja_contig: params.freyja_contig,
+        marker_contig: null,
+        family: null,
+        primer_scheme_default: params.primer_scheme_default,
+        primer_schemes_bundled: params.primer_schemes_bundled,
+        lineage_groups_bundled: params.lineage_groups_bundled,
+        freyja_container_pathogen: params.freyja_container_pathogen,
+    ]
+}
+
+//
+// The key that identifies a sample within its target: the sample ID while a run has one target
+//
+def targetKey(meta) {
+    return meta.id
+}
+
+//
 // Sample meta map shared by every mode. In modes that map or demix (full, demix) it also carries the library
 // settings of the sample (PLAN D20), see libraryMeta().
 //
-def sampleMeta(meta, mode) {
+def sampleMeta(meta, mode, target = targetFromParams()) {
     def sample = [
         id: meta.id,
         sample_type: meta.sample_type ?: 'sample',
         collection_date: meta.collection_date ?: null,
         site: meta.site ?: null,
         viral_load: meta.viral_load ?: null,
+        target: target,
     ]
+    sample.key = targetKey(sample)
     if (mode in ['full', 'demix']) {
-        return sample + libraryMeta(meta.id, meta.protocol, meta.primer_scheme, mode)
+        return sample + libraryMeta(meta.id, meta.protocol, meta.primer_scheme, mode, target)
     }
     return sample
 }
@@ -250,7 +280,7 @@ def sampleMeta(meta, mode) {
 //                    amplicon-level analysis: not primer-trimmed, or demix mode without a named scheme (the scheme
 //                    of old results is unknown). Full mode with nothing named uses the bundled default (D14).
 //
-def libraryMeta(sample, protocol_cell, scheme_cell, mode) {
+def libraryMeta(sample, protocol_cell, scheme_cell, mode, target = targetFromParams()) {
     def protocol = protocol_cell ?: params.protocol
     if (!(protocol in ['amplicon', 'capture'])) {
         error("Sample '${sample}': protocol '${protocol}' is not one of amplicon, capture")
@@ -269,7 +299,7 @@ def libraryMeta(sample, protocol_cell, scheme_cell, mode) {
                 scheme = 'custom'
             }
             else {
-                def chosen = chooseScheme(spec, "Sample '${sample}': primer_scheme '${spec}'")
+                def chosen = chooseScheme(spec, "Sample '${sample}': primer_scheme '${spec}'", target)
                 scheme = chosen.scheme
                 bed = chosen.bed
             }
@@ -279,15 +309,15 @@ def libraryMeta(sample, protocol_cell, scheme_cell, mode) {
             bed = params.primer_bed.toString()
         }
         else if (params.primer_scheme) {
-            def chosen = chooseScheme(params.primer_scheme.toString(), "--primer_scheme '${params.primer_scheme}'")
+            def chosen = chooseScheme(params.primer_scheme.toString(), "--primer_scheme '${params.primer_scheme}'", target)
             scheme = chosen.scheme
             bed = chosen.bed
         }
         else if (mode == 'full') {
-            if (!defaultPrimerScheme()) {
-                error("Sample '${sample}' has no primer scheme: ${noDefaultSchemeMessage()}")
+            if (!defaultPrimerScheme(target)) {
+                error("Sample '${sample}' has no primer scheme: ${noDefaultSchemeMessage(target)}")
             }
-            scheme = defaultPrimerScheme()
+            scheme = defaultPrimerScheme(target)
         }
     }
     return settings + [ primer_scheme: scheme, primer_bed: bed ]
@@ -295,7 +325,7 @@ def libraryMeta(sample, protocol_cell, scheme_cell, mode) {
 
 //
 // Primer schemes by name (PLAN D26). A name is looked up in --primer_scheme_dir first (the user's own <name>.bed files win),
-// then in the directory of schemes bundled for the pathogen (params.primer_schemes_bundled, set by conf/pathogens/*.config:
+// then in the directory of schemes bundled for the pathogen (target.primer_schemes_bundled, set by conf/pathogens/*.config:
 // assets/primer_schemes for SARS-CoV-2, assets/primer_schemes/<profile> for the others, null for pathogens without any).
 //
 def schemeNamesIn(dir) {
@@ -306,8 +336,8 @@ def schemeNamesIn(dir) {
     return d.isDirectory() ? d.listFiles().findAll { f -> f.isFile() && f.name.endsWith('.bed') }.collect { f -> f.name.substring(0, f.name.length() - 4) }.sort() : []
 }
 
-def bundledPrimerSchemes() {
-    return schemeNamesIn(params.primer_schemes_bundled)
+def bundledPrimerSchemes(target = targetFromParams()) {
+    return schemeNamesIn(target.primer_schemes_bundled)
 }
 
 def userPrimerSchemes() {
@@ -326,26 +356,26 @@ def schemesOfOtherPathogens(name) {
 // A scheme name to [ scheme, bed ] as libraryMeta() stores it: a bundled scheme keeps its name (its BED is found by
 // sourceBedFor), a scheme of --primer_scheme_dir is a custom BED (the path). Stops with the names available otherwise.
 //
-def chooseScheme(name, who) {
+def chooseScheme(name, who, target = targetFromParams()) {
     if (name in userPrimerSchemes()) {
         return [ scheme: 'custom', bed: file("${params.primer_scheme_dir}/${name}.bed").toAbsolutePath().toString() ]
     }
-    if (name in bundledPrimerSchemes()) {
+    if (name in bundledPrimerSchemes(target)) {
         return [ scheme: name, bed: null ]
     }
     def others = schemesOfOtherPathogens(name)
     def hint = others ? " ('${name}' is a scheme bundled for another pathogen, in assets/primer_schemes/${others.join(', ')}/; it belongs with that pathogen's reference)" : ''
-    error("${who} is not a primer scheme available for --pathogen ${params.pathogen} and not a path to a BED file${hint}. Bundled: ${bundledPrimerSchemes().join(', ') ?: 'none'}" +
+    error("${who} is not a primer scheme available for --pathogen ${target.name} and not a path to a BED file${hint}. Bundled: ${bundledPrimerSchemes(target).join(', ') ?: 'none'}" +
         (params.primer_scheme_dir ? "; in --primer_scheme_dir '${params.primer_scheme_dir}': ${userPrimerSchemes().join(', ') ?: 'no .bed files'}" : "; give your own with --primer_bed <file> or --primer_scheme_dir <dir of <name>.bed files>"))
 }
 
 //
 // The message for a run that needs a primer scheme and has none (a pathogen without a default scheme)
 //
-def noDefaultSchemeMessage() {
-    def bundled = bundledPrimerSchemes()
-    return "--pathogen ${params.pathogen} has no default primer scheme (only the pipeline's default pathogen has one). Name one with --primer_scheme (or the samplesheet primer_scheme column)" +
-        (bundled ? " (bundled for ${params.pathogen}: ${bundled.join(', ')}; " : " (none is bundled for ${params.pathogen}; ") +
+def noDefaultSchemeMessage(target = targetFromParams()) {
+    def bundled = bundledPrimerSchemes(target)
+    return "--pathogen ${target.name} has no default primer scheme (only the pipeline's default pathogen has one). Name one with --primer_scheme (or the samplesheet primer_scheme column)" +
+        (bundled ? " (bundled for ${target.name}: ${bundled.join(', ')}; " : " (none is bundled for ${target.name}; ") +
         "your own: --primer_scheme_dir <dir of <name>.bed files>), pass --primer_bed <BED whose first column is the reference sequence name>, or say that the reads are not primer-trimmed with --protocol capture / --skip_primer_trimming. See docs/other_pathogens.md."
 }
 
@@ -364,18 +394,18 @@ def protocolSettings(protocol) {
 //
 // The primer BED of a sample with a primer_scheme, as given (the user's file or the bundled scheme of the pathogen)
 //
-def sourceBedFor(meta) {
+def sourceBedFor(meta, target = targetFromParams()) {
     if (meta.primer_bed) {
         return file(meta.primer_bed, checkIfExists: true)
     }
-    return file("${params.primer_schemes_bundled}/${meta.primer_scheme}.bed", checkIfExists: true)
+    return file("${target.primer_schemes_bundled}/${meta.primer_scheme}.bed", checkIfExists: true)
 }
 
 //
 // ... as it is used by the processes: restricted to the reference's contig(s) (reconcileBed, PLAN D24)
 //
-def primerBedFor(meta) {
-    return reconcileBed(sourceBedFor(meta)).bed
+def primerBedFor(meta, target = targetFromParams()) {
+    return reconcileBed(sourceBedFor(meta, target), target).bed
 }
 
 //
@@ -387,11 +417,11 @@ def primerBedFor(meta) {
 // lines are kept. A BED none of whose lines is on the reference is returned unchanged with no_match = true (the callers
 // refuse it with their own message).
 //
-def reconcileBed(bed) {
-    if (!params.fasta) {
+def reconcileBed(bed, target = targetFromParams()) {
+    if (!target.fasta) {
         return [ bed: bed, no_match: false, dropped_lines: 0, dropped_contigs: [] ]
     }
-    def contigs = fastaContigs(file(params.fasta, checkIfExists: true))
+    def contigs = fastaContigs(file(target.fasta, checkIfExists: true))
     def keep = []
     def kept = 0
     def dropped_lines = 0
@@ -772,24 +802,24 @@ def previousRuns(mode) {
 // The bundled scheme used when neither --primer_scheme nor --primer_bed is given: the pathogen's default
 // (conf/pathogens/*.config primer_scheme_default; SARS-CoV-2: qiagenv1, PLAN D14), null for pathogens without one (PLAN D26)
 //
-def defaultPrimerScheme() {
-    return params.primer_scheme_default ?: null
+def defaultPrimerScheme(target = targetFromParams()) {
+    return target.primer_scheme_default ?: null
 }
 
 //
 // Primer BED of the run default: --primer_bed, else --primer_scheme (a scheme of --primer_scheme_dir or a bundled one),
 // else the pathogen's default scheme; null when none of them is set (samples may name their own)
 //
-def primerBed() {
+def primerBed(target = targetFromParams()) {
     if (params.primer_bed) {
         return file(params.primer_bed, checkIfExists: true)
     }
-    def name = params.primer_scheme ?: defaultPrimerScheme()
+    def name = params.primer_scheme ?: defaultPrimerScheme(target)
     if (!name) {
         return null
     }
-    def chosen = chooseScheme(name.toString(), "--primer_scheme '${name}'")
-    return chosen.bed ? file(chosen.bed, checkIfExists: true) : file("${params.primer_schemes_bundled}/${name}.bed", checkIfExists: true)
+    def chosen = chooseScheme(name.toString(), "--primer_scheme '${name}'", target)
+    return chosen.bed ? file(chosen.bed, checkIfExists: true) : file("${target.primer_schemes_bundled}/${name}.bed", checkIfExists: true)
 }
 
 //
@@ -804,11 +834,11 @@ def dbDir() {
 // they were made for. Where they do not, the primer-scheme check (which scores a sample against every bundled scheme)
 // has nothing to compare with and is skipped; a primer BED of the user is still used for trimming and amplicon QC.
 //
-def bundledSchemesApply() {
-    if (!params.fasta || !defaultPrimerScheme()) {
+def bundledSchemesApply(target = targetFromParams()) {
+    if (!target.fasta || !defaultPrimerScheme(target)) {
         return false
     }
-    return !(bedContigs(file("${params.primer_schemes_bundled}/${defaultPrimerScheme()}.bed", checkIfExists: true)) - fastaContigs(file(params.fasta, checkIfExists: true)))
+    return !(bedContigs(file("${target.primer_schemes_bundled}/${defaultPrimerScheme(target)}.bed", checkIfExists: true)) - fastaContigs(file(target.fasta, checkIfExists: true)))
 }
 
 def bedContigs(bed) {
@@ -851,8 +881,8 @@ def fastaRecords(fasta) {
 // this, so single-contig runs are untouched. Modes without a reference have no FASTA to look at. A run only gets past
 // start-up with several sequences when --freyja_contig names one of them (validateReferenceContigs).
 //
-def multiContig() {
-    return params.fasta && fastaContigs(file(params.fasta)).size() > 1
+def multiContig(target = targetFromParams()) {
+    return target.fasta && fastaContigs(file(target.fasta)).size() > 1
 }
 
 //
@@ -905,9 +935,9 @@ def validateReferenceContigs() {
 // container bundles (conf/pathogens/*.config: freyja_container_pathogen) keeps <db_dir>/freyja; every other pathogen
 // gets <db_dir>/freyja_<pathogen>, so a date such as `--barcodes 2025-05-01` can never pick another pathogen's dataset.
 //
-def datasetRoot(db_dir) {
-    def pathogen = params.pathogen ?: params.freyja_container_pathogen
-    return pathogen == params.freyja_container_pathogen ? "${db_dir}/freyja" : "${db_dir}/freyja_${pathogen}"
+def datasetRoot(db_dir, target = targetFromParams()) {
+    def pathogen = target.freyja_pathogen
+    return pathogen == target.freyja_container_pathogen ? "${db_dir}/freyja" : "${db_dir}/freyja_${pathogen}"
 }
 
 //
@@ -1015,11 +1045,11 @@ def plotConfigFile() {
 // The lineage groups file in effect: --lineage_groups, else the bundled assets/lineage_groups.csv of the pathogen
 // (conf/pathogens/*.config: lineage_groups_bundled). null = none: the lineage-group summary is then off.
 //
-def lineageGroupsFile() {
+def lineageGroupsFile(target = targetFromParams()) {
     if (params.lineage_groups) {
         return file(params.lineage_groups, checkIfExists: true)
     }
-    return params.lineage_groups_bundled ? file(params.lineage_groups_bundled, checkIfExists: true) : null
+    return target.lineage_groups_bundled ? file(target.lineage_groups_bundled, checkIfExists: true) : null
 }
 
 //

@@ -72,6 +72,7 @@ include { previousRuns           } from '../subworkflows/local/utils_nfcore_wast
 include { splitPaths             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { multiContig            } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { fastaRecords           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { targetFromParams       } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -182,7 +183,8 @@ workflow WASTELINE {
     //
     // Freyja dataset: resolved once, shared by every sample. update_db always fetches the latest.
     //
-    FREYJA_DATA(mode == 'update_db' ? 'latest' : params.barcodes, params.pathogen, '--barcodes')
+    def target = targetFromParams()
+    FREYJA_DATA(mode == 'update_db' ? 'latest' : params.barcodes, target.freyja_pathogen, '--barcodes')
 
     if (mode == 'update_db') {
         // Nothing else to do: the dataset is now in --db_dir/freyja/<barcode-version>/
@@ -193,11 +195,11 @@ workflow WASTELINE {
     }
     else {
         // --fasta is required by modes full and demix (validateInputParameters); --gff is optional for pathogens without a bundled annotation
-        def ch_fasta = channel.value(params.fasta ? file(params.fasta, checkIfExists: true) : [])
-        def ch_gff = channel.value(params.gff ? file(params.gff, checkIfExists: true) : [])
+        def ch_fasta = channel.value(target.fasta ? file(target.fasta, checkIfExists: true) : [])
+        def ch_gff = channel.value(target.gff ? file(target.gff, checkIfExists: true) : [])
         // A reference with several contigs (PLAN D25; validated at start-up: --freyja_contig names the one Freyja demixes). Every
         // branch for it is guarded by this; a single-contig run does not change.
-        def multi_contig = (mode == 'full' || mode == 'demix') && multiContig()
+        def multi_contig = (mode == 'full' || mode == 'demix') && multiContig(target)
 
         //
         // The lineage groups file (bundled default or --lineage_groups) and the sites CSV are checked FIRST, in parallel with fastp and the mapping, so that a
@@ -206,10 +208,10 @@ workflow WASTELINE {
         // resolve the groups: the file format is still checked, the summary itself is skipped with one warning.
         //
         // A pathogen without bundled lineage groups (conf/pathogens/*.config) has the summary off unless --lineage_groups is given (PLAN D22).
-        def run_lineage_groups = params.lineage_summary && lineageGroupsFile() ? true : false
+        def run_lineage_groups = params.lineage_summary && lineageGroupsFile(target) ? true : false
         def run_site_aggregation = params.site_aggregation as boolean
         if (params.lineage_summary && !run_lineage_groups) {
-            log.info "Lineage-group summary off: no lineage groups are bundled for --pathogen ${params.pathogen}. Give --lineage_groups <CSV> (and a Freyja dataset with a lineage hierarchy) to get summary/lineage_summary.csv."
+            log.info "Lineage-group summary off: no lineage groups are bundled for --pathogen ${target.name}. Give --lineage_groups <CSV> (and a Freyja dataset with a lineage hierarchy) to get summary/lineage_summary.csv."
         }
         def lineage_reason = run_lineage_groups ? lineageHierarchyUnsupportedReason() : null
         // The dataset the hierarchy-dependent steps read. A dataset downloaded during the run for a pathogen that may ship
@@ -221,12 +223,12 @@ workflow WASTELINE {
                 .filter { _dataset, has -> has }
                 .map { dataset, _has -> dataset }
             ch_has_hierarchy.filter { has -> !has }.subscribe { _has ->
-                log.warn "Skipping the lineage-group summary: the Freyja dataset downloaded for --pathogen ${params.pathogen} has no lineage hierarchy (lineages.yml), which the groups need."
+                log.warn "Skipping the lineage-group summary: the Freyja dataset downloaded for --pathogen ${target.name} has no lineage hierarchy (lineages.yml), which the groups need."
             }
         }
         if (run_lineage_groups) {
             LINEAGE_GROUPS_CHECK(
-                channel.value(lineageGroupsFile()),
+                channel.value(lineageGroupsFile(target)),
                 lineage_reason ? channel.value([]) : ch_hierarchy_dataset.ifEmpty([]),
             )
             LINEAGE_GROUPS_CHECK.out.report.subscribe { report ->
@@ -397,7 +399,7 @@ workflow WASTELINE {
         def ch_view_variants = ch_variants
         def ch_view_depths = ch_depths
         if (multi_contig) {
-            FREYJA_SELECT_CONTIG(ch_freyja_in, params.freyja_contig)
+            FREYJA_SELECT_CONTIG(ch_freyja_in, target.freyja_contig)
             ch_freyja_view = FREYJA_SELECT_CONTIG.out.view
             ch_view_variants = ch_freyja_view.map { meta, variants, _depths -> [ meta, variants ] }
             ch_view_depths = ch_freyja_view.map { meta, _variants, depths -> [ meta, depths ] }
@@ -441,7 +443,7 @@ workflow WASTELINE {
             // independently, recorded as freyja_data_compare); abundances of both side by side
             //
             if (params.compare_barcodes) {
-                FREYJA_DATA_COMPARE(params.compare_barcodes, params.pathogen, '--compare_barcodes')
+                FREYJA_DATA_COMPARE(params.compare_barcodes, target.freyja_pathogen, '--compare_barcodes')
                 FREYJA_DEMIX_COMPARE(
                     ch_freyja_view,
                     FREYJA_DATA_COMPARE.out.dataset,
@@ -740,7 +742,7 @@ workflow WASTELINE {
                     FREYJA_AGGREGATE_PLOT.out.aggregated,
                     ch_status_for_summaries,
                     ch_summary_sheet,
-                    channel.value(lineageGroupsFile()),
+                    channel.value(lineageGroupsFile(target)),
                     ch_hierarchy_dataset,
                     ch_site_freyja,
                     ch_site_meta,
@@ -752,7 +754,7 @@ workflow WASTELINE {
                     BOOT_GROUP_INTERVALS(
                         FREYJA_AGGREGATE_PLOT.out.aggregated,
                         ch_boot_raw.toSortedList { a, b -> a.name <=> b.name }.filter { files -> files }, // nothing when no sample was bootstrapped
-                        channel.value(lineageGroupsFile()),
+                        channel.value(lineageGroupsFile(target)),
                         ch_hierarchy_dataset,
                         ch_summary_sheet,
                     )
@@ -821,7 +823,13 @@ workflow WASTELINE {
         def ch_base_info = ch_rows
             .map { row -> row[0] }
             .toList()
-            .map { metas -> runInfoBase(mode, metas) }
+            .map { metas ->
+                def names = metas.collect { meta -> meta.target.name }.unique()
+                if (names.size() > 1) {
+                    error("The samples belong to several targets (${names.join(', ')}): a run analyses one target")
+                }
+                runInfoBase(mode, metas)
+            }
             .collectFile(name: 'run_info_base.json')
         // every distinct primer BED the samples use
         def ch_beds = ch_rows
@@ -957,6 +965,7 @@ def wrapItem(ch) {
 // tool versions and the Freyja dataset block
 //
 def runInfoBase(mode, metas) {
+    def target = targetFromParams()
     def git_commit = workflow.commitId
     if (!git_commit) {
         try {
@@ -974,12 +983,12 @@ def runInfoBase(mode, metas) {
         [ (key.toString()): (value == null || value instanceof Boolean || value instanceof Number) ? value : value.toString() ]
     }
     // the effective primer scheme is recorded even when the default (null = the default scheme, D14) applies
-    if (mode == 'full' && protocolSettings(params.protocol).primer_trimming && !params.primer_bed && !params.primer_scheme && defaultPrimerScheme()) {
-        plain_params.primer_scheme = defaultPrimerScheme()
+    if (mode == 'full' && protocolSettings(params.protocol).primer_trimming && !params.primer_bed && !params.primer_scheme && defaultPrimerScheme(target)) {
+        plain_params.primer_scheme = defaultPrimerScheme(target)
     }
     // lineage groups: which file made lineage_summary.csv (only when the summary is made)
     def groups_info = [ lineage_groups_file: null, lineage_groups_source: null, lineage_groups_sha256: null ]
-    if (params.lineage_summary && lineageGroupsFile() && mode in ['full', 'demix', 'aggregate'] && !lineageHierarchyUnsupportedReason()) {
+    if (params.lineage_summary && lineageGroupsFile(target) && mode in ['full', 'demix', 'aggregate'] && !lineageHierarchyUnsupportedReason()) {
         groups_info = lineageGroupsInfo()
     }
     def info = [
@@ -998,9 +1007,9 @@ def runInfoBase(mode, metas) {
         previous_runs: previousRuns(mode),
     ] + libraryInfo(mode, metas) + groups_info
     // several reference contigs (PLAN D25): the contigs in FASTA order, and the one Freyja demixes
-    if (mode in ['full', 'demix'] && multiContig()) {
-        info.contigs = fastaRecords(file(params.fasta)).collect { record -> [ name: record.name, length: record.length ] }
-        info.freyja_contig = params.freyja_contig
+    if (mode in ['full', 'demix'] && multiContig(target)) {
+        info.contigs = fastaRecords(file(target.fasta)).collect { record -> [ name: record.name, length: record.length ] }
+        info.freyja_contig = target.freyja_contig
     }
     if (mode == 'aggregate') {
         info.freyja_data_note = 'aggregate mode demixes nothing: freyja_data describes the dataset whose lineage hierarchy groups the plot, not the barcodes the .demix files were made with (see previous_runs)'
