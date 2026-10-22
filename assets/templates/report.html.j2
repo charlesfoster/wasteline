@@ -408,7 +408,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
       <th data-sort>Sample</th><th data-sort>Type</th><th data-sort>Date</th><th data-sort>Site</th><th data-sort>QC</th><th>Reasons</th>
       <th class="n" data-sort>Raw reads</th><th class="n" data-sort>Mapped %</th><th class="n" data-sort>Mean depth</th>
       <th class="n" data-sort>&ge;10x %</th><th class="n" data-sort>&ge;min depth %</th><th class="n" data-sort>Amplicons dropped</th>
-      <th data-sort>Demix</th><th data-sort>Top group</th><th class="n" data-sort>Consensus N %</th>
+      <th data-sort>Demix</th><th data-sort>Top group</th><th class="n" data-sort title="% of the reference positions with a called base (A, C, G, T or an IUPAC code) in the consensus; the rest is N or deleted">Consensus coverage %</th>
       {% if qc_extra.trim %}<th class="n" data-sort title="{{ qc_extra.trim_title }}">Primer trimmed %</th>{% endif %}
       {% if qc_extra.check %}<th data-sort title="Do read starts line up with the declared primer scheme?">Primer scheme</th>{% endif %}
     </tr></thead>
@@ -429,7 +429,7 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
       <td class="n" data-v="{{ s.amplicons_dropped|sortval }}">{% if s.amplicons_total is not none %}{{ s.amplicons_dropped|num }} / {{ s.amplicons_total|num }}{% else %}&ndash;{% endif %}</td>
       <td data-v="{{ s._demix.status or '' }}">{{ dxbadge(s._demix.status, s._demix.reason) }}</td>
       <td data-v="{{ s._top[0] if s._top else '' }}">{% if s._top %}{{ s._top[0] }} <span class="reasons">{{ s._top[1]|frac(0) }}%</span>{% else %}&ndash;{% endif %}</td>
-      <td class="n" data-v="{{ s.consensus_n_pct|sortval }}">{{ s.consensus_n_pct|pct }}</td>
+      <td class="n" data-v="{{ s.consensus_coverage_pct|sortval }}">{{ s.consensus_coverage_pct|pct }}</td>
       {% if qc_extra.trim %}<td class="n" data-v="{{ s.primer_trimmed_pct|sortval }}" title="{{ qc_extra.trim_title }}">{{ s.primer_trimmed_pct|pct }}</td>{% endif %}
       {% if qc_extra.check %}<td data-v="{{ s.primer_scheme_check or '' }}">{% if s.primer_scheme_check %}<span class="badge b-{{ {'ok': 'pass', 'mismatch': 'warn'}.get(s.primer_scheme_check, 'na') }}" title="{{ s._pcheck_title }}">{{ s.primer_scheme_check }}</span>{% endif %}</td>{% endif %}
     </tr>
@@ -820,11 +820,11 @@ button.showall{font:inherit;color:inherit;background:var(--panel);border:1px sol
   <h2>Consensus genomes</h2>
   {% if consensus %}
   <div class="scroll"><table class="sortable">
-    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Length</th><th class="n" data-sort>N count</th><th class="n" data-sort>N %</th><th class="n" data-sort>Other ambiguous</th><th data-sort>Status</th>{% if cons_reason %}<th data-sort>Reason</th>{% endif %}</tr></thead>
+    <thead><tr><th data-sort>Sample</th><th class="n" data-sort>Length</th><th class="n" data-sort>N count</th><th class="n" data-sort title="% of the reference positions with a called base (A, C, G, T or an IUPAC code); 100 minus the N and deleted positions">Coverage %</th><th class="n" data-sort>Other ambiguous</th><th data-sort>Status</th>{% if cons_reason %}<th data-sort>Reason</th>{% endif %}</tr></thead>
     <tbody>
     {% for r in consensus %}
     <tr><td>{{ r.sample }}</td><td class="n" data-v="{{ r.length|sortval }}">{{ r.length|num }}</td><td class="n" data-v="{{ r.n_count|sortval }}">{{ r.n_count|num }}</td>
-      <td class="n" data-v="{{ r.n_pct|sortval }}">{{ r.n_pct|pct(2) }}</td><td class="n" data-v="{{ r.ambiguous_count|sortval }}">{{ r.ambiguous_count|num }}</td>
+      <td class="n" data-v="{{ r.consensus_coverage_pct|sortval }}">{{ r.consensus_coverage_pct|pct(2) }}</td><td class="n" data-v="{{ r.ambiguous_count|sortval }}">{{ r.ambiguous_count|num }}</td>
       <td data-v="{{ r.status or '' }}"><span class="badge b-{{ {'ok': 'pass', 'empty': 'warn', 'failed': 'fail'}.get(r.status, 'na') }}"{% if r.reason %} title="{{ r.reason }}"{% endif %}>{{ r.status or 'n/a' }}</span></td>{% if cons_reason %}<td class="reasons wrap-any">{{ r.reason|dash }}</td>{% endif %}</tr>
     {% endfor %}
     </tbody>

@@ -12,6 +12,7 @@ process FREYJA_DASH {
     path dataset                             // Freyja dataset (lineages.yml is passed as --lineageyml if present)
     val title                                // dashboard title (Freyja inserts it as HTML)
     val intro                                // introduction text (Freyja inserts it as HTML)
+    path plot_config, stageAs: 'plot_config.yml' // optional Freyja plot config (--config): lineage groups and colours ([] = none)
 
     output:
     path "freyja_dashboard.html",                  emit: dashboard,    optional: true // Plotly is embedded; Bootstrap CSS/JS and a logo are loaded from the internet when the page is opened
@@ -30,13 +31,14 @@ process FREYJA_DASH {
     // see --thresh below), ext.min_dates (4) and ext.min_span_days (14) are handled here.
     def args = task.ext.args ?: ''
     def days = task.ext.days ?: 56
-    def mincov = task.ext.mincov ?: 60
+    def mincov = task.ext.mincov != null ? task.ext.mincov : 60
     def seed = task.ext.seed ?: 1
     def cutoff = task.ext.min_abundance ?: 0.01
     def min_dates = task.ext.min_dates ?: 4
     def min_span = task.ext.min_span_days ?: 14
     def require_load = args.contains('--scale_by_viral_load') ? '--require-viral-load' : ''
     def own_thresh = args.contains('--thresh') ? 'yes' : 'no'
+    def config_arg = plot_config ? '--config ../plot_config.yml' : '' // freyja runs in fg/
     def title_q = "'" + title.toString().replace("'", "'\"'\"'") + "'"
     def intro_q = "'" + intro.toString().replace("'", "'\"'\"'") + "'"
     """
@@ -114,7 +116,7 @@ process FREYJA_DASH {
     run_attempt() {
         rm -f fg/dashboard.html fg/dashboard_rel_growth_rates.csv
         ( cd fg && python3 run_freyja.py "\$1" ${seed} dash aggregated.tsv metadata.csv title.txt intro.txt \\
-            --days ${days} --mincov ${mincov} \$THRESH_ARG \$LINEAGEYML_ARG --output dashboard.html ${args} ) > "\$2" 2>&1 || true
+            --days ${days} --mincov ${mincov} \$THRESH_ARG \$LINEAGEYML_ARG --output dashboard.html ${config_arg} ${args} ) > "\$2" 2>&1 || true
     }
 
     run_attempt plain dash_attempt1.log

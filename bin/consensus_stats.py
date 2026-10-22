@@ -5,12 +5,15 @@
                      [--status-json S.consensus_status.json] -o S.stats.tsv
   consensus_stats.py --concat a.tsv b.tsv ... -o consensus_stats.tsv   (sorted by sample)
 
-Columns: sample, length, n_count, n_pct, ambiguous_count, status, reason.
+Columns: sample, length, n_count, consensus_coverage_pct, ambiguous_count, status, reason.
 
   length           residues in the (single) FASTA record, whitespace ignored, multi-line FASTA supported
   n_count          N, n or '-' (deletion / masked) characters
-  n_pct            n_count / denominator * 100 (2 dp); the denominator is --reference-length when given,
+  consensus_coverage_pct
+                   % of the reference with a called base (A, C, G, T or an IUPAC code): 100 - n_count /
+                   denominator * 100 (2 dp, never below 0); the denominator is --reference-length when given,
                    otherwise the sequence length. A length different from --reference-length only warns.
+                   0.00 for an `empty` consensus, NA for a `failed` one.
   ambiguous_count  characters other than A, C, G, T, N and '-' (IUPAC ambiguity codes and anything else)
   status           ok      sequence present with at least one non-N/- base
                    empty   sequence present but every character is N or '-'
@@ -31,7 +34,15 @@ import contextlib
 import json
 import sys
 
-COLUMNS = ["sample", "length", "n_count", "n_pct", "ambiguous_count", "status", "reason"]
+COLUMNS = [
+    "sample",
+    "length",
+    "n_count",
+    "consensus_coverage_pct",
+    "ambiguous_count",
+    "status",
+    "reason",
+]
 LEGACY_COLUMNS = COLUMNS[:-1]  # pre-`reason` per-sample files are still accepted by --concat
 NA = "NA"
 _ACGT = set("ACGT")
@@ -126,7 +137,7 @@ def compute_row(sample, fasta, reference_length=None, status_json=None):
         sample,
         str(length),
         str(n_count),
-        f"{100.0 * n_count / denominator:.2f}",
+        f"{max(0.0, 100.0 * (denominator - n_count) / denominator):.2f}",
         str(ambiguous),
         status,
         clean(reason),

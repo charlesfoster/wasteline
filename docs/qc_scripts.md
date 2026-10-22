@@ -305,8 +305,8 @@ consensus_stats.py --fasta S.consensus.fa --sample S [--reference-length 29903] 
 consensus_stats.py --concat a.tsv b.tsv ... -o consensus_stats.tsv
 ```
 
-Columns `sample, length, n_count, n_pct, ambiguous_count, status`. `n_count` counts `N`/`n`/`-`; `ambiguous_count` counts
-other non-ACGT characters; `n_pct` uses `--reference-length` as the denominator when given (a length mismatch only
+Columns `sample, length, n_count, consensus_coverage_pct, ambiguous_count, status, reason`. `n_count` counts `N`/`n`/`-`; `ambiguous_count` counts
+other non-ACGT characters; `consensus_coverage_pct` (100 minus the % `N`; `0.00` when `empty`, `NA` when `failed`) uses `--reference-length` as the denominator when given (a length mismatch only
 warns). Status: `ok`; `empty` (all N/`-`); `failed` (missing/unreadable/not FASTA/not exactly one record/zero length;
 numeric fields are `NA`). Multi-line FASTA is supported.
 

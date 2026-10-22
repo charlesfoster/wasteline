@@ -11,7 +11,7 @@ for `ok` and `low_confidence`.
 ## Rules (decisions already made)
 
 - `low_confidence` samples ARE in `freyja_aggregated.tsv`, `lineage_summary.csv/.xlsx` (status shown, values filled, reason
-  filled) and the report (badge + one INFO flag `demix_low_confidence` listing them). Freyja's plot mincov (60) already hides them
+  filled) and the report (badge + one INFO flag `demix_low_confidence` listing them). Freyja's plot mincov (60 when this was written; now the demix threshold by default) hides them
   from `freyja_plot.pdf`: no change there.
 - They are EXCLUDED from the time series tables, growth rates, the dashboard and site aggregation unless
   `--include_low_confidence true` (default false).

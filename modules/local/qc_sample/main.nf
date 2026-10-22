@@ -62,7 +62,7 @@ process QC_SAMPLE {
     stub:
     prefix = task.ext.prefix ?: "${meta.id}"
     """
-    printf 'sample\\tsample_type\\tcollection_date\\tsite\\traw_reads\\ttrimmed_reads\\tmapped_reads\\tmapped_pct\\tmean_depth\\tdepth_sd\\tmedian_depth\\tpct_genome_ge_1x\\tpct_genome_ge_10x\\tpct_genome_ge_min_depth\\tamplicons_total\\tamplicons_dropped\\tqc_status\\tqc_reasons\\tdemix_status\\tdemix_reason\\tconsensus_length\\tconsensus_n_pct\\tbarcode_version\\tprimer_trimmed_pct\\tprimer_scheme_check\\tprimer_scheme_best\\tprimer_scheme_enrichment\\n' > ${prefix}.qc_row.tsv
+    printf 'sample\\tsample_type\\tcollection_date\\tsite\\traw_reads\\ttrimmed_reads\\tmapped_reads\\tmapped_pct\\tmean_depth\\tdepth_sd\\tmedian_depth\\tpct_genome_ge_1x\\tpct_genome_ge_10x\\tpct_genome_ge_min_depth\\tamplicons_total\\tamplicons_dropped\\tqc_status\\tqc_reasons\\tdemix_status\\tdemix_reason\\tconsensus_length\\tconsensus_coverage_pct\\tbarcode_version\\tprimer_trimmed_pct\\tprimer_scheme_check\\tprimer_scheme_best\\tprimer_scheme_enrichment\\n' > ${prefix}.qc_row.tsv
     printf '${meta.id}\\t${meta.sample_type ?: 'sample'}\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\t\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\tNA\\n' >> ${prefix}.qc_row.tsv
     """
 }

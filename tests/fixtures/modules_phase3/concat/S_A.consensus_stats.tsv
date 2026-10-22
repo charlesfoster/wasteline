@@ -1,2 +1,2 @@
-sample	length	n_count	n_pct	ambiguous_count	status	reason
-S_A	12	2	16.67	0	ok	NA
+sample	length	n_count	consensus_coverage_pct	ambiguous_count	status	reason
+S_A	12	2	83.33	0	ok	NA

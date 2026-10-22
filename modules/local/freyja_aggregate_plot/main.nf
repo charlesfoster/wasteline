@@ -10,6 +10,7 @@ process FREYJA_AGGREGATE_PLOT {
     tuple val(ids), path(demix_files, stageAs: 'demix/?.demix') // sample IDs and their .demix files, same order
     path dataset                                                // Freyja dataset (lineages.yml is used for lineage grouping if present)
     path times                                                  // optional: CSV `Sample,sample_collection_datetime` for the time-aware plot ([] = none)
+    path plot_config, stageAs: 'plot_config.yml'                // optional Freyja plot config (--config): colours of the plotted groups ([] = none)
 
     output:
     path "freyja_aggregated.tsv",         emit: aggregated
@@ -27,6 +28,7 @@ process FREYJA_AGGREGATE_PLOT {
     def args_times = task.ext.args2 ?: ''
     def id_list = ids.collect { id -> "'${id}'" }.join(' ')
     def has_times = times ? 'yes' : 'no'
+    def config_arg = plot_config ? '--config plot_config.yml' : ''
     """
     export MPLCONFIGDIR="\$PWD/.mplconfig"
 
@@ -83,14 +85,14 @@ process FREYJA_AGGREGATE_PLOT {
         fi
     }
 
-    run_plot freyja_aggregated.tsv freyja_plot.pdf freyja_plot.failed.txt plot ${args}
+    run_plot freyja_aggregated.tsv freyja_plot.pdf freyja_plot.failed.txt plot ${config_arg} ${args}
 
     # Time-aware plot (`freyja plot --times`) when collection dates are known. Freyja needs a date
     # for EVERY sample it plots, so only the samples with a date go into this plot.
     if [ '${has_times}' = yes ]; then
         head -n 1 freyja_aggregated.tsv > aggregated.dated.tsv
         awk -F'\t' 'NR == FNR { if (FNR > 1) { split(\$0, f, ","); keep[f[1]] = 1 } next } FNR > 1 && (\$1 in keep)' ${times ?: ''} freyja_aggregated.tsv >> aggregated.dated.tsv
-        run_plot aggregated.dated.tsv freyja_plot_times.pdf freyja_plot_times.failed.txt plot_times --times ${times ?: ''} ${args} ${args_times}
+        run_plot aggregated.dated.tsv freyja_plot_times.pdf freyja_plot_times.failed.txt plot_times --times ${times ?: ''} ${config_arg} ${args} ${args_times}
     fi
     """
 

@@ -20,7 +20,7 @@ def status_file(tmp_path, status, reason=""):
 def test_every_sample_gets_a_row_with_status_and_reason(tmp_path):
     """ok / empty / failed samples all yield a row with a status and reason (never an empty file)."""
     assert cs.compute_row("S1", fasta(tmp_path, ">S1 d\nACGT\nnnAC\n\nGT\n")) == [
-        "S1", "10", "2", "20.00", "0", "ok", "NA",
+        "S1", "10", "2", "80.00", "0", "ok", "NA",
     ]  # fmt: skip
     all_n = fasta(tmp_path, ">S1\nNNNN\nNN-N\n")
     assert cs.compute_row("S1", all_n)[5:] == ["empty", "consensus contains only N or - characters"]

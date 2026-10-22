@@ -10,7 +10,7 @@ process CONSENSUS_STATS {
     input:
     tuple val(meta), path(fasta), path(status_json) // <sample>.consensus.fa and <sample>.consensus_status.json from CONSENSUS_BCFTOOLS
                                                     // (status_json may be [] : status/reason are then recomputed from the sequence)
-    path reference               // reference FASTA: its length is the n_pct denominator
+    path reference               // reference FASTA: its length is the consensus_coverage_pct denominator
 
     output:
     tuple val(meta), path("${prefix}.consensus_stats.tsv"), emit: tsv
@@ -41,6 +41,6 @@ process CONSENSUS_STATS {
     stub:
     prefix = task.ext.prefix ?: "${meta.id}"
     """
-    printf 'sample\\tlength\\tn_count\\tn_pct\\tambiguous_count\\tstatus\\treason\\n${meta.id}\\t0\\t0\\t0.00\\t0\\tok\\tNA\\n' > ${prefix}.consensus_stats.tsv
+    printf 'sample\\tlength\\tn_count\\tconsensus_coverage_pct\\tambiguous_count\\tstatus\\treason\\n${meta.id}\\t0\\t0\\t100.00\\t0\\tok\\tNA\\n' > ${prefix}.consensus_stats.tsv
     """
 }

@@ -48,7 +48,7 @@ QC_COLUMNS = (
     "demix_status",
     "demix_reason",
     "consensus_length",
-    "consensus_n_pct",
+    "consensus_coverage_pct",
     "barcode_version",
     # appended later (older qc_summary.tsv files lack them: they load as null)
     "primer_trimmed_pct",
@@ -73,7 +73,7 @@ FLOAT_COLUMNS = {
     "pct_genome_ge_1x",
     "pct_genome_ge_10x",
     "pct_genome_ge_min_depth",
-    "consensus_n_pct",
+    "consensus_coverage_pct",
     "primer_trimmed_pct",
     "primer_scheme_enrichment",
 }
@@ -252,6 +252,8 @@ def load_qc(path, problems):
             try:
                 if column in INT_COLUMNS:
                     record[column] = to_int(raw)
+                elif column == "consensus_coverage_pct":
+                    record[column] = consensus_coverage(row)
                 elif column in FLOAT_COLUMNS:
                     record[column] = round_or_none(to_float(raw), 4)
                 else:
@@ -472,6 +474,16 @@ def load_moi(path, problems):
     return rows
 
 
+def consensus_coverage(row):
+    """% of the reference with a called base. Results written before this column existed (consensus_stats.tsv
+    with `n_pct`, qc_summary.tsv with `consensus_n_pct`) are converted: 100 - the N percentage."""
+    value = to_float(row.get("consensus_coverage_pct"))
+    if value is None:
+        n_pct = to_float(row.get("n_pct", row.get("consensus_n_pct")))
+        value = None if n_pct is None else max(0.0, 100.0 - n_pct)
+    return round_or_none(value, 3)
+
+
 def load_consensus(path, problems):
     rows = []
     for number, row in enumerate(read_tsv(path), start=2):
@@ -484,7 +496,7 @@ def load_consensus(path, problems):
                     "sample": sample,
                     "length": to_int(row.get("length")),
                     "n_count": to_int(row.get("n_count")),
-                    "n_pct": round_or_none(to_float(row.get("n_pct")), 3),
+                    "consensus_coverage_pct": consensus_coverage(row),
                     "ambiguous_count": to_int(row.get("ambiguous_count")),
                     "status": clean_str(row.get("status")),
                     "reason": clean_str(row.get("reason")),  # 7th column; older tables lack it
@@ -2097,8 +2109,8 @@ def build(
         if row:
             if row["length"] is not None:
                 rec["consensus_length"] = row["length"]
-            if row["n_pct"] is not None:
-                rec["consensus_n_pct"] = row["n_pct"]
+            if row["consensus_coverage_pct"] is not None:
+                rec["consensus_coverage_pct"] = row["consensus_coverage_pct"]
             rec["consensus_status"] = row.get("status")
             rec["consensus_reason"] = row.get("reason")
 
@@ -2393,7 +2405,7 @@ MERGED_QC_COLUMNS = {
     "demix_status": "demix_status",
     "demix_reason": "demix_reason",
     "consensus_length": "consensus_length",
-    "consensus_n_pct": "consensus_n_pct",
+    "consensus_coverage_pct": "consensus_coverage_pct",
     "barcode_version": "barcode_version",
 }
 

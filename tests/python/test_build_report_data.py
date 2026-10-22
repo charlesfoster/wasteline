@@ -91,7 +91,10 @@ def test_full_run(tmp_path):
     assert s["WW_004"]["demix_status"] == "skipped_low_coverage"
     assert "30.10" in s["WW_004"]["demix_reason"]
     assert s["WW_005"]["demix_status"] == "failed"
-    assert s["WW_002"]["consensus_length"] == 29903 and s["WW_003.rep1"]["consensus_n_pct"] == 3.01
+    assert (
+        s["WW_002"]["consensus_length"] == 29903
+        and s["WW_003.rep1"]["consensus_coverage_pct"] == 96.99
+    )
     # demix
     d = data["demix"]
     assert d["WW_001"]["groups"][0] == ["Omicron", 0.55]

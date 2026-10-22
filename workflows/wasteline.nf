@@ -62,6 +62,7 @@ include { protocolSettings       } from '../subworkflows/local/utils_nfcore_wast
 include { defaultPrimerScheme    } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { mutationTablesUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { lineageGroupsFile      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { plotConfigFile         } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { lineageGroupsInfo      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { lineageHierarchyUnsupportedReason } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { hierarchyMayBeMissing } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
@@ -502,7 +503,10 @@ workflow WASTELINE {
             .collectFile(name: 'times.csv', seed: 'Sample,sample_collection_datetime', sort: true, newLine: true)
             .ifEmpty([])
 
-        FREYJA_AGGREGATE_PLOT(ch_aggregate_files, FREYJA_DATA.out.dataset, ch_times)
+        // Optional Freyja plot config (--freyja_plot_config): colours and lineage groups for freyja plot / dash / relgrowthrate
+        def ch_plot_config = channel.value(plotConfigFile())
+
+        FREYJA_AGGREGATE_PLOT(ch_aggregate_files, FREYJA_DATA.out.dataset, ch_times, ch_plot_config)
 
         // What the negative controls contain (they are not in the aggregate): same format, own table
         def ch_controls_aggregated = channel.empty()
@@ -576,7 +580,7 @@ workflow WASTELINE {
                     }
                 def ch_failed_stats = ch_stats.failed
                     .collectFile { meta, _variants, _stats ->
-                        [ "${meta.id}.consensus_stats.tsv", "sample\tlength\tn_count\tn_pct\tambiguous_count\tstatus\treason\n${meta.id}\tNA\tNA\tNA\tNA\tfailed\tconsensus steps did not complete\n" ]
+                        [ "${meta.id}.consensus_stats.tsv", "sample\tlength\tn_count\tconsensus_coverage_pct\tambiguous_count\tstatus\treason\n${meta.id}\tNA\tNA\tNA\tNA\tfailed\tconsensus steps did not complete\n" ]
                     }
                 CONSENSUS_STATS_CONCAT(ch_stats.built.map { _meta, _variants, stats -> stats }.mix(ch_failed_stats).collect())
                 CONSENSUS_CONCAT(CONSENSUS_BCFTOOLS.out.fasta.map { _meta, fasta -> fasta }.collect())
@@ -756,13 +760,13 @@ workflow WASTELINE {
             ch_timeseries_lineages = TIMESERIES_TABLE_LINEAGES.out.table
         }
         if (params.freyja_growth) {
-            FREYJA_RELGROWTHRATE(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset)
+            FREYJA_RELGROWTHRATE(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset, ch_plot_config)
             ch_growth_rates = FREYJA_RELGROWTHRATE.out.growth_rates
             ch_growth_failed = FREYJA_RELGROWTHRATE.out.failed
             ch_growth_inputs = FREYJA_RELGROWTHRATE.out.inputs
         }
         if (params.freyja_dash) {
-            FREYJA_DASH(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset, params.freyja_dash_title, params.freyja_dash_intro)
+            FREYJA_DASH(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset, params.freyja_dash_title, params.freyja_dash_intro, ch_plot_config)
             ch_dashboard = FREYJA_DASH.out.dashboard
         }
 

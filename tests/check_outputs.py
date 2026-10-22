@@ -234,7 +234,16 @@ def check_consensus(c, out, samples, barcodes, reference):
         return
     header = stats_path.read_text().splitlines()[0].split("\t")
     c.check(
-        header == ["sample", "length", "n_count", "n_pct", "ambiguous_count", "status", "reason"],
+        header
+        == [
+            "sample",
+            "length",
+            "n_count",
+            "consensus_coverage_pct",
+            "ambiguous_count",
+            "status",
+            "reason",
+        ],
         "consensus_stats.tsv has 7 columns, reason last",
         str(header),
     )

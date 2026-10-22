@@ -63,7 +63,7 @@ Things to notice:
 - `NEG_CONTAM` raises a run-level error flag (`ntc_reads`, "5998 mapped reads, limit 1000") in the report: that is the
   negative-control check doing its job. Its demix status stays `ok`, and it has its own **Negative controls** section in the report.
 - `qc_summary.tsv` is complete: besides the coverage columns it carries `demix_status`, `demix_reason`, `consensus_length`,
-  `consensus_n_pct` and `barcode_version` for every sample.
+  `consensus_coverage_pct` and `barcode_version` for every sample.
 - With the default `-profile test` barcodes (`--barcodes container`, the full Freyja dataset bundled in the pinned container)
   the mixtures still demix, but Freyja splits lineages into many close relatives (for example `MIX_A` becomes BA.2 0.69,
   AY.4 0.18, AY.1 0.07, ...). The barcode subset gives the clean table above, which is why the command passes it.

@@ -65,7 +65,7 @@ COLUMNS = [
     "demix_status",
     "demix_reason",
     "consensus_length",
-    "consensus_n_pct",
+    "consensus_coverage_pct",
     "barcode_version",
     "primer_trimmed_pct",
     "primer_scheme_check",

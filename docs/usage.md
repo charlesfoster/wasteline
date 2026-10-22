@@ -650,7 +650,7 @@ Reproducing a comparison later needs both datasets: archive them ([section 6](#r
 Every `--freyja_*` option maps to the Freyja option of the same name (`--freyja_eps` to `freyja demix --eps`, and so on):
 `freyja_minq` and `freyja_varthresh` go to `freyja variants`; `freyja_eps`, `freyja_covcut`, `freyja_depthcutoff`,
 `freyja_adapt`, `freyja_autoadapt`, `freyja_relaxedmrca`, `freyja_solver` and `freyja_confirmedonly` go to `freyja demix`;
-`freyja_plot_mincov`, `freyja_plot_interval` (`MS` month, `W` week, `D` day) and `freyja_plot_windowsize` go to `freyja plot`;
+`freyja_plot_mincov`, `freyja_plot_config`, `freyja_plot_interval` (`MS` month, `W` week, `D` day) and `freyja_plot_windowsize` go to `freyja plot`;
 `freyja_boot_n` and `freyja_boot_seed` go to `freyja boot` ([below](#bootstrap-confidence-intervals---freyja_boot)).
 All defaults, ranges and descriptions are in [parameters.md](parameters.md) (the source of truth is `nextflow_schema.json`).
 
@@ -663,11 +663,15 @@ below.
 sample demixes to 100% BA.2 with Freyja's `coverage` 0.0), and crashes on a header-only variants file. wasteline therefore
 computes the % of the genome covered at `--freyja_covcut`x from the depths file and, below `--demix_floor_coverage` (default 25),
 records `skipped_low_coverage` with a reason instead of demixing; between that floor and `--min_genome_coverage_for_demix`
-the sample is demixed and flagged `low_confidence` (see [Low-confidence estimates](#low-confidence-estimates)). The default is **50** (it was 60): it is the _high-confidence threshold_. In real QIAseq wastewater data the median sample has only about 58 % of the genome at >= 10x, mostly because amplicons drop out (half of the samples at 25-50 % had a mean depth above 200x), so 60 threw half of the samples away; below 50 % an estimate rests on too few lineage-defining sites to trust. Freyja's own plot still hides samples below `--freyja_plot_mincov` (60). Do not set it to 0 unless you want that: with the gate
+the sample is demixed and flagged `low_confidence` (see [Low-confidence estimates](#low-confidence-estimates)). The default is **50** (it was 60): it is the _high-confidence threshold_. In real QIAseq wastewater data the median sample has only about 58 % of the genome at >= 10x, mostly because amplicons drop out (half of the samples at 25-50 % had a mean depth above 200x), so 60 threw half of the samples away; below 50 % an estimate rests on too few lineage-defining sites to trust. `freyja_plot.pdf`, the time series, the growth rates and the dashboard follow the same threshold by default (see [The plot](#the-plot)). Do not set it to 0 unless you want that: with the gate
 off the 0.0%-covered `LOWCOV_D` is reported as `ok`, and the near-empty `NEG_E` is recorded as `failed` with the Freyja
 traceback as its reason (the run still completes).
 
-**The plot.** `freyja plot` is broken in Freyja 2.0.3 to 2.0.5 containers (a pandas 3 `TypeError`). The pipeline tries the plain
+### The plot
+
+`--freyja_plot_mincov` is the minimum genome coverage a sample needs to appear in `freyja_plot.pdf` (`freyja plot --mincov`), and is also the coverage filter of the time series, the growth rates and the dashboard. It is **not set by default, which means "follow the pipeline"**: the plot shows every sample that was demixed and is meant to be analysed. That is `--min_genome_coverage_for_demix` (50), or, with `--include_low_confidence true`, the floor `--demix_floor_coverage` (25; 0 when the low-confidence band is off). So lowering the demix threshold (for example `--min_genome_coverage_for_demix 30`) no longer leaves samples out of the plot. An explicit `--freyja_plot_mincov N` always wins, and the value in effect is recorded in `pipeline_info/run_info.json`. Before this change the default was a fixed 60, which hid samples between 50 and 60 % coverage (and, with a lowered threshold, everything below 60 %); to restore that, pass `--freyja_plot_mincov 60`. Freyja keeps a sample only when its coverage is strictly above the value.
+
+`freyja plot` is broken in Freyja 2.0.3 to 2.0.5 containers (a pandas 3 `TypeError`). The pipeline tries the plain
 command, retries with a documented workaround, and, if no PDF results, writes `freyja_plot.failed.txt` (and
 `freyja_plot_times.failed.txt`) with the reason and **continues**. The report draws its own abundance plots and does not
 depend on the PDFs. In a normal run the workaround succeeds; the failure note also appears when no sample exceeds
@@ -681,6 +685,52 @@ ERROR: No samples matching coverage requirements, so no plot will be generated. 
 
 The workaround is a stopgap that will be removed once Freyja fixes the upstream bug.
 
+### Plot colours and lineage groups: `--freyja_plot_config`
+
+`--freyja_plot_config <file.yml>` hands a Freyja plot config (YAML) to `freyja plot` (both PDFs), `freyja dash` and
+`freyja relgrowthrate` as `--config`, so you can fix the colours of the groups and define your own lineage groups. Freyja's
+own sample is `freyja/data/plot_config.yml` in its repository. Two optional sections:
+
+- `VOC`: the colours of the groups in `freyja_plot.pdf` and `freyja_plot_times.pdf` (and the summary views of the
+  dashboard). `name` must equal the label in the **legend of the plot**, which is the group label of the `summarized` column
+  of `freyja_aggregated.tsv` with the brackets and parentheses removed (`XBB.1.5* [Omicron (XBB.1.5.X)]` is shown, and must
+  be written, as `XBB.1.5* Omicron XBB.1.5.X`). A group you do not list keeps Freyja's default colour; the legend text cannot
+  be changed.
+- `Lineages`: your own lineage groups, each with a `name`, `members` (`B.1.617.2*` means that lineage and all its
+  sublineages) and a `color`. Freyja uses them for the lineage-level views: the dashboard and the growth rates (and
+  `freyja plot --lineages`, which the pipeline does not run). Earlier groups take priority over later ones.
+
+`color` is anything matplotlib accepts (`"orange"`, `"#4363d8"`) or `"default"`. Every entry needs all of its keys, or Freyja
+refuses the file: the run still completes, with a `freyja_plot.failed.txt` (or the dashboard/growth-rate failure note)
+holding Freyja's message.
+
+```yaml
+VOC:
+  omicron:
+    name: "Omicron"
+    color: "#e6194b"
+  delta:
+    name: "Delta"
+    color: "#3cb44b"
+  xbb:
+    name: "XBB.1.5* Omicron XBB.1.5.X"
+    color: "#4363d8"
+Lineages:
+  jn1:
+    name: "JN.1 family"
+    members:
+      - "JN.1*"
+    color: "orange"
+```
+
+```bash
+nextflow run charlesfoster/wasteline -profile docker --mode aggregate --previous_results results/ \
+    --freyja_plot_config my_plot_config.yml --outdir results_recoloured
+```
+
+This config affects only Freyja's own PDFs and dashboard. The colours in `report.html` (a colour-blind-safe palette, see
+[report.md](report.md)) are independent and cannot be set with it.
+
 ### Low-confidence estimates
 
 A sample whose genome coverage (% of positions at `--freyja_covcut` or deeper) lies between `--demix_floor_coverage`
@@ -693,7 +743,7 @@ changes: the sample is skipped.
 high-confidence threshold of 50%; treat the estimate with care`); a `.demix` file exists, as for `ok`.
 - The sample **is** in `freyja_aggregated.tsv`, `lineage_summary.csv`/`.xlsx` (status and reason shown, values filled) and the
   report (an amber `low confidence` badge and one `info` flag, `demix_low_confidence`, listing them). Freyja's own plot
-  (`--freyja_plot_mincov` 60) already hides them from `freyja_plot.pdf`.
+  hides them from `freyja_plot.pdf` unless `--include_low_confidence true` (the plot threshold then drops to the floor).
 - It is **left out** of the time series tables, growth rates, the dashboard and the site aggregation, because a weak estimate
   would distort a trend or a weighted average. `--include_low_confidence true` (default `false`) puts these samples back into
   all four; `freyja_aggregated.tsv` itself is never filtered.
@@ -758,7 +808,7 @@ among the non-control samples): `summary/freyja_timeseries.tsv` (summarized line
 `summary/freyja_timeseries_lineages.tsv` (every lineage Freyja reported), both long tables with the columns
 `site collection_date lineage_group abundance abundance_load_weighted n_samples mean_viral_load total_viral_load`. `abundance` is the
 mean over the samples of that site and date (a group a sample lacks counts as 0); `abundance_load_weighted` is the mean weighted by
-`viral_load` (`NA` when no sample has one). Negative controls, samples without a date, samples below `--freyja_plot_mincov`
+`viral_load` (`NA` when no sample has one). Negative controls, samples without a date, samples below the plot coverage threshold (`--freyja_plot_mincov`, see [The plot](#the-plot))
 genome coverage and samples missing from the samplesheet are left out (the process log counts each reason).
 
 **Relative growth rates** (`--freyja_growth`, off by default) run `freyja relgrowthrate` on the last `--freyja_growth_days` (56) days:
@@ -795,9 +845,9 @@ variant caller. Because `freyja_varthresh` is 0.0, the table holds every alterna
 
 The defaults are listed in [parameters.md](parameters.md). `--consensus_iupac false` switches ambiguity codes off (the reference base is left instead, unless one allele reaches `consensus_freq`). When several alternate alleles compete at one position, the site is decided as a whole (ivar reports one row per allele; the reference is the remainder, `1 - sum of the ALT frequencies`): a single allele at or above `consensus_freq` is written as a plain base; otherwise every allele (the reference included) above `consensus_iupac_min_af` (and, for an ALT, with at least `consensus_iupac_min_alt_reads` reads) joins one IUPAC code, e.g. G 0.68 + A 0.29 gives `R` (A/G), not `K` (G/T). `--skip_consensus`
 disables the whole consensus chain and its summaries. Deletions are written as `-`. `consensus_stats.tsv` gives
-`length, n_count, n_pct, ambiguous_count` and a `status`: `ok` (including a clean reference-identical sample), `empty` (no
+`length, n_count, consensus_coverage_pct, ambiguous_count` and a `status`: `ok` (including a clean reference-identical sample), `empty` (no
 usable depth; an all-N sequence of reference length) or `failed`. A consensus is never an empty file, and a sample whose
-consensus steps failed still gets a `failed` row. Do not use `empty`/high-`n_pct` consensuses for sequence-based work.
+consensus steps failed still gets a `failed` row. `consensus_coverage_pct` is the % of the reference positions with a called base (A, C, G, T or an IUPAC code; the rest is `N` or a deletion; 0 for `empty`, `NA` for `failed`). Do not use `empty`/low-coverage consensuses for sequence-based work.
 The consensus depth mask is different from the QC depth (`--qc_min_depth`, below): the same sample can PASS QC and still have
 a few percent `N`.
 

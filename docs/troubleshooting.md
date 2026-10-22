@@ -180,7 +180,7 @@ Errors inside these analyses never fail the run: the table is just absent.
 The time-series tables need at least two distinct collection dates among the non-control samples. The growth rates and the
 dashboard need `--freyja_growth_min_dates` (4) distinct dates within the last `--freyja_growth_days` (56) days spanning at least
 `--freyja_growth_min_span_days` (14) days; otherwise the `.failed.txt` file says what was missing (the run is not failed). Samples without
-a `collection_date`, negative controls and samples below `--freyja_plot_mincov` coverage are not used. The dashboard page fetches its
+a `collection_date`, negative controls and samples below the plot coverage threshold (`--freyja_plot_mincov`, default: the demix threshold) are not used. The dashboard page fetches its
 styling from the internet when opened; offline it looks plain.
 
 ### A lineage groups or sites file stops the run at the start
@@ -374,7 +374,7 @@ ERROR: No samples matching coverage requirements, so no plot will be generated. 
 ```
 
 **Cause.** Two possible reasons, both visible in the file. (a) No sample has genome coverage above `--freyja_plot_mincov`
-(default 60), as above: lower it, for example `--freyja_plot_mincov 30` (this is the case that was reproduced). (b) Freyja's own
+(by default the demix threshold, 50; or an explicit value you passed), as above: lower it, for example `--freyja_plot_mincov 30` (this is the case that was reproduced). (b) Freyja's own
 `freyja plot` is broken in Freyja 2.0.3 to 2.0.5 containers (a pandas 3 `TypeError`, exit status 0 with no PDF). The pipeline
 retries with a documented workaround, which succeeds in normal runs (the real test run needed it); the note is written only if
 that also fails. **Fix.** Use the report's own plots, which do not depend on `freyja plot`; for (a) lower
@@ -396,12 +396,12 @@ In order of likelihood: it is a **negative control** (excluded by default, liste
 `--include_negatives_in_aggregate` to put it in the aggregate); its demix was
 `skipped_low_coverage` or `failed` (see `demix_status.tsv`); in `aggregate` mode its `.demix` file was missing or zero-byte
 (status `missing`, reason `missing demix (new layout)` or `empty demix file (failed in the old pipeline)`); or Freyja's plot
-drops samples below `--freyja_plot_mincov` (the table `freyja_aggregated.tsv` keeps them; the PDF does not).
+drops samples below `--freyja_plot_mincov` (by default the demix threshold, or the low-confidence floor with `--include_low_confidence true`; the table `freyja_aggregated.tsv` keeps them; the PDF does not).
 
 ### The consensus is mostly `N`, or `consensus_stats.tsv` says `empty` or `failed`
 
 Positions with depth below `--consensus_min_depth` (default 10) are written as `N`, so a sample with patchy coverage has a high
-`n_pct`; a sample with no usable depth is `empty` (all `N`, reference length); `failed` means a consensus step failed for that
+a low `consensus_coverage_pct`; a sample with no usable depth is `empty` (all `N`, reference length); `failed` means a consensus step failed for that
 sample (the run continues, and the row is still present; `reason`, the last column of `consensus_stats.tsv`, says why). A sample
 whose variants could not all be applied is `ok` with the skipped variants listed in `reason` and in `consensus_status.json`
 (`warnings`); the report shows an INFO flag. `failed` raises the WARN flag `consensus_failed`. Check `amplicons_dropped` and the coverage track, and lower
@@ -479,7 +479,6 @@ The provenance and report steps always re-run (they contain the run time); 3 of 
 
 | Message                                                                                                                 | Why it is harmless                                                                                                      |
 | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `WARN: Unrecognized config option 'validation.monochromeLogs'`                                                          | nf-core template setting that this Nextflow version does not know. No effect on results.                                |
 | `WARN: nf-core pipelines do not accept positional arguments. The positional argument 'true' has been detected.`         | printed with `-stub-run`/`-stub` on Nextflow 26.04 (the boolean after the flag is seen as an argument). Stub runs work. |
 | `Nextflow 26.10.0 is available - Please consider updating`                                                              | informational. Stay on >= 26.04.                                                                                        |
 | `Negative control NEG_E is not included in the aggregate and plot (use --include_negatives_in_aggregate to include it)` | the default (decision D8); not an error.                                                                                |

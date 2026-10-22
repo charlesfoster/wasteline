@@ -120,7 +120,7 @@ scroll, and column headings wrap so that more columns fit:
 | Amplicons dropped        | `dropped / total` amplicons.                                                                                                                                                                                                                                                                                                                                                |
 | Demix                    | Badge for the demix status: `ok` (green), `low_confidence`, `skipped_low_coverage` and `missing` (amber; `low_confidence` is shown as `low confidence`, with the reason as its tooltip), `failed` (red). A `low_confidence` sample keeps its lineage bar and heatmap row, and is left out of the derived time series unless the run used `--include_low_confidence true`.   |
 | Top group                | The most abundant summarized lineage group and its %.                                                                                                                                                                                                                                                                                                                       |
-| Consensus N %            | % `N` in the consensus.                                                                                                                                                                                                                                                                                                                                                     |
+| Consensus coverage %     | % of the reference positions with a called base (A, C, G, T or an IUPAC code) in the consensus; the rest is `N` or deleted.                                                                                                                                                                                                                                                 |
 | Primer trimmed %         | Only shown when at least one sample has a value. The share of mapped reads from which `ivar trim` removed primer sequence. **Informational**: calibration on the synthetic data showed it does not separate right from wrong primer schemes, so it is not a pass/fail signal; `low_primer_trimming` only appears when you set `--qc_min_primer_trimmed_pct`.                |
 | Primer scheme            | Only shown when at least one sample has a value. Badge from the primer-scheme check: green `ok` (read starts line up with the declared scheme), amber `mismatch` (hover: the best-matching scheme; also a run-level flag), grey `uninformative` (read starts line up with no scheme, for example tagmentation libraries, so no check is possible), blank when not assessed. |
 
@@ -347,7 +347,7 @@ comparison. Samples skipped by the coverage gate have no rows (they are `skipped
 
 ## Consensus genomes
 
-Table per consensus: length, `N` count, `N %`, other (IUPAC) ambiguous bases and status badge (`ok` green, `empty` amber,
+Table per consensus: length, `N` count, `Coverage %` (positions with a called base), other (IUPAC) ambiguous bases and status badge (`ok` green, `empty` amber,
 `failed` red). See [consensus conventions](output.md#consensus-fasta-conventions). Negative controls have none. The
 FASTA itself is `summary/consensus_genomes.fasta`.
 

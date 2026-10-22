@@ -846,6 +846,14 @@ def hierarchyMayBeMissing() {
 }
 
 //
+// The Freyja plot config (--freyja_plot_config; colours and lineage groups for freyja plot, dash and relgrowthrate),
+// or [] (an optional process input left empty) when none is given
+//
+def plotConfigFile() {
+    return params.freyja_plot_config ? file(params.freyja_plot_config, checkIfExists: true) : []
+}
+
+//
 // The lineage groups file in effect: --lineage_groups, else the bundled assets/lineage_groups.csv of the pathogen
 // (conf/pathogens/*.config: lineage_groups_bundled). null = none: the lineage-group summary is then off.
 //

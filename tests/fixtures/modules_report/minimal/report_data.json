@@ -135,7 +135,7 @@
             "demix_status": "ok",
             "demix_reason": null,
             "consensus_length": null,
-            "consensus_n_pct": null,
+            "consensus_coverage_pct": null,
             "barcode_version": "09_17_2026-00-46"
         },
         {
@@ -160,7 +160,7 @@
             "demix_status": "failed",
             "demix_reason": "freyja demix exited 1",
             "consensus_length": null,
-            "consensus_n_pct": null,
+            "consensus_coverage_pct": null,
             "barcode_version": "09_17_2026-00-46"
         }
     ],

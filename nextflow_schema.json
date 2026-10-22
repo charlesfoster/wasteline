@@ -386,11 +386,20 @@
                 },
                 "freyja_plot_mincov": {
                     "type": "number",
-                    "default": 60,
                     "minimum": 0,
                     "maximum": 100,
-                    "description": "`freyja plot --mincov`: minimum genome coverage (%) for a sample to be plotted.",
+                    "description": "Minimum genome coverage (%) for a sample to appear in `freyja_plot.pdf` (`freyja plot --mincov`), the time series, the growth rates and the dashboard. Default: follow the pipeline, i.e. `--min_genome_coverage_for_demix` (50), or with `--include_low_confidence` the floor `--demix_floor_coverage` (25).",
+                    "help_text": "Not set = every sample that was demixed and is meant to be analysed appears. Freyja keeps a sample only when its coverage is strictly above this value. An explicit value always wins (the previous fixed default was 60, which hid samples between 50 and 60 %).",
                     "fa_icon": "fas fa-chart-bar"
+                },
+                "freyja_plot_config": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.(yml|yaml)$",
+                    "description": "Freyja plot config (YAML) passed as `--config` to `freyja plot`, `freyja dash` and `freyja relgrowthrate`: your own colours and custom lineage groups.",
+                    "help_text": "Keys: `VOC` (colours of the groups in the stacked-bar plot `freyja_plot.pdf`) and `Lineages` (groups and colours of the lineage-level views, the dashboard and the growth rates). The HTML report keeps its own palette. See docs/usage.md (Plot colours and lineage groups).",
+                    "fa_icon": "fas fa-palette"
                 },
                 "freyja_plot_interval": {
                     "type": "string",

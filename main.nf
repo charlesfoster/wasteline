@@ -109,7 +109,7 @@ params {
     site_aggregation_min_sites      : Integer = 1
     freyja_boot_n                   : Integer = 100
     freyja_boot_seed                : Integer = 0
-    freyja_plot_mincov              : Float = 60
+    freyja_plot_mincov              : Float? = null
     freyja_plot_windowsize          : Integer = 14
     min_genome_coverage_for_demix   : Float = 50
     demix_floor_coverage            : Float = 25

@@ -1,4 +1,4 @@
-sample	sample_type	collection_date	site	raw_reads	trimmed_reads	mapped_reads	mapped_pct	mean_depth	depth_sd	median_depth	pct_genome_ge_1x	pct_genome_ge_10x	pct_genome_ge_min_depth	amplicons_total	amplicons_dropped	qc_status	qc_reasons	demix_status	demix_reason	consensus_length	consensus_n_pct	barcode_version
+sample	sample_type	collection_date	site	raw_reads	trimmed_reads	mapped_reads	mapped_pct	mean_depth	depth_sd	median_depth	pct_genome_ge_1x	pct_genome_ge_10x	pct_genome_ge_min_depth	amplicons_total	amplicons_dropped	qc_status	qc_reasons	demix_status	demix_reason	consensus_length	consensus_coverage_pct	barcode_version
 NTC_01	negative	2026-09-01	NA	1500	1400	12	0.86	0.05	0.3	0	0.4	0	0	98	98	PASS		NA	NA	NA	NA	NA
 WW_001	sample	2026-09-01	SiteA	250000	240000	230000	95.83	812.4	300.1	790	100.00	99.90	99.80	98	0	PASS		NA	NA	NA	NA	NA
 WW_002	sample	2026-09-08	SiteA	210000	200000	190000	95.00	640.2	280.5	600	100.00	99.00	98.00	98	1	PASS		NA	NA	NA	NA	NA

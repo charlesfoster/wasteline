@@ -10,6 +10,7 @@ process FREYJA_RELGROWTHRATE {
     path aggregated                          // freyja_aggregated.tsv
     path metadata, stageAs: 'metadata.csv'   // samplesheet-like CSV: sample, sample_type, collection_date, site and an optional numeric viral_load
     path dataset                             // Freyja dataset (lineages.yml is passed as --lineageyml if present)
+    path plot_config, stageAs: 'plot_config.yml' // optional Freyja plot config (--config): lineage groups and colours ([] = none)
 
     output:
     path "freyja_growth_rates.csv",        emit: growth_rates, optional: true // Freyja's rel_growth_rates.csv: Lineage, Estimated Advantage, Bootstrap 95% interval
@@ -26,13 +27,14 @@ process FREYJA_RELGROWTHRATE {
     // ext.min_dates (4) and ext.min_span_days (14) are handled here.
     def args = task.ext.args ?: ''
     def days = task.ext.days ?: 56
-    def mincov = task.ext.mincov ?: 60
+    def mincov = task.ext.mincov != null ? task.ext.mincov : 60
     def seed = task.ext.seed ?: 1
     def cutoff = task.ext.min_abundance ?: 0.01
     def min_dates = task.ext.min_dates ?: 4
     def min_span = task.ext.min_span_days ?: 14
     def require_load = args.contains('--scale_by_viral_load') ? '--require-viral-load' : ''
     def own_thresh = args.contains('--thresh') ? 'yes' : 'no'
+    def config_arg = plot_config ? '--config ../plot_config.yml' : '' // freyja runs in fg/
     """
     export MPLCONFIGDIR="\$PWD/.mplconfig"
 
@@ -108,7 +110,7 @@ process FREYJA_RELGROWTHRATE {
     run_attempt() {
         rm -f fg/rel_growth_rates.csv
         ( cd fg && python3 run_freyja.py "\$1" ${seed} relgrowthrate aggregated.tsv metadata.csv \\
-            --days ${days} --mincov ${mincov} \$THRESH_ARG \$LINEAGEYML_ARG --output rel_growth_rates.csv ${args} ) > "\$2" 2>&1 || true
+            --days ${days} --mincov ${mincov} \$THRESH_ARG \$LINEAGEYML_ARG --output rel_growth_rates.csv ${config_arg} ${args} ) > "\$2" 2>&1 || true
     }
     has_rows() { [ -s fg/rel_growth_rates.csv ] && [ "\$(wc -l < fg/rel_growth_rates.csv)" -gt 1 ]; }
 

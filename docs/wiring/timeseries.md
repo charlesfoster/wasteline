@@ -148,7 +148,7 @@ Notes: `--pathogen` and `--lineageyml` conflict only in that `--lineageyml` (set
 | `freyja_dash_title`                 | `'wasteline wastewater dashboard'`               | HTML title                                                                                                   |
 | `freyja_dash_intro`                 | `'Lineage prevalence over time from wasteline.'` | HTML introduction                                                                                            |
 
-The existing `freyja_plot_mincov` (60) is reused for `--min-coverage`/`--mincov`.
+The existing `freyja_plot_mincov` (originally 60; now unset = follows the demix threshold, see usage.md) is reused for `--min-coverage`/`--mincov`.
 
 ## The `viral_load` column (schema and helper changes still to do)
 
