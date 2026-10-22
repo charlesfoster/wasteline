@@ -26,6 +26,11 @@ process FREYJA_VARIANTS {
     # One call runs `samtools mpileup | ivar variants` and writes both files. ivar appends .tsv
     # to the --variants prefix (verified with Freyja 2.0.5); the glob below also copes with a
     # version that does not.
+    # Index the reference first: `freyja variants` pipes samtools mpileup into ivar variants and both try to
+    # create the .fai at the same moment when it is missing; in about 1 run in 30 one read a truncated index and the
+    # reference-base column of the depths file came out all N.
+    samtools faidx ${fasta}
+
     freyja variants ${bam} \\
         --ref ${fasta} \\
         --variants ${prefix}.variants.raw \\
