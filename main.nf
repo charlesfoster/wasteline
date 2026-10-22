@@ -48,6 +48,7 @@ params {
     save_trimmed_reads             : Boolean = false
     save_bam                       : Boolean = true
     skip_primer_trimming           : Boolean = false
+    whole_genome                   : Boolean = false
     freyja_autoadapt               : Boolean = false
     freyja_relaxedmrca             : Boolean = false
     freyja_confirmedonly           : Boolean = false

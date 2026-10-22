@@ -259,6 +259,15 @@ Custom BEDs: tab-separated BED6-like (`contig  start  end  name  pool  strand`),
 otherwise 0). If you use a different amplicon length distribution, expect more or fewer `amplicon_dropout` flags; tune
 `--amplicon_min_depth` and `--qc_max_dropped_amplicons`.
 
+### Several reference sequences: `--whole_genome`, `--freyja_contig`
+
+The reference may have several sequences (PLAN D25): the eight influenza segments, or a genome plus other targets. `--whole_genome` (influenza `H1N1`, `H3N2`,
+`H5Nx`, `H5Nx-cattle`) selects the bundled eight-segment reference; for your own FASTA give `--fasta multi.fa --freyja_contig <name>` (the first word of the
+header of the sequence Freyja demixes, the one its barcodes are tied to). Every sequence gets depth QC, variant calls and a consensus genome (`>sample|contig`
+records); only the `freyja_contig` is demixed. The start-up checks, what changes in the outputs and the limits are in
+[other_pathogens.md](other_pathogens.md#multi-contig-references-and-whole-genome-influenza). A primer BED for such a reference has the contig of each
+amplicon in column 1; lines on contigs that are not in the FASTA are dropped with a warning.
+
 ### Using your own primer scheme
 
 Three ways to give the pipeline a primer scheme that is not bundled (all are checked at start-up, before any work):
@@ -888,7 +897,8 @@ loaded from the internet when the page is opened, so it looks plain offline. The
 
 ## 8. Consensus genomes
 
-One consensus FASTA per **non-negative** sample (`summary/consensus_genomes.fasta`, one record per sample, header = sample ID;
+One consensus FASTA per **non-negative** sample (`summary/consensus_genomes.fasta`, one record per sample, header = sample ID; with a reference of
+several sequences one record per sequence, `>sample|contig`, [see](other_pathogens.md#multi-contig-references-and-whole-genome-influenza);
 `summary/consensus_stats.tsv`). It is built from the same `freyja variants` table (ivar-based) that Freyja uses: there is no second
 variant caller. Because `freyja_varthresh` is 0.0, the table holds every alternate allele and the thresholds are applied
 **here**:
@@ -1455,8 +1465,8 @@ that is bumped automatically:
 ## 17. Not implemented
 
 These are in [PLAN.md](PLAN.md) or discussed as future work but are **not** available (they are not in
-[parameters.md](parameters.md)): the optional `--kraken2_db` screen of negative controls, whole-genome (all eight segments) influenza and MTB (see
-[other_pathogens.md](other_pathogens.md); influenza runs on the HA segment, and the other Freyja pathogens run), resolving historical
+[parameters.md](parameters.md)): the optional `--kraken2_db` screen of negative controls, and MTB (see
+[other_pathogens.md](other_pathogens.md); influenza runs on the HA segment or, with `--whole_genome`, on all eight with HA demixed, and the other Freyja pathogens run), resolving historical
 barcode versions from the Freyja git history, and an alternative aligner. See [development.md](development.md#future-work).
 
 ## Where next

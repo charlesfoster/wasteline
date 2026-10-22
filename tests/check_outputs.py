@@ -6,6 +6,7 @@
                          [--protocol capture | --protocol mixed --amplicon-samples MIX_A,PURE_C] [--extras compare,boot,annotate] [--declared-scheme midnight]
                          [--site-aggregation sites.csv] [--lineage-groups present]
   tests/check_outputs.py <outdir> --mode demix --low-confidence S1,S2
+  tests/check_outputs.py <outdir> --mode full --multicontig        (e2e.sh step 9: a reference with two contigs)
 
 Standard library only. Prints one line per check and exits 1 if any check failed. What is checked depends on
 the mode (an `aggregate` run has no QC or consensus; a `demix` run is only checked for the low-confidence band):
@@ -21,6 +22,10 @@ the mode (an `aggregate` run has no QC or consensus; a `demix` run is only check
   report (mode report)  summary/report.html exists, loads nothing from the network, sample IDs intact
   demix + --low-confidence  the named samples are low_confidence (demixed, in the aggregate and the report, not in
                         the time series), all others keep their expected status
+  --multicontig         a SARS-CoV-2 + measles reference, S1 (both contigs covered) and CAP_MIX (SARS-CoV-2 reads only):
+                        run_info contigs, one contig-coverage and consensus row per sample and contig, consensus records
+                        <sample>|<contig> and the summed length, contig_low_coverage and segments_not_covered for CAP_MIX
+                        only, Freyja's lineages from the SARS-CoV-2 contig alone
 """
 
 import argparse
@@ -1003,6 +1008,139 @@ def check_run_info(c, out, mode):
         )
 
 
+def check_multicontig(c, out):
+    """e2e.sh step 9: the reference has two contigs (SARS-CoV-2 NC_045512.2 and measles NC_001498.1)."""
+    here = Path(__file__).resolve().parent
+    refs = here.parent / "assets" / "references"
+    want = {
+        "NC_045512.2": len(read_fasta(refs / "NC_045512.fasta")["NC_045512.2"]),
+        "NC_001498.1": len(read_fasta(refs / "NC_001498.1.fasta")["NC_001498.1"]),
+    }
+    total = sum(want.values())
+    samples = ["S1", "CAP_MIX"]
+    summary = out / "summary"
+    info = json.loads((out / "pipeline_info" / "run_info.json").read_text())
+    c.check(
+        info.get("contigs") == [{"name": n, "length": ln} for n, ln in want.items()]
+        and info.get("freyja_contig") == "NC_045512.2",
+        "run_info.json: contigs in FASTA order with lengths, freyja_contig",
+        str(info.get("contigs")),
+    )
+
+    coverage = read_tsv(summary / "contig_coverage.tsv")
+    by_key = {(r["sample"], r["contig"]): r for r in coverage}
+    c.check(
+        set(by_key) == {(s, n) for s in samples for n in want} and len(coverage) == 4,
+        "contig_coverage.tsv: one row per sample and contig (2 x 2)",
+        str(sorted(by_key)),
+    )
+    c.check(
+        all(int(by_key[s, n]["length"]) == ln for s in samples for n, ln in want.items()),
+        "contig_coverage.tsv: contig lengths are the reference's",
+    )
+    c.check(
+        float(by_key["S1", "NC_001498.1"]["pct_ge_10x"]) > 90
+        and float(by_key["CAP_MIX", "NC_001498.1"]["pct_ge_10x"]) == 0
+        and float(by_key["CAP_MIX", "NC_045512.2"]["pct_ge_10x"]) > 90,
+        "contig_coverage.tsv: S1 covers both contigs, CAP_MIX only the SARS-CoV-2 one",
+    )
+
+    # consensus: records <sample>|<contig> in reference order, lengths add up to the sample row of consensus_stats.tsv
+    records = read_fasta(summary / "consensus_genomes.fasta")
+    c.check(
+        list(records) == [f"{s}|{n}" for s in sorted(samples) for n in want],
+        "consensus_genomes.fasta: records <sample>|<contig>, samples sorted, contigs in reference order",
+        str(list(records)),
+    )
+    sample_fasta = read_fasta(out / "samples" / "S1" / "consensus" / "S1.consensus.fa")
+    c.check(
+        list(sample_fasta) == ["S1|NC_045512.2", "S1|NC_001498.1"]
+        and all(len(sample_fasta[f"S1|{n}"]) == ln for n, ln in want.items()),
+        "S1 consensus: a record per contig, each as long as its contig",
+    )
+    stats = {r["sample"]: r for r in read_tsv(summary / "consensus_stats.tsv")}
+    c.check(
+        all(int(stats[s]["length"]) == total for s in samples),
+        "consensus_stats.tsv: the sample length is the sum of the contig lengths",
+        str({s: stats[s]["length"] for s in samples}),
+    )
+    contig_stats = {
+        (r["sample"], r["contig"]): r for r in read_tsv(summary / "consensus_stats_contigs.tsv")
+    }
+    c.check(
+        set(contig_stats) == set(by_key)
+        and set(records["CAP_MIX|NC_001498.1"]) == {"N"}
+        and contig_stats["CAP_MIX", "NC_001498.1"]["status"] == "empty"
+        and contig_stats["S1", "NC_001498.1"]["status"] == "ok"
+        and contig_stats["S1", "NC_045512.2"]["status"] == "ok",
+        "consensus_stats_contigs.tsv: S1 ok on both contigs, CAP_MIX's measles contig empty (all N)",
+    )
+    # B.1.1.7 carries 8 S-gene substitutions among others: spot-check three of them on the SARS-CoV-2 record
+    s1 = records["S1|NC_045512.2"]
+    snvs = [(23063, "T"), (23403, "G"), (23604, "A")]  # N501Y, D614G, P681H
+    c.check(
+        all(s1[pos - 1] == base for pos, base in snvs),
+        "S1 consensus carries B.1.1.7 substitutions at 23063, 23403 and 23604",
+    )
+
+    # QC: the whole-genome status stays on the whole genome; the empty contig is a WARN-only reason for CAP_MIX
+    qc = {r["sample"]: r for r in read_tsv(summary / "qc_summary.tsv")}
+    c.check(
+        "contig_low_coverage" in qc["CAP_MIX"]["qc_reasons"]
+        and "contig_low_coverage" not in qc["S1"]["qc_reasons"]
+        and qc["CAP_MIX"]["qc_status"] != "FAIL",
+        "qc_summary.tsv: contig_low_coverage for CAP_MIX only (never a FAIL by itself)",
+        str({s: (qc[s]["qc_status"], qc[s]["qc_reasons"]) for s in samples}),
+    )
+    report = json.loads((summary / "report_data.json").read_text())
+    flags = {f["code"]: f for f in report["run_flags"]}
+    flagged = flags.get("segments_not_covered", {}).get("samples")
+    c.check(
+        "segments_not_covered" in flags and "CAP_MIX" in flagged and "S1" not in flagged,
+        "report_data.json: run flag segments_not_covered names CAP_MIX and not S1",
+        str(flagged),
+    )
+    seg = report.get("segments") or {}
+    c.check(
+        seg.get("freyja_contig") == "NC_045512.2"
+        and [x["name"] for x in seg.get("contigs", [])] == list(want),
+        "report_data.json: segments block with freyja_contig and the contigs",
+    )
+
+    # Freyja got the SARS-CoV-2 contig only: S1 is B.1.1.7 (its truth), CAP_MIX is its capture-truth mixture
+    with open(
+        summary / "freyja_aggregated.tsv", newline=""
+    ) as handle:  # the sample column has no header
+        reader = csv.reader(handle, delimiter="\t")
+        header = next(reader)
+        agg = {r[0]: dict(zip(header, r, strict=False)) for r in reader if r}
+    found = dict(
+        zip(parse_names(agg["S1"]["lineages"]), parse_floats(agg["S1"]["abundances"]), strict=False)
+    )
+    truth = json.loads((here / "data_capture" / "truth.json").read_text())["samples"]["CAP_MIX"]
+    got = dict(
+        zip(
+            parse_names(agg["CAP_MIX"]["lineages"]),
+            parse_floats(agg["CAP_MIX"]["abundances"]),
+            strict=False,
+        )
+    )
+    c.check(
+        found.get("B.1.1.7", 0) >= 0.9
+        and all(
+            abs(got.get(lin, 0) - frac) <= truth["abundance_tolerance"]
+            for lin, frac in truth["true_lineage_fractions"].items()
+        ),
+        "freyja_aggregated.tsv: S1 is B.1.1.7 (>= 0.9) and CAP_MIX its true mixture, demixed on the SARS-CoV-2 contig",
+        f"S1 {found} CAP_MIX {got}",
+    )
+    status = {r["sample"]: r for r in read_tsv(summary / "demix_status.tsv")}
+    c.check(
+        all(status[s]["status"] == "ok" for s in samples),
+        "demix_status.tsv: both samples ok (coverage gate on the SARS-CoV-2 contig)",
+    )
+
+
 def check_low_confidence(c, out, samples, low):
     """Run with the low-confidence band on (PLAN D18): `low` are the samples that must be `low_confidence`.
 
@@ -1104,6 +1242,11 @@ def main(argv=None):
         help="present: the run had a Freyja dataset with a lineage hierarchy, so the lineage summary files must exist",
     )
     parser.add_argument(
+        "--multicontig",
+        action="store_true",
+        help="mode full of e2e.sh step 9 (a reference with two contigs): run the multi-contig checks instead of the standard ones",
+    )
+    parser.add_argument(
         "--low-confidence",
         default="",
         help="comma list of samples that must be low_confidence: run the band checks (with --mode demix) instead of the standard ones",
@@ -1123,6 +1266,12 @@ def main(argv=None):
         amplicon_truth = json.loads((here / "data" / "truth.json").read_text())["samples"]
         samples = {**samples, **{s: amplicon_truth[s] for s in sorted(amplicon_samples)}}
     c = Checker()
+
+    if args.multicontig:
+        check_run_info(c, out, args.mode)
+        check_multicontig(c, out)
+        print(f"\n{c.total - c.failures}/{c.total} checks passed")
+        return 0 if c.failures == 0 else 1
 
     if args.mode == "report":
         # report mode writes only summary/report.html (+ report_data.json when it had to rebuild it)

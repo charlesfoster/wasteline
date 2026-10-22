@@ -120,8 +120,8 @@
                     "exists": true,
                     "mimetype": "text/plain",
                     "pattern": "^\\S+\\.fn?a(sta)?(\\.gz)?$",
-                    "description": "Path to the reference FASTA (one sequence). Default: the bundled reference of the pathogen (conf/pathogens/*.config); required for pathogens without one.",
-                    "help_text": "The BWA index is built from this file once per run. For a pathogen other than SARS-CoV-2, MEASLESgenome, MPX, RSVa, RSVb and the influenza pathogens this must be the reference.fasta that the Freyja barcodes were built on (the pathogen's folder in the Freyja-barcodes repository); a FASTA with several sequences (segmented genomes) is refused.",
+                    "description": "Path to the reference FASTA. Default: the bundled reference of the pathogen (conf/pathogens/*.config); required for pathogens without one.",
+                    "help_text": "The BWA index is built from this file once per run. For a pathogen other than SARS-CoV-2, MEASLESgenome, MPX, RSVa, RSVb and the influenza pathogens this must be the reference.fasta that the Freyja barcodes were built on (the pathogen's folder in the Freyja-barcodes repository). A FASTA with several sequences (a segmented genome, or a genome plus other targets) is accepted only together with `--freyja_contig <name of the sequence Freyja demixes>` (or with `--whole_genome` for the bundled influenza references); every sequence then gets depth QC, variant calls and a consensus genome.",
                     "fa_icon": "far fa-file-code"
                 },
                 "gff": {
@@ -132,6 +132,13 @@
                     "pattern": "^\\S+\\.gff3?(\\.gz)?$",
                     "description": "Path to the reference annotation (GFF3). Default: the bundled annotation (SARS-CoV-2, MPX, RSVa, RSVb, influenza). Optional for the other pathogens; `--annotate_variants` needs it.",
                     "fa_icon": "far fa-file-code"
+                },
+                "whole_genome": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Influenza H1N1, H3N2, H5Nx and H5Nx-cattle: map the reads to all eight segments (bundled `<HA accession>_wg.fasta`) instead of the HA segment only.",
+                    "help_text": "Freyja still demixes the HA segment only (its barcodes cover nothing else); the other seven segments get depth QC, variant calls and a consensus genome, and the report shows a per-segment coverage table. B/Victoria (FLU-B-VIC) has no whole-genome reference yet. For any other multi-sequence reference give `--fasta` and `--freyja_contig` instead. See docs/other_pathogens.md.",
+                    "fa_icon": "fas fa-dna"
                 },
                 "primer_scheme": {
                     "type": "string",
@@ -211,6 +218,12 @@
                     "description": "Set by conf/pathogens/*.config, not for users: the bundled scheme used in mode `full` when no scheme or BED is given (SARS-CoV-2: `qiagenv1`; none for other pathogens, which then stop with a message).",
                     "hidden": true,
                     "fa_icon": "fas fa-cut"
+                },
+                "freyja_contig": {
+                    "type": "string",
+                    "description": "The name of the reference sequence Freyja demixes when `--fasta` has several (the first word of its FASTA header). Set by conf/pathogens/*.config with `--whole_genome`; give it yourself with a custom multi-sequence `--fasta`. Null for a single-sequence reference.",
+                    "hidden": true,
+                    "fa_icon": "fas fa-dna"
                 }
             }
         },

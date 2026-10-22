@@ -2,13 +2,14 @@
 
 wasteline was built for SARS-CoV-2, but Freyja also deconvolves other pathogens (`freyja update --pathogen X`), and
 `--pathogen X` now works end to end for the single-sequence ones (PLAN D22). RSV-A and RSV-B (`RSVa`, `RSVb`), mpox (`MPX`), measles and the
-five influenza pathogens (`H1N1`, `H3N2`, `FLU-B-VIC`, `H5Nx`, `H5Nx-cattle`; the HA segment only, see "Running influenza")
+five influenza pathogens (`H1N1`, `H3N2`, `FLU-B-VIC`, `H5Nx`, `H5Nx-cattle`; the HA segment only, see "Running influenza"; all eight segments with
+`--whole_genome`, see "Multi-contig references and whole-genome influenza")
 are validated and bundle their reference (PLAN D23, D24, D26). Primer schemes are bundled for measles, mpox and RSV-A/RSV-B only (PLAN D26, D27, see
 "Primer schemes"). Everything is opt-in: with the default
 `--pathogen SARS-CoV-2` nothing changes. Design as built: [wiring/multi_pathogen.md](wiring/multi_pathogen.md).
 
-**Two things decide whether a pathogen works.** The reference must be one sequence (a multi-sequence FASTA is refused; Freyja's
-influenza barcodes cover only the HA segment, which is one sequence of 1.7-1.9 kb, so influenza qualifies), and it must be the
+**Two things decide whether a pathogen works.** The reference must be one sequence (or, PLAN D25, several with `--freyja_contig` naming the one the
+barcodes are tied to; Freyja's influenza barcodes cover only the HA segment, which is one sequence of 1.7-1.9 kb), and it must be the
 **reference FASTA** that Freyja's barcodes are tied to: the `reference.fasta` in the pathogen's folder of the
 [Freyja-barcodes](https://github.com/andersen-lab/Freyja-barcodes) repository (a different reference gives silently wrong
 results). For RSV-A, RSV-B, mpox, measles and influenza it is bundled; for the others you pass `--fasta`. A primer scheme for your amplicon
@@ -37,9 +38,9 @@ known composition (no real reads of these pathogens were available), see the val
 
 **Unsupported pathogens stop at start-up** with the reason, before any work is done:
 
-- **Whole-genome influenza** is not a refused pathogen any more (PLAN D24): the five influenza pathogens run on their HA segment.
-  What stays refused is a `--fasta` with more than one sequence (any pathogen), because the depth QC, amplicon coverage,
-  low-depth masking, consensus and primer checks assume one contig; see "What is supported and what Route B would add" below.
+- **Whole-genome influenza** is not a refused pathogen any more (PLAN D24, D25): the five influenza pathogens run on their HA segment, and
+  four of them on all eight segments with `--whole_genome`. A `--fasta` with more than one sequence is refused unless `--freyja_contig` names the
+  sequence Freyja demixes; see "Multi-contig references and whole-genome influenza" below.
 - **MTB**: _Mycobacterium tuberculosis_ is a 4.4 Mb bacterial genome with feather-only Freyja barcodes. The pipeline is
   built and tested for viral genomes of 10-200 kb (per-position depth tables, QC, consensus and the dropout/mutation tables
   are not sized for 4.4 Mb) and nothing has been validated on bacterial data. Supporting it needs those steps scaled and
@@ -557,8 +558,8 @@ this pathogen.
 Freyja's influenza barcodes (`H1N1`, `H3N2`, `FLU-B-VIC`, `H5Nx`, `H5Nx-cattle`) describe **the HA segment only**. Each pathogen's
 folder in Freyja-barcodes holds a single-sequence HA `reference.fasta` (1.7-1.9 kb), which is bundled, so influenza runs on the existing
 single-contig code (PLAN D24, "Route A"). Freyja deconvolves the subtype's lineages from HA mutations alone, whatever the other seven
-segments do; reassortants and the other segments are not analysed. If you need whole-genome consensus sequences or per-segment QC, see
-"What is supported and what Route B would add" below.
+segments do; reassortants and the other segments are not analysed. If you need whole-genome consensus sequences or per-segment QC, use
+`--whole_genome` (all eight segments, HA still the only one demixed): "Multi-contig references and whole-genome influenza" below.
 
 | `--pathogen`  | Bundled reference (`assets/references/`)                | Length  | Lineages | Barcode columns checked | Barcode dataset (`latest`, today) |
 | ------------- | ------------------------------------------------------- | ------- | -------- | ----------------------- | --------------------------------- |
@@ -770,7 +771,102 @@ Not run: real influenza reads; a real influenza primer panel (the BED is a toy t
 `FLU-B-VIC`, `H5Nx` and `H5Nx-cattle` at lower depth or with amplicon-style samples; `tests/e2e.sh` for these pathogens; a comparison
 of `latest/` with the newest dated folder of Freyja-barcodes.
 
+## Multi-contig references and whole-genome influenza
+
+PLAN D25, phase 1. A reference FASTA may have **several sequences**: the eight segments of an influenza genome, or a genome plus other
+targets. Freyja still demixes **one** of them (the one its barcodes are tied to, the profile fact / parameter `freyja_contig`); every sequence
+gets depth QC, variant calls and a consensus genome, and the report shows what each segment did. Nothing changes for a single-sequence
+reference: SARS-CoV-2, RSV, measles, mpox and HA-only influenza produce byte-identical results (checked, see the validation below).
+
+```bash
+# influenza, all eight segments (bundled references; HA is demixed)
+nextflow run charlesfoster/wasteline -profile docker --pathogen H3N2 --whole_genome --protocol capture \
+    --input samplesheet.csv --outdir results --annotate_variants
+
+# your own multi-sequence reference: the sequence Freyja demixes is named with its FASTA header's first word
+nextflow run charlesfoster/wasteline -profile docker --pathogen SARS-CoV-2 --fasta multi.fa --freyja_contig NC_045512.2 \
+    --gff multi.gff3 --protocol capture --input samplesheet.csv --outdir results
+```
+
+- **`--whole_genome`** (`H1N1`, `H3N2`, `H5Nx`, `H5Nx-cattle`) switches the profile to the bundled eight-segment reference and annotation,
+  `assets/references/<HA accession>_wg.fasta` + `.gff3` (HA record first; contig names are the accessions, see
+  [wiring/influenza_wg_references.md](wiring/influenza_wg_references.md)), and sets `freyja_contig` to the HA accession. **`FLU-B-VIC` has no
+  whole-genome reference** (there is no consecutive eight-segment set for the strain): `--whole_genome` stops at start-up with a message saying so.
+  The other pathogens stop with a message naming the four that have one. The default stays HA only (PLAN D24).
+- **A custom reference** needs `--freyja_contig <name>`; it is refused without one (a multi-sequence FASTA), refused when the name is not a
+  sequence of the FASTA, and refused for a single-sequence FASTA. Contig names are the first word of the FASTA header and must be unique.
+  `--gff`, if given, should use the same names: sequence names of the GFF3 that are not in the FASTA give a warning (their features
+  are ignored). The Freyja barcodes' positions must be those of the `freyja_contig` sequence.
+- **Modes**: `full` and `demix` (`--mode demix --previous_results <results of a multi-contig run>` with the same reference works: the depths
+  and variants of the earlier run hold every contig and the demix gets the `freyja_contig` view).
+
+What is different from a single-contig run (everything else is the same):
+
+| Part                                         | Multi-contig behaviour                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mapping, `freyja variants`                   | one BWA index and one `freyja variants` call over all contigs (no `--refname`): `samples/<s>/freyja/<s>.depths` and `<s>.variants.tsv` hold every contig                                                                                                                                                                          |
+| Freyja demix, bootstraps                     | get the `freyja_contig` rows of the two files only (`FREYJA_SELECT_CONTIG`, not published; Freyja cannot take depths of several contigs: positions collide and coverage is diluted). The demix coverage gate (`genome_coverage_pct`, `--min_genome_coverage_for_demix`) is that of the `freyja_contig`; its text names the contig |
+| QC                                           | `qc_status` is on the **whole genome** with the usual thresholds (length-weighted). New WARN-only reason `contig_low_coverage` when any contig has `pct_ge_min_depth` below `--qc_pass_min_pct`; it never FAILs a sample by itself. Negative-control rule unchanged                                                               |
+| Per-contig tables                            | `summary/contig_coverage.tsv` (sample, contig, length, depth, `pct_ge_*`, amplicon counts) and `summary/consensus_stats_contigs.tsv`; written only for multi-contig runs                                                                                                                                                          |
+| Amplicons                                    | `amplicon_coverage.tsv` gets a trailing `contig` column; the dropout impact uses the `freyja_contig` amplicons only (the lineage-informative sites are on that contig). A primer BED's lines on contigs that are not in the FASTA are dropped as before (with a warning that names the reference's contigs)                       |
+| Consensus                                    | one record per contig, `>sample\|contig` (a single-contig run keeps `>sample`), in reference order, N-masked per contig (a contig without coverage is all `N`); `consensus_stats.tsv` is the whole genome (`length` = the sum), the per-contig rows are in `consensus_stats_contigs.tsv`                                          |
+| Variant annotation                           | `bcftools csq` with the multi-contig GFF3 (the first consequence of a variant only, as before; see the limits)                                                                                                                                                                                                                    |
+| Unexplained mutations, mutations of interest | work on the `freyja_contig` (variants, depths, GFF3 seqid, reference sequence)                                                                                                                                                                                                                                                    |
+| Report                                       | coverage tracks over all segments with separators, a "Segments" table, the run flag `segments_not_covered`, "Freyja demixes `<contig>` only" under the title ([report.md](report.md))                                                                                                                                             |
+| `run_info.json`                              | `contigs` (`[{name, length}]` in FASTA order) and `freyja_contig`, multi-contig runs only                                                                                                                                                                                                                                         |
+
+**Limits**
+
+- Only the `freyja_contig` is demixed: the other segments have no lineage estimate (Freyja's influenza barcodes cover HA only). Reassortants are not detected.
+- The bundled whole-genome references are single historical strains of NCBI "complete cds" records (no or short UTRs: the segment ends map poorly and the
+  consensus there is reference-biased). The internal segments of recent viruses differ from them (H5N1 Goose/Guangdong/1/96 internal genes are 10-15 %
+  divergent from 2.3.4.4b cattle viruses, so `H5Nx-cattle --whole_genome` maps those segments poorly and its consensus there is closer to the reference
+  than to the sample). Expect low mapping and a reference-biased consensus away from HA/NA.
+- In the shared first exon of M1/M2 and NS1/NEP (and PB1-F2 inside PB1) `bcftools csq` reports both genes; the pipeline keeps the first (M1, NS1, PB1), so a
+  change that affects M2 or NEP there is shown under M1 or NS1. PA-X is not annotated.
+- The primer-scheme check (`primer_scheme_check`) scores the sample against the bundled SARS-CoV-2 schemes only; it is skipped for the influenza references.
+  An amplicon panel for a multi-contig reference works with `--primer_bed` whose contigs are the FASTA's; amplicon names must be unique per contig (the table
+  keys by contig and name). Only `--protocol capture` has been run on a multi-contig reference (see below).
+- The `contig_low_coverage` threshold is `--qc_pass_min_pct`; there is no separate parameter.
+
+### Validation (multi-contig, simulated reads)
+
+**Two contigs, `tests/e2e.sh` step 9.** `multi.fa` = SARS-CoV-2 `NC_045512.2` + measles `NC_001498.1`, `--freyja_contig NC_045512.2 --protocol capture`.
+`S1` is simulated (`tests/simulate_pathogen_mixture.py --freyja-contig`): 100 % B.1.1.7 on the SARS-CoV-2 contig, read pairs drawn from both contigs by length
+(300x); `CAP_MIX` is the step 6 probe-capture pair (SARS-CoV-2 reads only). Results: `contig_coverage.tsv` has 2 x 2 rows (`S1` 296.7x / 297.2x, both
+contigs >= 99.9 % at 10x; `CAP_MIX` 45.3x on SARS-CoV-2, 0 on measles); the consensus records are `S1|NC_045512.2`, `S1|NC_001498.1` (`CAP_MIX|...`),
+`consensus_stats.tsv` has `length` 45797 = 29903 + 15894, `CAP_MIX`'s measles contig is `empty` (all `N`); `S1` demixes to B.1.1.7 and carries the B.1.1.7
+substitutions at 23063, 23403, 23604 in its consensus; `CAP_MIX` gets `contig_low_coverage` (and WARN, since 65.3 % of the genome is at 10x) and the report flag
+`segments_not_covered`; `S1` gets neither. The `CAP_MIX` demix file is **byte-identical** to the single-contig capture run's. `--mode demix --previous_results`
+on these results with the same reference reproduced both demix files, `contig_coverage.tsv` and the consensus byte for byte.
+
+**Whole-genome H3N2** (docker, Freyja 2.0.6, `--pathogen H3N2 --whole_genome --protocol capture --barcodes latest` (dataset 2025-12-09) `--annotate_variants`,
+two samples, 29 tasks). Reads: `tests/simulate_pathogen_mixture.py --reference CY163680.1_wg.fasta --freyja-contig CY163680.1`, shotgun, 300x over all eight
+segments (13,367 bp), 2 x 150 bp, a mixture of `H3N2-D` 30 % and `H3N2-G.1` 70 % on HA (the other segments are the reference). `wg_mix2_noNS` has no reads of the NS segment.
+
+| Sample         | Truth (read pairs on HA: realised)      | Recovered (`freyja_aggregated.tsv`)                         | Demix coverage (HA) | QC   | QC reason             |
+| -------------- | --------------------------------------- | ----------------------------------------------------------- | ------------------- | ---- | --------------------- |
+| `wg_mix2`      | D 30 %, G.1 70 % (D 33.1 %, G.1 66.9 %) | D **35.5 %**, G.1 **64.0 %** (+ G.1.1.2 0.3 %, G.1.3 0.3 %) | 99.25 %             | PASS |                       |
+| `wg_mix2_noNS` | the same, no NS reads                   | D **32.5 %**, G.1 **67.3 %** (+ B.1.2.1 0.3 %)              | 99.25 %             | WARN | `contig_low_coverage` |
+
+Per-segment coverage of `wg_mix2` (`contig_coverage.tsv`): mean depth 279-304x on every segment (HA 285x), 98.5-99.3 % of positions at 10x; consensus `N` 0.7-1.5 %
+per segment (119 `N` of 13,367 in all). In `wg_mix2_noNS` the NS segment (`CY163684.1`) has 0 reads: 0 % at 10x, an all-`N` consensus (status `empty`), and the run flag
+`segments_not_covered` names it, while the whole genome is at 92.8 % at 10x. The same HA reads run **HA only** (`--pathogen H3N2`, no `--whole_genome`) give
+**identical** abundances and HA depth (285x). `annotated_variants.tsv` has 218 rows, all on HA (the simulated mutations are only on HA).
+
+**Variants on segments that are not demixed.** A third sample (`seg_mut`, 100 % `H3N2-D` on HA at 300x) has five SNVs on **NA** (`CY163682.1`: 68, 71, 308) and **M**
+(`CY163681.1`: 74, 134), third codon positions inside the CDS (reads from the mutated genome, mapped to the unmutated reference). All five are called, applied in the
+consensus record of their segment (`seg_mut|CY163682.1`, `seg_mut|CY163681.1`) and annotated by `--annotate_variants` with the right gene and amino-acid change
+(`NA C21R`, `NA F22L`, `NA S101P`, `M1 K21E`, `M1 A41T`; VAF 0.995-1); Freyja demixes HA only (`H3N2-D` 100 %), and the table of unexplained mutations (HA only) is empty.
+
+Not run: real influenza reads; a real whole-genome panel (amplicon protocol on a multi-contig reference); `H1N1`, `H5Nx` and `H5Nx-cattle` with `--whole_genome` (only
+their reference files and profile entries are tested: pytest `test_pathogen_profiles_are_consistent`); `--freyja_boot`; `--mode demix` for the influenza results
+(only for the two-contig SARS-CoV-2 + measles run); Singularity and conda for these runs.
+
 ## What is supported and what Route B would add
+
+**Route B (all eight segments) is implemented** as `--whole_genome` (PLAN D25 phase 1, the section above). The table below was the list of what it
+had to change and is kept for the reasoning; every row has been done except the whole-segment RT-PCR primer notion.
 
 **Supported (PLAN D24, "Route A")**: the HA segment of the five influenza pathogens as a single-sequence reference, with everything the
 single-contig pipeline does (QC, amplicon coverage, HA consensus, variant annotation, dropout impact, unexplained mutations, report),
@@ -778,8 +874,7 @@ and a whole-genome primer panel tolerated by dropping the lines of the contigs t
 other seven segments (no consensus, QC or variants for them), per-segment reassortant deconvolution (Freyja does not offer it), and
 several subtypes in one run (one run per `--pathogen`).
 
-**Route B, all eight segments** (needed only for whole-genome consensus, per-segment QC and variants; not implemented). Every item
-below assumes one contig today:
+**Route B, all eight segments** (whole-genome consensus, per-segment QC and variants; implemented, see above). The table lists the single-contig assumptions that were removed:
 
 | Part                                                         | Where                                                                                                                                                                         | What would change                                                                                                                                                                                                                                               |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -811,7 +906,7 @@ becomes worthwhile only if whole-genome consensus sequences or per-segment QC ar
   (reference, primer BED contig names, barcodes date).
 - Mpox: the 6,422 bp inverted terminal repeats are in the reference twice and in the barcodes as separate columns; reads from either copy map to both,
   so a mutation of a repeat is split between two places and can show up as an "unexplained mutation" at the mirror position (see "Running mpox").
-- Influenza: HA only, one run per subtype; the negative-control thresholds (`--ntc_max_genome_coverage_pct`, `--ntc_max_mapped_reads`)
+- Influenza: HA demixed only (also with `--whole_genome`), one run per subtype; the negative-control thresholds (`--ntc_max_genome_coverage_pct`, `--ntc_max_mapped_reads`)
   do not scale to a 1.75 kb reference (a few stray reads fail a negative control); abundances of mixtures are noisy below about 50x
   of HA even when QC says PASS; a lineage far from the reference (the `Am-nonGsGD` lineage of `H5Nx`, 13 %) maps poorly and is
   under-estimated; the `H5Nx-cattle` barcodes have 13 columns that do not agree with their own reference and many indistinguishable

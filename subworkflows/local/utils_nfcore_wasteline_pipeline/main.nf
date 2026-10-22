@@ -433,7 +433,11 @@ def warnDroppedBedLines(reports) {
     def lines = reports.sum { report -> report.dropped_lines } ?: 0
     if (lines) {
         def contigs = reports.collectMany { report -> report.dropped_contigs }.unique()
-        log.warn("Primer BED: ${lines} line(s) on ${contigs.size()} contig(s) that are not in the reference FASTA '${file(params.fasta).name}' (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}) were dropped; the reference's own lines are used for trimming and amplicon coverage. Expected for a whole-genome panel run against one segment (for example influenza HA).")
+        def reference_contigs = fastaContigs(file(params.fasta))
+        def expected = reference_contigs.size() > 1
+            ? "The reference has ${reference_contigs.size()} sequences (${reference_contigs.take(10).join(', ')}${reference_contigs.size() > 10 ? ', ...' : ''}); lines on any other contig cannot be matched to it."
+            : "Expected for a whole-genome panel run against one segment (for example influenza HA)."
+        log.warn("Primer BED: ${lines} line(s) on ${contigs.size()} contig(s) that are not in the reference FASTA '${file(params.fasta).name}' (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}) were dropped; the reference's own lines are used for trimming and amplicon coverage. ${expected}")
     }
 }
 
@@ -490,8 +494,9 @@ def checkSampleBeds(metas) {
 
 //
 // Freyja pathogens (`freyja update --pathogen` choices) that wasteline cannot run, with the reason and what would be
-// needed (PLAN D22); null for every other name. The single-contig FASTA check in validateInputParameters catches
-// a multi-segment reference of any other pathogen. The influenza pathogens are supported on the HA segment (PLAN D24).
+// needed (PLAN D22); null for every other name. The FASTA check in validateReferenceContigs accepts a multi-sequence
+// reference only together with --freyja_contig. The influenza pathogens are supported on the HA segment (PLAN D24) or, with
+// --whole_genome, on all eight segments with HA demixed (PLAN D25).
 //
 def unsupportedPathogenReason(pathogen) {
     if (pathogen == 'MTB') {
@@ -574,11 +579,11 @@ def validateInputParameters(mode) {
             if (!params.fasta) {
                 error("--fasta is required with --pathogen ${params.pathogen}: wasteline bundles a reference only for the pathogens that have a file in conf/pathogens/. Pass the reference.fasta that the Freyja barcodes of ${params.pathogen} were built on (the pathogen's folder in https://github.com/andersen-lab/Freyja-barcodes): barcodes are tied to their reference and a different one gives silently wrong results. --gff (annotation) is optional. See docs/other_pathogens.md.")
             }
-            def contigs = fastaContigs(file(params.fasta, checkIfExists: true))
-            if (contigs.size() != 1) {
-                error("The reference FASTA '${params.fasta}' has ${contigs.size()} sequences (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}): wasteline supports single-contig references only (depth QC, amplicon coverage, low-depth masking, consensus and the primer checks assume one contig). Multi-segment genomes need per-contig handling throughout the pipeline, which is not implemented (for influenza, wasteline bundles the single-sequence HA reference of each Freyja influenza pathogen: use --pathogen H1N1, H3N2, FLU-B-VIC, H5Nx or H5Nx-cattle without --fasta). See docs/other_pathogens.md.")
-            }
+            validateReferenceContigs()
         }
+    }
+    if (params.whole_genome && !(mode in ['full', 'demix'])) {
+        log.warn("--whole_genome selects the reference of the reads: it is only used by --mode full and demix and is ignored in --mode ${mode}")
     }
     if (params.barcodes == 'container' || params.compare_barcodes == 'container') {
         if (params.pathogen != params.freyja_container_pathogen) {
@@ -820,6 +825,79 @@ def fastaContigs(fasta) {
     return lines
         .findAll { line -> line.startsWith('>') }
         .collect { line -> line.substring(1).trim().split(/\s+/)[0] }
+}
+
+//
+// [ [ name: ..., length: ... ] ... ] of the FASTA records in file order (name = first word of the header), gzipped or not
+//
+def fastaRecords(fasta) {
+    def lines = fasta.name.endsWith('.gz')
+        ? new java.util.zip.GZIPInputStream(fasta.newInputStream()).newReader().readLines()
+        : fasta.readLines()
+    def records = []
+    lines.each { line ->
+        if (line.startsWith('>')) {
+            records << [ name: line.substring(1).trim().split(/\s+/)[0], length: 0 ]
+        }
+        else if (records) {
+            records[-1].length += line.trim().length()
+        }
+    }
+    return records
+}
+
+//
+// Does the reference FASTA have more than one sequence (PLAN D25)? Every code path for several contigs is guarded by
+// this, so single-contig runs are untouched. Modes without a reference have no FASTA to look at. A run only gets past
+// start-up with several sequences when --freyja_contig names one of them (validateReferenceContigs).
+//
+def multiContig() {
+    return params.fasta && fastaContigs(file(params.fasta)).size() > 1
+}
+
+//
+// The checks on the reference FASTA of a run that maps reads or demixes variants (modes full and demix): one sequence is
+// the normal case; several are allowed only with --freyja_contig naming one of them, and the contig names (the first word of
+// each header) must be unique (PLAN D25).
+//
+def validateReferenceContigs() {
+    def contigs = fastaContigs(file(params.fasta, checkIfExists: true))
+    def shown = "${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}"
+    if (params.whole_genome && !params.freyja_contig) {
+        error("--whole_genome is not available for --pathogen ${params.pathogen}: " + (params.pathogen == 'FLU-B-VIC'
+            ? "there is no whole-genome B/Victoria reference (no consecutive eight-segment set exists for the strain), so FLU-B-VIC stays HA-only. Run without --whole_genome, or give your own multi-sequence reference with --fasta <multi.fa> --freyja_contig <name of the HA sequence>."
+            : "whole-genome references are bundled for the influenza pathogens H1N1, H3N2, H5Nx and H5Nx-cattle only. For another multi-sequence reference give --fasta <multi.fa> --freyja_contig <name of the sequence Freyja demixes>.") + " See docs/other_pathogens.md.")
+    }
+    if (contigs.isEmpty()) {
+        error("The reference FASTA '${params.fasta}' has no sequence (no '>' header line)")
+    }
+    def duplicates = contigs.findAll { name -> contigs.count(name) > 1 }.unique()
+    if (duplicates) {
+        error("The reference FASTA '${params.fasta}' has several sequences whose header starts with the same word (${duplicates.join(', ')}): wasteline names contigs by the first word of the FASTA header, so these must be unique.")
+    }
+    if (contigs.size() == 1) {
+        if (params.freyja_contig) {
+            error("--freyja_contig '${params.freyja_contig}' is only for a reference FASTA with several sequences, but '${params.fasta}' has one (${contigs[0]})." + (params.whole_genome ? " --whole_genome selects the bundled whole-genome reference; a --fasta of your own replaces it." : "") + " Drop --freyja_contig for a single-sequence reference.")
+        }
+        return
+    }
+    if (!params.freyja_contig) {
+        error("The reference FASTA '${params.fasta}' has ${contigs.size()} sequences (${shown}): a multi-sequence reference needs --freyja_contig <name>, the sequence Freyja demixes (the one the barcodes were built on). The other sequences get depth QC, variant calls and a consensus genome, but no lineage demixing. For influenza, --whole_genome selects the bundled eight-segment reference of --pathogen H1N1, H3N2, H5Nx or H5Nx-cattle. See docs/other_pathogens.md.")
+    }
+    if (!(params.freyja_contig in contigs)) {
+        error("--freyja_contig '${params.freyja_contig}' is not one of the sequences of the reference FASTA '${params.fasta}' (${shown}): give the first word of a FASTA header.")
+    }
+    if (params.gff) {
+        def gff = file(params.gff, checkIfExists: true)
+        def lines = gff.name.endsWith('.gz')
+            ? new java.util.zip.GZIPInputStream(gff.newInputStream()).newReader().readLines()
+            : gff.readLines()
+        def seqids = lines.findAll { line -> line.trim() && !line.startsWith('#') }.collect { line -> line.split('\t')[0] }.unique()
+        def unmatched = seqids - contigs
+        if (unmatched) {
+            log.warn("The annotation '${gff.name}' has sequence names that are not in the reference FASTA (${unmatched.take(10).join(', ')}${unmatched.size() > 10 ? ', ...' : ''}): its features on them are ignored (no amino-acid consequences there). The FASTA sequences are ${shown}.")
+        }
+    }
 }
 
 //

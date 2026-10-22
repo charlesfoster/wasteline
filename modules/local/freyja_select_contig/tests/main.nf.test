@@ -1,0 +1,31 @@
+nextflow_process {
+
+    name "Test Process FREYJA_SELECT_CONTIG"
+    script "../main.nf"
+    process "FREYJA_SELECT_CONTIG"
+    tag "modules"
+    tag "modules_local"
+    tag "freyja_select_contig"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/assets/samplesheet.csv"), file("\$projectDir/assets/schema_input.json") ]
+                input[1] = 'NC_045512.2'
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.view.collect { m, v, d -> [ file(v.toString()).name, file(d.toString()).name ] }).match() }
+            )
+        }
+    }
+}

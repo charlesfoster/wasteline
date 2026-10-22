@@ -27,7 +27,10 @@ process UNEXPLAINED_MUTATIONS {
     def demix_arg = demix ? "--demix ${demix}" : ''
     def gff_arg = gff && reference ? "--gff ${gff} --reference ${reference}" : ''
     // the default significance level (0.05 per tested position) follows the length of the reference
-    def length_arg = reference ? "--genome-length \$(awk '/^>/ { n++; next } n == 1 { total += length(\$0) } END { print total + 0 }' ${reference})" : ''
+    // several reference contigs (PLAN D25): the variants are those of one contig (ext.contig), whose length is the genome length
+    def contig = task.ext.contig
+    def contig_arg = contig ? "--contig ${contig}" : ''
+    def length_arg = reference && contig ? "--genome-length \$(awk -v c='${contig}' '/^>/ { keep = (substr(\$1, 2) == c); next } keep { total += length(\$0) } END { print total + 0 }' ${reference})" : reference ? "--genome-length \$(awk '/^>/ { n++; next } n == 1 { total += length(\$0) } END { print total + 0 }' ${reference})" : ''
     """
     unexplained_mutations.py \\
         --variants ${variants} \\
@@ -36,6 +39,7 @@ process UNEXPLAINED_MUTATIONS {
         ${demix_arg} \\
         ${gff_arg} \\
         ${length_arg} \\
+        ${contig_arg} \\
         ${args} \\
         --output ${prefix}.unexplained_mutations.tsv
     """

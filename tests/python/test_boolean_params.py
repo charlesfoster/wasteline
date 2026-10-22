@@ -129,6 +129,7 @@ def test_pathogen_profiles_are_consistent():
             "freyja_container_pathogen",
             "primer_schemes_bundled",
             "primer_scheme_default",
+            "freyja_contig",
         ):
             assert re.search(rf"^\s*{fact}\s*=", text, re.MULTILINE), (
                 f"{stem}.config does not set {fact}"
@@ -138,9 +139,27 @@ def test_pathogen_profiles_are_consistent():
         if named:
             assert named.group(1) in props["pathogen"]["enum"], stem
         # a bundled reference is one sequence and its bundled annotation is on that sequence
-        paths = re.findall(
-            r'^\s*(?:fasta|gff)\s*=\s*"\$\{projectDir\}/([^"]+)"', text, re.MULTILINE
-        )
+        paths = [
+            path
+            for line in re.findall(r"^\s*(?:fasta|gff)\s*=.*$", text, re.MULTILINE)
+            for path in re.findall(r'"\$\{projectDir\}/([^"]+)"', line)
+        ]
+        # --whole_genome (PLAN D25): the profile may name a second, multi-record reference + annotation, and the
+        # HA contig that Freyja demixes in it (freyja_contig); the HA record comes first
+        wg_paths = re.findall(r'"\$\{projectDir\}/([^"]*_wg\.[^"]+)"', text)
+        if wg_paths:
+            paths = [p for p in paths if p not in wg_paths]
+            wg_fasta = ROOT / next(p for p in wg_paths if p.endswith(".fasta"))
+            wg_gff = ROOT / next(p for p in wg_paths if p.endswith(".gff3"))
+            wg_names = [
+                ln[1:].split()[0] for ln in wg_fasta.read_text().splitlines() if ln.startswith(">")
+            ]
+            ha = re.search(r"freyja_contig\s*=.*\? '([^']+)' : null", text).group(1)
+            assert len(wg_names) == 8 and wg_names[0] == ha, f"{wg_fasta.name}: {wg_names}"
+            wg_seqids = {
+                ln.split("\t")[0] for ln in wg_gff.read_text().splitlines() if ln and ln[0] != "#"
+            }
+            assert wg_seqids == set(wg_names), f"{wg_gff.name} is not on the sequences {wg_names}"
         gffs = [ROOT / p for p in paths if p.endswith((".gff3", ".gff"))]
         fastas = [ROOT / p for p in paths if not p.endswith((".gff3", ".gff"))]
         for path in fastas + gffs:

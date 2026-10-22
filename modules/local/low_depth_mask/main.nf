@@ -26,11 +26,30 @@ process LOW_DEPTH_MASK {
     prefix = task.ext.prefix ?: "${meta.id}"
     def keep_arg = keep_bed ? "--keep-bed ${keep_bed}" : ''
     """
-    # Reference contig name and length (single-record FASTA)
+    # Reference contig name and length (single-record FASTA); several records: see below
     contig=\$(awk '/^>/ { sub(/^>/, ""); print \$1; exit }' ${fasta})
     length=\$(awk '/^>/ { n++; next } n == 1 { total += length(\$0) } END { print total + 0 }' ${fasta})
+    n_records=\$(grep -c '^>' ${fasta})
 
-    if [ -s ${depths} ]; then
+    if [ "\$n_records" -gt 1 ]; then
+        # Several contigs (PLAN D25): low_depth_mask.py masks each contig of the depths file by itself (no --length: the
+        # pileup lists every position). A reference record without a single row in the depths file is masked whole.
+        if [ -s ${depths} ]; then
+            low_depth_mask.py \\
+                --depths ${depths} \\
+                ${keep_arg} \\
+                ${args} \\
+                --output ${prefix}.mask.bed
+            cut -f1 ${depths} | LC_ALL=C sort -u > contigs_with_depth.txt
+        else
+            : > ${prefix}.mask.bed
+            : > contigs_with_depth.txt
+        fi
+        awk 'FILENAME == ARGV[1] { seen[\$1] = 1; next }
+             /^>/ { if (name != "" && !(name in seen)) printf "%s\\t0\\t%d\\n", name, len; name = substr(\$1, 2); len = 0; next }
+             { len += length(\$0) }
+             END { if (name != "" && !(name in seen)) printf "%s\\t0\\t%d\\n", name, len }' contigs_with_depth.txt ${fasta} >> ${prefix}.mask.bed
+    elif [ -s ${depths} ]; then
         low_depth_mask.py \\
             --depths ${depths} \\
             --length \$length \\

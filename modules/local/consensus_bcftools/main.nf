@@ -35,13 +35,31 @@ process CONSENSUS_BCFTOOLS {
     def args = task.ext.args ?: ''
     prefix = task.ext.prefix ?: "${meta.id}"
     """
-    ref_len=\$(awk '/^>/ { n++; next } n == 1 { total += length(\$0) } END { print total + 0 }' ${fasta})
+    # total length of the reference (all records) and the number of records: one record = the single-contig behaviour (header
+    # >sample), several (PLAN D25) = one record per contig, headed >sample|<contig>
+    ref_len=\$(awk '/^>/ { next } { total += length(\$0) } END { print total + 0 }' ${fasta})
+    n_rec=\$(grep -c '^>' ${fasta})
     mask_bp=\$(awk '{ total += \$3 - \$2 } END { print total + 0 }' ${mask})
     n_var=\$(bcftools view -H ${vcf} | wc -l)
     # span of the called variants: CONSENSUS_FILTER_VCF removed it from the low-depth mask, so it does not count as coverage
     keep_bp=\$(bcftools query -f '%POS0\\t%END\\n' ${vcf} | awk '{ total += \$2 - \$1 } END { print total + 0 }')
 
     write_n_sequence() {
+        if [ "\$n_rec" -gt 1 ]; then
+            # all-N, one record per reference contig at its own length
+            awk -v id='${meta.id}' '
+                function flush(   i, line) {
+                    if (name == "") return
+                    print ">" id "|" name
+                    line = sprintf("%60s", ""); gsub(/ /, "N", line)
+                    for (i = 0; i < int(len / 60); i++) print line
+                    if (len % 60 > 0) print substr(line, 1, len % 60)
+                }
+                /^>/ { flush(); name = substr(\$1, 2); len = 0; next }
+                { len += length(\$0) }
+                END { flush() }' ${fasta} > ${prefix}.consensus.fa
+            return
+        fi
         awk -v id='${meta.id}' -v len="\$ref_len" 'BEGIN {
             print ">" id
             line = sprintf("%60s", ""); gsub(/ /, "N", line)
@@ -81,7 +99,7 @@ process CONSENSUS_BCFTOOLS {
                     -m ${mask} \\
                     ${args} \\
                     "\$cur_vcf" >| ${prefix}.consensus.raw.fa 2>| attempt.log \\
-                && [ "\$(grep -c '^>' ${prefix}.consensus.raw.fa)" -eq 1 ] \\
+                && [ "\$(grep -c '^>' ${prefix}.consensus.raw.fa)" -eq "\$n_rec" ] \\
                 && [ "\$(grep -v '^>' ${prefix}.consensus.raw.fa | tr -d '\\n' | wc -c)" -gt 0 ]; then
                 consensus_ok=1
             fi
@@ -129,7 +147,8 @@ process CONSENSUS_BCFTOOLS {
             }' >> warnings.txt
 
         if [ "\$consensus_ok" -eq 1 ]; then
-            awk -v id='${meta.id}' '/^>/ { print ">" id; next } { print }' ${prefix}.consensus.raw.fa > ${prefix}.consensus.fa
+            # bcftools keeps the full FASTA header; one record -> >sample, several -> >sample|<first word of the header>
+            awk -v id='${meta.id}' -v multi="\$n_rec" '/^>/ { print (multi > 1 ? ">" id "|" substr(\$1, 2) : ">" id); next } { print }' ${prefix}.consensus.raw.fa > ${prefix}.consensus.fa
             n_warn=\$(grep -c . warnings.txt || true)
             n_var_final=\$(bcftools view -H "\$cur_vcf" | wc -l)
             if [ "\$n_warn" -gt 0 ]; then

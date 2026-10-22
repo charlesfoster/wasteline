@@ -206,3 +206,32 @@ No pipeline code changed. What changed:
 - `bin/lift_primer_bed.py` is a stand-alone maintenance script (stdlib + `minimap2` on `PATH`). It is not called by any module, not in the container list and has no test (standing rule: the liftover is a
   documented manual validation, `docs/other_pathogens.md`, "Adapting a published scheme to our reference" and "Validation (lifted primer schemes)").
 - `assets/primer_schemes/README.md`: provenance (commit, md5, licence, credits), per-scheme statistics, dropped primers, and the reasons the other published schemes are not bundled.
+
+## Multi-contig references (PLAN D25 phase 1): the pipeline wiring (task T3)
+
+Contract and verified facts: [multi_contig_targets.md](multi_contig_targets.md); references: [influenza_wg_references.md](influenza_wg_references.md). What the wiring does:
+
+- **Profiles.** Every `conf/pathogens/*.config` sets the hidden fact `freyja_contig` (null). The four influenza profiles with a whole-genome set read `params.whole_genome` at config time
+  (`params.whole_genome.toString() == 'true' ? <_wg file> : <HA file>`, the same idiom as `freyja_plot_mincov`; verified under the strict parser: `nextflow.config` declares
+  `whole_genome = false` before the `includeConfig`, and a CLI / params-file value reaches the included file) and set `freyja_contig` to the HA accession. `--fasta` and
+  `--freyja_contig` from the command line override the profile like any parameter (the profile declares them, so the strict parser accepts them). `whole_genome` is typed in `main.nf`.
+- **Gate.** `multiContig()` (utils subworkflow) = the FASTA has more than one record; `workflows/wasteline.nf` computes `multi_contig = (mode full|demix) && multiContig()` once. Process
+  options that need the gate before a process runs use `params.freyja_contig` (null unless multi, because validation makes the two equivalent) through `ext` closures in
+  `conf/modules.config`: `FREYJA_DEMIX*` `ext.contig` (gate text), `QC_SAMPLE` / `AMPLICON_COVERAGE` `ext.multi_contig` (+ `ext.warn_contig_below_pct = qc_pass_min_pct`),
+  `DROPOUT_IMPACT` / `UNEXPLAINED_MUTATIONS` / `MUTATIONS_OF_INTEREST` `ext.contig`. The FASTA modules (`LOW_DEPTH_MASK`, `CONSENSUS_BCFTOOLS`, `CONSENSUS_STATS`) count the `>` lines of the
+  reference they are given.
+- **Validation** (`validateReferenceContigs()`, modes full and demix): `--whole_genome` without a `freyja_contig` (FLU-B-VIC, SARS-CoV-2, ...) names the reason; a FASTA with several
+  sequences needs `--freyja_contig` and it must be one of them; a single-sequence FASTA with `--freyja_contig` is refused; duplicate first-word names are refused; GFF3 seqids that are not
+  FASTA names give a warning. `reconcileBed`'s dropped-lines warning names the reference's contigs instead of the HA remark for several contigs.
+- **Channels.** `ch_freyja_in` = all contigs (FREYJA_VARIANTS output, or the given files of mode demix after `GUNZIP_FREYJA_INPUTS`); `ch_freyja_view` = `FREYJA_SELECT_CONTIG(ch_freyja_in, params.freyja_contig)`
+  when multi, else the same channel. `FREYJA_DEMIX`, `FREYJA_DEMIX_COMPARE`, `FREYJA_BOOT`, `MUTATIONS_OF_INTEREST` and `UNEXPLAINED_MUTATIONS` read the view; QC, amplicon coverage, the consensus,
+  `ANNOTATE_VARIANTS` and the report read the all-contig files. `FREYJA_SELECT_CONTIG` stages its inputs under `all_contigs/` so the outputs keep the names `<id>.variants.tsv` / `<id>.depths`
+  (what FREYJA_DEMIX and the report expect); it has the default error strategy, so a contig that is not in the files stops the run.
+- **Summaries.** `QC_SAMPLE.out.contig_tsv` and `CONSENSUS_STATS.out.contig_tsv` (optional outputs) are collected with `collectFile(keepHeader: true, skip: 1)` into `summary/contig_coverage.tsv` and
+  `summary/consensus_stats_contigs.tsv` in multi runs only; `BUILD_REPORT_DATA` has a fifth input tuple (`contig_coverage`, `consensus_stats_contigs`; `[]` when absent; mode report reads them
+  from `--results_dir` with `optionalFile`).
+- **run_info.** `runInfoBase()` adds `contigs` (`fastaRecords()`) and `freyja_contig` for multi runs, and leaves `freyja_contig` and a false `whole_genome` out of `params`.
+- **Consensus.** One record per contig, `>sample|<first word of the header>` (one record keeps `>sample`); the all-N fallback writes one record per contig; `CONSENSUS_CONCAT` accepts several records
+  per file and sorts by the part of the first header before `|`.
+- **Verified by hand** (not in the suite): demix mode on the results of the two-contig run reproduces the demix files, `contig_coverage.tsv` and the consensus byte for byte; whole-genome H3N2 and variants on
+  non-demixed segments (docs/other_pathogens.md).

@@ -29,7 +29,7 @@ process ANNOTATE_VARIANTS {
     // A variant without a coding consequence has effect `intergenic` and NA gene/aa; only the first
     // consequence of a variant is reported (as before).
     // Adjacent SNVs in one codon: bcftools gives the joint consequence on the FIRST variant and only
-    // `@<position of the first>` on the others. The reference is resolved, so every variant of the codon
+    // `@<position of the first>` on the others (looked up by contig AND position, PLAN D25: a reference with several contigs). The reference is resolved, so every variant of the codon
     // carries the joint amino-acid change, and the column appended at the end, `compound`, lists the
     // positions that make up the joint change (e.g. 23063+23064; NA for an ordinary variant).
     """
@@ -40,7 +40,7 @@ process ANNOTATE_VARIANTS {
         | awk -F'\\t' -v OFS='\\t' -v sample='${meta.id}' '
             {
                 csq = \$7
-                if (csq ~ /^@/) { csq = by_pos[substr(csq, 2)] } else { by_pos[\$2] = csq }
+                if (csq ~ /^@/) { csq = by_pos[\$1 SUBSEP substr(csq, 2)] } else { by_pos[\$1 SUBSEP \$2] = csq }
                 effect = "intergenic"; gene = "NA"; aa = "NA"; std = "NA"; compound = "NA"
                 n = split(csq, f, "|")
                 if (n >= 6) {

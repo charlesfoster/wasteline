@@ -22,11 +22,13 @@ process DROPOUT_IMPACT {
     script:
     // ext.args: e.g. --min-abundance 0.01 --min-affect-abundance 0.05 --informative-max-fraction 0.95 --strict-roots
     def args = task.ext.args ?: ''
+    def contig_arg = task.ext.contig ? "--contig ${task.ext.contig}" : '' // several reference contigs (PLAN D25): the amplicon table has a contig column; only the demixed contig is used
     """
     dropout_impact.py \\
         --amplicons ${amplicons} \\
         --aggregated ${aggregated} \\
         --dataset ${dataset} \\
+        ${contig_arg} \\
         ${args} \\
         --out dropout_impact.tsv \\
         --summary-out dropout_impact_summary.tsv

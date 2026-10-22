@@ -21,6 +21,8 @@ process BUILD_REPORT_DATA {
     tuple path(dropout_impact), path(dropout_summary), path(unexplained), path(timeseries), path(timeseries_lineages, stageAs: "lineages/*"), path(growth_rates), path(growth_failed), path(growth_inputs), val(dashboard_name)
     // lineage-group summary (+ the audit of what each group matched; for flags and provenance only) and site aggregates (+ meta), [] when absent
     tuple path(lineage_summary), path(lineage_groups_resolved), path(site_aggregates), path(site_aggregates_meta)
+    // several reference contigs only (PLAN D25), [] otherwise: per-contig coverage (QC_SAMPLE) and per-contig consensus stats (CONSENSUS_STATS)
+    tuple path(contig_coverage), path(consensus_stats_contigs)
 
     output:
     path "report_data.json", emit: json
@@ -58,6 +60,8 @@ process BUILD_REPORT_DATA {
     def lineage_resolved_arg = lineage_groups_resolved ? "--lineage-groups-resolved ${lineage_groups_resolved}" : ''
     def site_aggregates_arg = site_aggregates ? "--site-aggregates ${site_aggregates}" : ''
     def site_aggregates_meta_arg = site_aggregates_meta ? "--site-aggregates-meta ${site_aggregates_meta}" : ''
+    def contig_coverage_arg = contig_coverage ? "--contig-coverage ${contig_coverage}" : ''
+    def consensus_contigs_arg = consensus_stats_contigs ? "--consensus-stats-contigs ${consensus_stats_contigs}" : ''
     def merged_arg = qc_summary ? "--write-qc-tsv qc_summary.merged.tsv" : ''
     """
     build_report_data.py \\
@@ -87,6 +91,8 @@ process BUILD_REPORT_DATA {
         ${lineage_resolved_arg} \\
         ${site_aggregates_arg} \\
         ${site_aggregates_meta_arg} \\
+        ${contig_coverage_arg} \\
+        ${consensus_contigs_arg} \\
         ${merged_arg} \\
         ${args} \\
         --out report_data.json

@@ -14,6 +14,7 @@ process CONSENSUS_STATS {
 
     output:
     tuple val(meta), path("${prefix}.consensus_stats.tsv"), emit: tsv
+    tuple val(meta), path("${prefix}.consensus_stats_contigs.tsv"), emit: contig_tsv, optional: true // several reference contigs only (PLAN D25): one row per contig
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:
@@ -26,7 +27,11 @@ process CONSENSUS_STATS {
     def status_arg = status_json ? "--status-json ${status_json}" : ''
     prefix = task.ext.prefix ?: "${meta.id}"
     """
-    ref_len=\$(awk '/^>/ { n++; next } n == 1 { total += length(\$0) } END { print total + 0 }' ${reference})
+    # total reference length (all records): the consensus_coverage_pct denominator. Several records (PLAN D25): the sample row is the
+    # whole genome and the per-contig rows go to <sample>.consensus_stats_contigs.tsv
+    ref_len=\$(awk '/^>/ { next } { total += length(\$0) } END { print total + 0 }' ${reference})
+    contig_arg=""
+    if [ "\$(grep -c '^>' ${reference})" -gt 1 ]; then contig_arg="--contig-out ${prefix}.consensus_stats_contigs.tsv"; fi
 
     # A missing/unparseable consensus is reported as status=failed (never a crash)
     consensus_stats.py \\
@@ -34,6 +39,7 @@ process CONSENSUS_STATS {
         --sample ${meta.id} \\
         --reference-length \$ref_len \\
         ${status_arg} \\
+        \$contig_arg \\
         ${args} \\
         --output ${prefix}.consensus_stats.tsv
     """

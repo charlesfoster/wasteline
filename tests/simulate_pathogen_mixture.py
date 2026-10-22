@@ -6,10 +6,16 @@ Each lineage is a pseudo-genome: the reference with every mutation of that linea
 in the given proportions, shotgun-style (uniform fragments) or amplicon-style (--amplicon-bed: one fragment per amplicon, equal
 weight; amplicons are the LEFT/RIGHT primer pairs, named <scheme>_<n>_LEFT_<alt> / _RIGHT_<alt>, as in primalscheme BEDs;
 --shear takes a random piece of each amplicon instead of its ends, for long amplicons).
-Single-sequence references only. Writes <out>_R1.fastq.gz, <out>_R2.fastq.gz and <out>.truth.tsv (lineage, proportion, mutations).
+A reference with several sequences (segments, or a genome plus other targets) needs --freyja-contig NAME: the barcode
+mutations are applied to that sequence only (the barcodes' coordinates are its), the others are the same in every lineage; the read
+pairs are drawn from all sequences in proportion to their length (--amplicon-bed needs a single-sequence reference).
+Writes <out>_R1.fastq.gz, <out>_R2.fastq.gz and <out>.truth.tsv (lineage, proportion, mutations); several sequences also
+<out>.contigs.tsv (sequence, length, pairs).
 
   simulate_pathogen_mixture.py --reference ref.fasta --barcodes RSVa_barcodes.csv \
       --lineage RSVa-A.D.1 --lineage RSVa-A.3 --proportion 0.3 --proportion 0.7 --out sim/mix --depth 500
+  simulate_pathogen_mixture.py --reference multi.fa --freyja-contig NC_045512.2 --barcodes barcodes.csv \
+      --lineage B.1.1.7 --proportion 1 --out sim/S1 --depth 300
 """
 
 import argparse
@@ -26,15 +32,19 @@ SNV = re.compile(r"([ACGT])(\d+)([ACGT])")
 
 
 def read_fasta(path):
-    names, seq = [], []
+    """{name: sequence} in file order (name = first word of the header)."""
+    records, name = {}, None
     for line in Path(path).read_text().splitlines():
         if line.startswith(">"):
-            names.append(line[1:].split()[0])
-        else:
-            seq.append(line.strip().upper())
-    if len(names) != 1:
-        sys.exit(f"{path}: need exactly one sequence, found {len(names)}")
-    return names[0], "".join(seq)
+            name = line[1:].split()[0]
+            if name in records:
+                sys.exit(f"{path}: sequence {name} appears twice")
+            records[name] = []
+        elif name is not None:
+            records[name].append(line.strip().upper())
+    if not records:
+        sys.exit(f"{path}: no sequence found")
+    return {name: "".join(parts) for name, parts in records.items()}
 
 
 def lineage_genome(ref, barcodes, lineage):
@@ -125,30 +135,62 @@ def main():
         action="store_true",
         help="with --amplicon-bed: fragments are random pieces of the amplicons (insert-mean), as in tagmented long-amplicon libraries",
     )
+    p.add_argument(
+        "--freyja-contig",
+        help="reference with several sequences: the one the barcodes' mutations are applied to",
+    )
     p.add_argument("--seed", type=int, default=1)
     a = p.parse_args()
     if len(a.lineage) != len(a.proportion):
         sys.exit("need one --proportion per --lineage")
     rng = np.random.default_rng(a.seed)
-    _, ref = read_fasta(a.reference)
+    refs = read_fasta(a.reference)
+    names = list(refs)
+    if len(names) > 1 and not a.freyja_contig:
+        sys.exit(
+            f"{a.reference} has {len(names)} sequences: say which one the barcodes are on with --freyja-contig"
+        )
+    if a.freyja_contig and a.freyja_contig not in refs:
+        sys.exit(
+            f"--freyja-contig {a.freyja_contig} is not a sequence of {a.reference} ({', '.join(names)})"
+        )
+    if a.amplicon_bed and len(names) > 1:
+        sys.exit("--amplicon-bed needs a single-sequence reference")
+    freyja = a.freyja_contig or names[0]
+    lengths = np.array([len(refs[n]) for n in names])
     props = np.array(a.proportion) / sum(a.proportion)
-    genomes = [lineage_genome(ref, a.barcodes, lin) for lin in a.lineage]
-    which = rng.choice(len(genomes), round(a.depth * len(ref) / (2 * a.read_length)), p=props)
-    counts = np.bincount(which, minlength=len(genomes))
+    lineages = [lineage_genome(refs[freyja], a.barcodes, lin) for lin in a.lineage]
+    # per lineage, every sequence of the reference: the barcode mutations are on the freyja contig only
+    genomes = [{n: (lg[0] if n == freyja else refs[n]) for n in names} for lg in lineages]
+    n_pairs = round(a.depth * lengths.sum() / (2 * a.read_length))
+    which = rng.choice(len(genomes), n_pairs, p=props)
+    # the sequence each pair comes from, by length (a single sequence draws nothing: the random stream is as before)
+    if len(names) > 1:
+        contig_of = rng.choice(len(names), n_pairs, p=lengths / lengths.sum())
+    else:
+        contig_of = np.zeros(n_pairs, dtype=int)
+    counts = np.zeros((len(genomes), len(names)), dtype=int)
+    np.add.at(counts, (which, contig_of), 1)
     truth = ["lineage\tproportion\tmutations_applied\tmutations_skipped\tpairs\n"]
-    for lin, pr, (_, na, ns), n in zip(a.lineage, props, genomes, counts):
+    for lin, pr, (_, na, ns), n in zip(a.lineage, props, lineages, counts.sum(axis=1)):
         truth.append(f"{lin}\t{pr:.4f}\t{na}\t{ns}\t{n}\n")
     Path(a.out + ".truth.tsv").write_text("".join(truth))
+    if len(names) > 1:
+        rows = [f"{n}\t{ln}\t{c}\n" for n, ln, c in zip(names, lengths, counts.sum(axis=0))]
+        Path(a.out + ".contigs.tsv").write_text("sequence\tlength\tpairs\n" + "".join(rows))
     q = chr(33 + round(-10 * np.log10(max(a.error_rate, 1e-6) * 3 / 4)))  # Phred of the error rate
     with (
         gzip.open(f"{a.out}_R1.fastq.gz", "wt") as out1,
         gzip.open(f"{a.out}_R2.fastq.gz", "wt") as out2,
     ):
-        for gi, (genome, _, _) in enumerate(genomes):
-            for k, (s, (r1, r2)) in enumerate(sample_reads(genome, a, counts[gi], rng)):
-                name = f"@sim{gi}_{k}_{s}"
-                out1.write(f"{name}/1\n{r1}\n+\n{q * len(r1)}\n")
-                out2.write(f"{name}/2\n{r2}\n+\n{q * len(r2)}\n")
+        for gi, by_contig in enumerate(genomes):
+            for ci, contig in enumerate(names):
+                tag = f"{gi}_{ci}" if len(names) > 1 else f"{gi}"
+                reads = sample_reads(by_contig[contig], a, counts[gi][ci], rng)
+                for k, (s, (r1, r2)) in enumerate(reads):
+                    name = f"@sim{tag}_{k}_{s}"
+                    out1.write(f"{name}/1\n{r1}\n+\n{q * len(r1)}\n")
+                    out2.write(f"{name}/2\n{r2}\n+\n{q * len(r2)}\n")
     print("".join(truth), end="")
 
 

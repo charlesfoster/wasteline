@@ -31,6 +31,8 @@ process FREYJA_DEMIX {
     def band = floor != null && (floor as double) > 0 && (floor as double) < (min_cov as double)
     def floor_arg = band ? "--floor-genome-coverage ${floor}" : ''
     def skip_below = band ? floor : min_cov // coverage under which the sample is skipped (the floor when the band is on)
+    // multi-contig reference (PLAN D25): the depths are those of the demixed contig only, and the gate text says so
+    def region = task.ext.contig ? "of ${task.ext.contig}" : 'of the genome'
     """
     # Never swallow a failure: every outcome (ok / low_confidence / failed / skipped_low_coverage) is
     # written to ${prefix}.demix_status.json with a reason and the barcode version, and the task
@@ -69,7 +71,7 @@ process FREYJA_DEMIX {
         --sample ${meta.id} --output ${prefix}.depth_stats.json || gate=\$?
 
     if [ "\$gate" -eq 10 ]; then
-        write_status skipped_low_coverage "less than ${skip_below}% of the genome covered at >= ${covcut}x"
+        write_status skipped_low_coverage "less than ${skip_below}% ${region} covered at >= ${covcut}x"
     elif [ "\$gate" -ne 0 ] && [ "\$gate" -ne 11 ]; then
         rm -f ${prefix}.depth_stats.json
         write_status failed "could not compute coverage from the depths file (depth_stats.py exit \$gate)"
@@ -80,7 +82,7 @@ process FREYJA_DEMIX {
         && [ -s ${prefix}.demix ]; then
         if [ "\$gate" -eq 11 ]; then
             COV=\$(sed -n 's/.*"pct_genome_ge_covcut": *\\([0-9.]*\\).*/\\1/p' ${prefix}.depth_stats.json)
-            write_status low_confidence "\$(printf '%.1f' "\$COV")% of the genome covered at >= ${covcut}x: below the high-confidence threshold of ${min_cov}%; treat the estimate with care"
+            write_status low_confidence "\$(printf '%.1f' "\$COV")% ${region} covered at >= ${covcut}x: below the high-confidence threshold of ${min_cov}%; treat the estimate with care"
         else
             write_status ok ""
         fi

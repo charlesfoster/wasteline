@@ -26,6 +26,7 @@ process MUTATIONS_OF_INTEREST {
     prefix = task.ext.prefix ?: "${meta.id}"
     def depths_arg = depths ? "--depths ${depths}" : ''
     def gff_arg = gff && reference ? "--gff ${gff} --reference ${reference}" : ''
+    def contig_arg = task.ext.contig ? "--contig ${task.ext.contig}" : '' // several reference contigs (PLAN D25): the contig of the variants and depths
     """
     mutations_of_interest.py \\
         --variants ${variants} \\
@@ -33,6 +34,7 @@ process MUTATIONS_OF_INTEREST {
         --sample ${meta.id} \\
         ${depths_arg} \\
         ${gff_arg} \\
+        ${contig_arg} \\
         ${args} \\
         --output ${prefix}.mutations_of_interest.tsv
     """

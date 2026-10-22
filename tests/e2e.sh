@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Minimal end to end on the synthetic data (tests/data): seven pipeline runs, about ten minutes, with tests/check_outputs.py
+# Minimal end to end on the synthetic data (tests/data): eight pipeline runs, about ten minutes, with tests/check_outputs.py
 # after the ones that need it. Everything else (legacy layouts, CRAM, time-series fits, replay, ...) is covered by pytest.
 #   1. full: all opt-ins on (compare barcodes, 20 bootstraps, variant annotation, site aggregation); the real end to end
 #   2. demix --previous_results with the bundled (container) barcodes, a custom lineage groups file, site aggregation and
@@ -11,6 +11,9 @@
 #      (per-sample protocol / primer_scheme cells)
 #   + two bad CSVs (lineage groups, sites) that must abort the run early (cheap: nothing is mapped)
 #   + bin/reanalyse_runs.py dry run and --diff (no pipeline run)
+#   9. a reference with two contigs (SARS-CoV-2 + measles N, PLAN D25): Freyja demixes the SARS-CoV-2 contig, both get coverage QC and
+#      a consensus; a simulated sample covers both, a step 6 capture sample (reads of SARS-CoV-2 only) leaves the measles contig
+#      uncovered; its demix equals the single-contig run's byte for byte
 #
 # usage: tests/e2e.sh <scratch dir> [nextflow args, default: -profile docker]
 # Runs every nextflow command from <scratch dir>/launch_<step> (own .nextflow), work dirs and outputs
@@ -230,6 +233,23 @@ fi
 python3 "$REPO/bin/reanalyse_runs.py" --diff "$SCRATCH/out_full" "$SCRATCH/out_low_confidence" --report "$SCRATCH/diff_same_barcodes.csv" > "$SCRATCH/reanalyse_diff.txt" 2>&1 || fail=1
 flagged=$(awk -F, 'NR > 1 && $0 ~ /,yes(,|$)/' "$SCRATCH/diff_same_barcodes.csv" | wc -l | tr -d ' ')
 [ "$flagged" -eq 0 ] && echo "PASS  reanalyse_runs.py --diff of the full run and its demix (same barcodes): 0 flagged" || { echo "FAIL  --diff flagged $flagged row(s)"; fail=1; }
+
+# 9. several reference contigs (PLAN D25): multi.fa = SARS-CoV-2 + measles N, --freyja_contig NC_045512.2. S1 is simulated (B.1.1.7
+#    on the SARS-CoV-2 contig, reads from both contigs by length); CAP_MIX is the step 6 capture pair, whose demix must equal step 6's
+#    byte for byte (the same reads, the same barcodes: the extra contig only adds a contig that nothing maps to)
+mkdir -p "$SCRATCH/multi"
+cat "$REPO/assets/references/NC_045512.fasta" "$REPO/assets/references/NC_001498.1.fasta" > "$SCRATCH/multi/multi.fa"
+"${PY[@]}" "$REPO/tests/simulate_pathogen_mixture.py" --reference "$SCRATCH/multi/multi.fa" --freyja-contig NC_045512.2 --barcodes "$BARCODES" \
+    --lineage B.1.1.7 --proportion 1 --depth 300 --out "$SCRATCH/multi/S1" > /dev/null
+{
+    echo "sample,fastq_1,fastq_2,sample_type,collection_date,site"
+    echo "S1,$SCRATCH/multi/S1_R1.fastq.gz,$SCRATCH/multi/S1_R2.fastq.gz,sample,2026-04-06,SiteE"
+    grep '^CAP_MIX,' "$REPO/tests/data_capture/samplesheet.csv" | sed "s#tests/data_capture/#$REPO/tests/data_capture/#g"
+} > "$SCRATCH/samplesheet_multicontig.csv"
+run multicontig --mode full --protocol capture --input "$SCRATCH/samplesheet_multicontig.csv" --barcodes "$BARCODES" "${LS_OFF[@]}" \
+    --pathogen SARS-CoV-2 --fasta "$SCRATCH/multi/multi.fa" --freyja_contig NC_045512.2
+check multicontig --mode full --multicontig || fail=1
+same "CAP_MIX.demix (two-contig reference vs the single-contig capture run)" "$SCRATCH/out_mixed/samples/CAP_MIX/freyja/CAP_MIX.demix" "$SCRATCH/out_multicontig/samples/CAP_MIX/freyja/CAP_MIX.demix"
 
 [ "$fail" -eq 0 ] && echo "E2E OK" || echo "E2E FAILED"
 exit $fail

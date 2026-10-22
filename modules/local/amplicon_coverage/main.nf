@@ -33,7 +33,8 @@ process AMPLICON_COVERAGE {
 
     stub:
     prefix = task.ext.prefix ?: "${meta.id}"
+    def contig_column = task.ext.multi_contig ? '\\tcontig' : '' // several reference contigs (PLAN D25): a trailing contig column
     """
-    printf 'sample\\tamplicon\\tstart\\tend\\tmean_depth\\tmin_depth\\tpct_ge_min_depth\\tdropped\\n' > ${prefix}.amplicon_coverage.tsv
+    printf 'sample\\tamplicon\\tstart\\tend\\tmean_depth\\tmin_depth\\tpct_ge_min_depth\\tdropped${contig_column}\\n' > ${prefix}.amplicon_coverage.tsv
     """
 }

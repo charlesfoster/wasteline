@@ -18,6 +18,7 @@ process QC_SAMPLE {
 
     output:
     tuple val(meta), path("${prefix}.qc_row.tsv"), emit: tsv
+    tuple val(meta), path("${prefix}.contig_coverage.tsv"), emit: contig_tsv, optional: true // several reference contigs only (PLAN D25): one row per contig
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:
@@ -42,6 +43,8 @@ process QC_SAMPLE {
     def trim_stats_cmd = ivar_log ? "ivar_trim_stats.py --sample ${meta.id} --log ${ivar_log} --output ${prefix}.ivar_trim_stats.tsv || true" : ''
     def scheme_arg = primer_scheme_summary ? "--primer-scheme-summary ${primer_scheme_summary}" : ''
     def trim_stats_arg = ivar_log ? "--ivar-trim-stats ${prefix}.ivar_trim_stats.tsv" : ''
+    // several reference contigs (PLAN D25): the per-contig table, and a WARN (contig_low_coverage) for a contig below the PASS threshold
+    def contig_arg = task.ext.multi_contig ? "--contig-table ${prefix}.contig_coverage.tsv --warn-contig-below-pct ${task.ext.warn_contig_below_pct}" : ''
     """
     ${trim_stats_cmd}
     qc_summary.py \\
@@ -55,6 +58,7 @@ process QC_SAMPLE {
         ${amplicons_arg} \\
         ${trim_stats_arg} \\
         ${scheme_arg} \\
+        ${contig_arg} \\
         ${args} \\
         --output ${prefix}.qc_row.tsv
     """

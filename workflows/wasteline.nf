@@ -29,6 +29,7 @@ include { IVAR_TRIM              } from '../modules/nf-core/ivar/trim/main'
 include { SAMTOOLS_SORT          } from '../modules/nf-core/samtools/sort/main'
 include { FREYJA_VARIANTS        } from '../modules/local/freyja_variants/main'
 include { GUNZIP_FREYJA_INPUTS   } from '../modules/local/gunzip_freyja_inputs/main'
+include { FREYJA_SELECT_CONTIG   } from '../modules/local/freyja_select_contig/main'
 include { FREYJA_DEMIX           } from '../modules/local/freyja_demix/main'
 include { FREYJA_DEMIX as FREYJA_DEMIX_COMPARE } from '../modules/local/freyja_demix/main'
 include { BARCODE_COMPARE        } from '../modules/local/barcode_compare/main'
@@ -69,6 +70,8 @@ include { hierarchyMayBeMissing } from '../subworkflows/local/utils_nfcore_waste
 include { bundledSchemesApply } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { previousRuns           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { splitPaths             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { multiContig            } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { fastaRecords           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -168,6 +171,9 @@ workflow WASTELINE {
                 optionalFile(results, 'lineage_groups_resolved.tsv'),
                 optionalFile(results, 'site_aggregates_freyja.tsv'),
                 optionalFile(results, 'site_aggregates_meta.tsv'),
+            ]), channel.value([
+                optionalFile(results, 'contig_coverage.tsv'),
+                optionalFile(results, 'consensus_stats_contigs.tsv'),
             ]))
             RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
         }
@@ -189,6 +195,9 @@ workflow WASTELINE {
         // --fasta is required by modes full and demix (validateInputParameters); --gff is optional for pathogens without a bundled annotation
         def ch_fasta = channel.value(params.fasta ? file(params.fasta, checkIfExists: true) : [])
         def ch_gff = channel.value(params.gff ? file(params.gff, checkIfExists: true) : [])
+        // A reference with several contigs (PLAN D25; validated at start-up: --freyja_contig names the one Freyja demixes). Every
+        // branch for it is guarded by this; a single-contig run does not change.
+        def multi_contig = (mode == 'full' || mode == 'demix') && multiContig()
 
         //
         // The lineage groups file (bundled default or --lineage_groups) and the sites CSV are checked FIRST, in parallel with fastp and the mapping, so that a
@@ -381,6 +390,19 @@ workflow WASTELINE {
         def ch_depths = ch_freyja_in.map { meta, _variants, depths -> [ meta, depths ] }
         def ch_variants = ch_freyja_in.map { meta, variants, _depths -> [ meta, variants ] }
 
+        // What Freyja (demix, bootstrap, the coverage gate) and the mutation tables get: with several reference contigs only the
+        // variants and depths of the demixed contig (a view made by FREYJA_SELECT_CONTIG; the files under samples/ stay complete);
+        // QC, amplicon coverage, the consensus and the report keep the all-contig files above. Single contig: the same channels.
+        def ch_freyja_view = ch_freyja_in
+        def ch_view_variants = ch_variants
+        def ch_view_depths = ch_depths
+        if (multi_contig) {
+            FREYJA_SELECT_CONTIG(ch_freyja_in, params.freyja_contig)
+            ch_freyja_view = FREYJA_SELECT_CONTIG.out.view
+            ch_view_variants = ch_freyja_view.map { meta, variants, _depths -> [ meta, variants ] }
+            ch_view_depths = ch_freyja_view.map { meta, _variants, depths -> [ meta, depths ] }
+        }
+
         //
         // Demix per sample (never fails the run) -> [ meta, demix ]; aggregate mode takes given .demix files
         //
@@ -396,7 +418,7 @@ workflow WASTELINE {
 
         if (mode == 'full' || mode == 'demix') {
             FREYJA_DEMIX(
-                ch_freyja_in,
+                ch_freyja_view,
                 FREYJA_DATA.out.dataset,
                 FREYJA_DATA.out.barcode_version,
             )
@@ -421,7 +443,7 @@ workflow WASTELINE {
             if (params.compare_barcodes) {
                 FREYJA_DATA_COMPARE(params.compare_barcodes, params.pathogen, '--compare_barcodes')
                 FREYJA_DEMIX_COMPARE(
-                    ch_freyja_in,
+                    ch_freyja_view,
                     FREYJA_DATA_COMPARE.out.dataset,
                     FREYJA_DATA_COMPARE.out.barcode_version,
                 )
@@ -450,7 +472,7 @@ workflow WASTELINE {
             // --freyja_boot: bootstrap intervals for every sample that demixed
             //
             if (params.freyja_boot) {
-                FREYJA_BOOT(ch_freyja_in.join(FREYJA_DEMIX.out.demix), FREYJA_DATA.out.dataset)
+                FREYJA_BOOT(ch_freyja_view.join(FREYJA_DEMIX.out.demix), FREYJA_DATA.out.dataset)
                 ch_boot_raw = FREYJA_BOOT.out.raw.map { _meta, raw -> raw }
                 ch_boot_summary = FREYJA_BOOT.out.summary
                     .map { _meta, summary -> summary }
@@ -529,6 +551,8 @@ workflow WASTELINE {
         def ch_consensus_stats = channel.value([])
         def ch_moi = channel.value([])
         def ch_depth_files = channel.value([])
+        def ch_contig_coverage = channel.value([])      // several reference contigs only: summary/contig_coverage.tsv
+        def ch_consensus_contigs = channel.value([])    // several reference contigs only: summary/consensus_stats_contigs.tsv
 
         if (mode == 'full' || mode == 'demix') {
             // only the samples with a primer scheme (meta.primer_scheme), each against its own BED
@@ -557,6 +581,14 @@ workflow WASTELINE {
                 ch_amplicons.map { _meta, tsv -> tsv }.collect().ifEmpty([]),
             )
             ch_qc_summary = QC_CONCAT.out.qc_summary.ifEmpty([])
+            // several reference contigs: one row per sample and contig (summary/contig_coverage.tsv, for the segments table of the report)
+            if (multi_contig) {
+                ch_contig_coverage = QC_SAMPLE.out.contig_tsv
+                    .map { _meta, tsv -> tsv }
+                    .toSortedList { a, b -> a.name <=> b.name }
+                    .flatMap { files -> files }
+                    .collectFile(name: 'contig_coverage.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
+            }
             ch_amplicon_coverage = QC_CONCAT.out.amplicon_coverage.ifEmpty([])
             ch_depth_files = ch_depths.map { _meta, depths -> depths }.collect()
 
@@ -585,6 +617,14 @@ workflow WASTELINE {
                 CONSENSUS_STATS_CONCAT(ch_stats.built.map { _meta, _variants, stats -> stats }.mix(ch_failed_stats).collect())
                 CONSENSUS_CONCAT(CONSENSUS_BCFTOOLS.out.fasta.map { _meta, fasta -> fasta }.collect())
                 ch_consensus_stats = CONSENSUS_STATS_CONCAT.out.tsv.ifEmpty([])
+                // several reference contigs: one row per sample and contig (summary/consensus_stats_contigs.tsv)
+                if (multi_contig) {
+                    ch_consensus_contigs = CONSENSUS_STATS.out.contig_tsv
+                        .map { _meta, tsv -> tsv }
+                        .toSortedList { a, b -> a.name <=> b.name }
+                        .flatMap { files -> files }
+                        .collectFile(name: 'consensus_stats_contigs.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
+                }
 
                 // --annotate_variants: amino-acid consequences of the variants applied to the consensus
                 if (params.annotate_variants) {
@@ -601,7 +641,7 @@ workflow WASTELINE {
             // Mutations of interest (opt-in)
             //
             if (params.mutations_of_interest) {
-                MUTATIONS_OF_INTEREST(ch_variants.join(ch_depths), file(params.mutations_of_interest, checkIfExists: true), ch_gff, ch_fasta)
+                MUTATIONS_OF_INTEREST(ch_view_variants.join(ch_view_depths), file(params.mutations_of_interest, checkIfExists: true), ch_gff, ch_fasta)
                 MUTATIONS_OF_INTEREST_CONCAT(MUTATIONS_OF_INTEREST.out.tsv.map { _meta, tsv -> tsv }.collect())
                 ch_moi = MUTATIONS_OF_INTEREST_CONCAT.out.tsv.ifEmpty([])
             }
@@ -641,7 +681,7 @@ workflow WASTELINE {
 
                 // variants that no detected lineage explains (non-negative samples)
                 if (params.unexplained_mutations) {
-                    def ch_unexplained_in = ch_variants
+                    def ch_unexplained_in = ch_view_variants
                         .filter { meta, _variants -> meta.sample_type != 'negative' }
                         .join(ch_demixed, remainder: true)
                         .filter { meta, variants, _demix -> meta && variants }
@@ -839,7 +879,9 @@ workflow WASTELINE {
             .combine(wrapItem(ch_lineage_resolved.ifEmpty([])))
             .combine(wrapItem(ch_site_aggregates.ifEmpty([])))
             .combine(wrapItem(ch_site_aggregates_meta.ifEmpty([])))
-        BUILD_REPORT_DATA(ch_report_in, ch_report_extra, ch_report_analyses, ch_report_groups)
+        def ch_report_contigs = wrapItem(ch_contig_coverage.ifEmpty([]))
+            .combine(wrapItem(ch_consensus_contigs.ifEmpty([])))
+        BUILD_REPORT_DATA(ch_report_in, ch_report_extra, ch_report_analyses, ch_report_groups, ch_report_contigs)
         RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
     }
     }
@@ -928,7 +970,7 @@ def runInfoBase(mode, metas) {
     }
     // pipelines_testdata_base_path is nf-core template plumbing (a URL), not a setting of this pipeline
     // (the per-pathogen facts of conf/pathogens/*.config follow from --pathogen and are not recorded either)
-    def plain_params = params.findAll { key, _value -> !(key.toString() in ['pipelines_testdata_base_path', 'lineage_groups_bundled', 'freyja_container_pathogen', 'primer_schemes_bundled', 'primer_scheme_default']) }.collectEntries { key, value ->
+    def plain_params = params.findAll { key, value -> !(key.toString() in ['pipelines_testdata_base_path', 'lineage_groups_bundled', 'freyja_container_pathogen', 'primer_schemes_bundled', 'primer_scheme_default', 'freyja_contig']) && !(key.toString() == 'whole_genome' && !value) }.collectEntries { key, value ->
         [ (key.toString()): (value == null || value instanceof Boolean || value instanceof Number) ? value : value.toString() ]
     }
     // the effective primer scheme is recorded even when the default (null = the default scheme, D14) applies
@@ -955,6 +997,11 @@ def runInfoBase(mode, metas) {
         // for legacy Snakemake results, which recorded none
         previous_runs: previousRuns(mode),
     ] + libraryInfo(mode, metas) + groups_info
+    // several reference contigs (PLAN D25): the contigs in FASTA order, and the one Freyja demixes
+    if (mode in ['full', 'demix'] && multiContig()) {
+        info.contigs = fastaRecords(file(params.fasta)).collect { record -> [ name: record.name, length: record.length ] }
+        info.freyja_contig = params.freyja_contig
+    }
     if (mode == 'aggregate') {
         info.freyja_data_note = 'aggregate mode demixes nothing: freyja_data describes the dataset whose lineage hierarchy groups the plot, not the barcodes the .demix files were made with (see previous_runs)'
     }
