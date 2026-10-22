@@ -164,6 +164,13 @@ def git_head(directory):
         return None
 
 
+def bundled_bed(pipeline_dir, name):
+    """Path of a bundled primer BED: assets/primer_schemes/<name> (SARS-CoV-2) or assets/primer_schemes/<profile>/<name> (D26)."""
+    schemes = Path(pipeline_dir) / "assets" / "primer_schemes"
+    found = sorted(schemes.rglob(name)) if name else []
+    return str(found[0] if found else schemes / name)
+
+
 def is_bundled(path):
     return any(marker in str(path).replace("\\", "/") for marker in BUNDLED_MARKERS)
 
@@ -450,14 +457,9 @@ def plan_inputs(plan, run_info, params, mode, args):
     if "primer_bed" in sums:
         bed = params.get("primer_bed")
         if not bed and args.pipeline_dir:
-            bed = str(
-                Path(args.pipeline_dir)
-                / "assets"
-                / "primer_schemes"
-                / sums["primer_bed"].get("file", "")
-            )
+            bed = bundled_bed(args.pipeline_dir, sums["primer_bed"].get("file", ""))
         if bed and not Path(bed).is_file() and is_bundled(bed) and args.pipeline_dir:
-            bed = str(Path(args.pipeline_dir) / "assets" / "primer_schemes" / Path(bed).name)
+            bed = bundled_bed(args.pipeline_dir, Path(bed).name)
         if bed:
             check_recorded_file(
                 plan, "primer BED", bed, sums["primer_bed"], required=not is_bundled(bed)

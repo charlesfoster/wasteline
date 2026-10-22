@@ -141,3 +141,51 @@ Five profiles, four reference records, one start-up helper; the single-contig pi
   (stub run with a BED listing `seg4` / `seg6`: warning, 14-line filtered file, run_info checksum of the filtered BED; BED with only
   `seg4`: the old error; full docker runs in [../other_pathogens.md](../other_pathogens.md)). The simulator
   `tests/simulate_pathogen_mixture.py` is unchanged.
+
+## Mpox, per-pathogen primer schemes and user schemes (PLAN D26): what changed
+
+User view: [../other_pathogens.md](../other_pathogens.md) ("Running mpox", "Primer schemes"), [../usage.md](../usage.md#using-your-own-primer-scheme).
+
+**Mpox.** One profile and two reference files; no pipeline code changed for the pathogen itself.
+
+- `nextflow.config` profile map gained `'MPX': 'mpx'`; `conf/pathogens/mpx.config` sets `pathogen = 'MPX'`, `fasta` / `gff` = `assets/references/NC_063383.1.{fasta,gff3}`.
+- The FASTA is the NCBI record `NC_063383.1` (efetch), sequence-identical to Freyja's `MPX/latest/reference.fasta` (header `MPXV-M5312_HM12_Rivers`); the
+  GFF3 is NCBI's gene + CDS lines (179 genes, `OPGnnn`) with `mRNA` and `exon` lines added, like the RSV/influenza files. The four genes inside the inverted
+  terminal repeats occur twice in the record; ids and names must be unique for `bcftools csq` and `read_cds_models()`, so the copy near the 3' end has the suffix
+  `_R` (`OPG003_R`). The NCBI `long_terminal_repeat` and `sequence_feature` lines are not kept.
+- **What broke on a 197 kb reference**: `modules/nf-core/bwa/index/main.nf` declares `memory { 7.B * fasta.size() }`. Nextflow passes `--memory 1m` to Docker for a
+  1.4 MB value, Docker's minimum is 6 MB, so `BWA_INDEX` died with exit 125 on the mpox FASTA (by the same arithmetic a FASTA of roughly 150-860 kb lands between 1 MB and Docker's 6 MB minimum; the smaller references that were run never did).
+  `conf/modules.config` overrides the directive for `BWA_INDEX` (`memory = { 7.B * fasta.size() > 256.MB ? 7.B * fasta.size() : 256.MB }`); a config selector wins over the
+  module's own directive (checked), and the nf-core module is untouched. Nothing else in the pipeline depended on the genome length: see the checks in "Running mpox".
+
+**Per-pathogen bundled primer schemes.** Two more hidden profile facts (schema `hidden: true`, filtered out of `run_info.json` in `runInfoBase()` with the other two):
+
+| Fact                     | SARS-CoV-2                                        | measles / mpox                                            | others |
+| ------------------------ | ------------------------------------------------- | --------------------------------------------------------- | ------ |
+| `primer_schemes_bundled` | `${projectDir}/assets/primer_schemes` (as before) | `${projectDir}/assets/primer_schemes/measles` / `.../mpx` | `null` |
+| `primer_scheme_default`  | `'qiagenv1'` (PLAN D14)                           | `null`                                                    | `null` |
+
+`subworkflows/local/utils_nfcore_wasteline_pipeline/main.nf`:
+
+- `defaultPrimerScheme()` returns `params.primer_scheme_default` (was the literal `'qiagenv1'`); `bundledPrimerSchemes()` lists the `*.bed` of `primer_schemes_bundled`;
+  `sourceBedFor()` and `bundledSchemesApply()` read the same directory. For SARS-CoV-2 every path resolves to the same files as before, so its `meta`, commands,
+  `run_info.json` (the two new facts are filtered) and `PRIMER_SCHEME_CHECK` wiring are unchanged. `PRIMER_SCHEME_CHECK` still stages the top-level `assets/primer_schemes`
+  (it globs `*.bed` non-recursively, so the new subdirectories are not scored) and `bundledSchemesApply()` is false for a pathogen without a default scheme.
+- `libraryMeta()` resolves a scheme name (cell, `--primer_scheme`) with `chooseScheme(name, who)`; with no default scheme and nothing given in mode `full` it stops with
+  `noDefaultSchemeMessage()` naming the sample and the schemes bundled for the pathogen (this replaces the earlier "default scheme is for a different reference"
+  error for pathogens without a default; that message remains for a SARS-CoV-2 run with a `--fasta` of another sequence). Because the check moved into
+  `libraryMeta()` it is per sample, so a samplesheet that names a scheme for every sample works without a run default. `validateInputParameters()` only checks the BED of a
+  run default that exists (`primerBed()` returns `null` otherwise).
+- `chooseScheme()` also produces the "unknown scheme" error: it lists the bundled names, the names in `--primer_scheme_dir`, and says when the name is bundled for another
+  pathogen (`schemesOfOtherPathogens()`). The schema enum of `--primer_scheme` was removed (names are pathogen dependent); the schema now has a name pattern.
+- **`--primer_scheme_dir <dir>`** (`nextflow.config`, schema `format: directory-path`, `exists: true`): `chooseScheme()` looks in the directory first. A user scheme is stored
+  in `meta` as `primer_scheme: 'custom'` with `primer_bed` = the absolute path, i.e. it takes the route of a per-sample BED path: `IVAR_TRIM`, `AMPLICON_COVERAGE`, `PROVENANCE`
+  (sha256, `custom: <name>.bed` in `sample_libraries`), `PRIMER_SCHEME_CHECK` (custom BED) and the contig check (`checkSampleBeds`, `validateInputParameters`) need no change.
+  `validateInputParameters()` warns once about names that exist in both places (user file used), about an empty directory, and about use outside modes `full`/`demix`.
+- `bin/check_samplesheet.py` gained `--pathogen` (reads the profile from the map in `nextflow.config`) and `--primer-scheme-dir`; its name check uses the pathogen's directory
+  (`assets/primer_schemes/<profile>/`). `bin/replay_run.py` finds a recorded bundled BED in a profile subdirectory (`rglob`); `bin/reanalyse_runs.py` carries `primer_scheme_dir`.
+- `assets/primer_schemes/{measles,mpx}/*.bed` are unmodified `primer.bed` files (md5 equal to the scheme's own record) with a `# artic-bed-version v3.0` first line; `ivar trim`
+  (0 changes in the measles results), `amplicon_coverage.py` and the contig check skip it. Sources, licences and the schemes that could not be bundled: `assets/primer_schemes/README.md`.
+- Tests: no new pytest test. `test_pathogen_profiles_are_consistent` checks the two new facts, that a profile's scheme directory has BEDs on the profile's reference contig and that a
+  default scheme is one of them; `test_per_sample_protocol_and_primer_scheme` (samplesheet) also covers per-pathogen names and a user directory. No nf-test, no e2e step.
+  `tests/simulate_pathogen_mixture.py` gained `--shear` (fragments inside long amplicons).

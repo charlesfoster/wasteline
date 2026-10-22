@@ -31,7 +31,8 @@ PROTOCOLS = ("amplicon", "capture")
 OPTIONAL_META = ["sample_type", "collection_date", "site", "viral_load"]
 # per-sample library settings (PLAN D20); empty = the run's --protocol / --primer_scheme / --primer_bed
 LIBRARY_COLUMNS = ["protocol", "primer_scheme"]
-PRIMER_SCHEME_DIR = Path(__file__).resolve().parent.parent / "assets" / "primer_schemes"
+PIPELINE_DIR = Path(__file__).resolve().parent.parent
+PRIMER_SCHEME_DIR = PIPELINE_DIR / "assets" / "primer_schemes"
 
 REQUIRED = {
     "full": ["sample", "fastq_1", "fastq_2"],
@@ -75,8 +76,23 @@ def is_bed_path(value: str) -> bool:
     return "/" in value or value.endswith(".bed")
 
 
-def bundled_schemes() -> list[str]:
-    return sorted(p.stem for p in PRIMER_SCHEME_DIR.glob("*.bed"))
+def pathogen_profile(pathogen: str) -> str:
+    """The conf/pathogens profile of a --pathogen name, read from the map in nextflow.config ('generic' if unlisted)."""
+    try:
+        text = (PIPELINE_DIR / "nextflow.config").read_text()
+        line = re.search(r'includeConfig "conf/pathogens/.*', text).group(0)
+        return dict(re.findall(r"'([^']+)': '(\w+)'", line)).get(pathogen, "generic")
+    except (OSError, AttributeError):
+        return "generic"
+
+
+def bundled_schemes(pathogen: str | None = None, scheme_dirs: tuple = ()) -> list[str]:
+    """Names usable in a primer_scheme cell: the SARS-CoV-2 schemes (no pathogen given, or SARS-CoV-2), or the schemes
+    bundled for the pathogen (assets/primer_schemes/<profile>/), plus the <name>.bed files of the user's directories."""
+    profile = pathogen_profile(pathogen) if pathogen else "sars2"
+    bundled = PRIMER_SCHEME_DIR if profile == "sars2" else PRIMER_SCHEME_DIR / profile
+    dirs = [bundled, *[Path(d) for d in scheme_dirs]]
+    return sorted({p.stem for d in dirs for p in d.glob("*.bed")})
 
 
 def resolve(value: str, base: Path) -> Path:
@@ -114,7 +130,13 @@ def check_file(path: Path, column: str) -> str | None:
     return None
 
 
-def validate(sheet: Path, mode: str, check_files: bool = False) -> dict:
+def validate(
+    sheet: Path,
+    mode: str,
+    check_files: bool = False,
+    pathogen: str | None = None,
+    scheme_dirs: tuple = (),
+) -> dict:
     errors: list[str] = []
     warnings: list[str] = []
     result = {"ok": False, "mode": mode, "n_samples": 0, "errors": errors, "warnings": warnings}
@@ -200,10 +222,12 @@ def validate(sheet: Path, mode: str, check_files: bool = False) -> dict:
         elif scheme and is_bed_path(scheme):
             if check_files and not resolve(scheme, base).is_file():
                 errors.append(f"{tag}: primer_scheme BED file '{scheme}' does not exist")
-        elif scheme and bundled_schemes() and scheme not in bundled_schemes():
+        elif scheme and scheme not in bundled_schemes(pathogen, scheme_dirs):
+            available = ", ".join(bundled_schemes(pathogen, scheme_dirs)) or "none"
             errors.append(
-                f"{tag}: primer_scheme '{scheme}' is not a bundled scheme "
-                f"({', '.join(bundled_schemes())}) and not a path to a BED file (.bed)"
+                f"{tag}: primer_scheme '{scheme}' is not a primer scheme available for "
+                f"{pathogen or 'the default pathogen'} (bundled or in --primer-scheme-dir: {available}) "
+                f"and not a path to a BED file (.bed)"
             )
 
         for col in path_cols:
@@ -260,8 +284,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="verify referenced files exist (FASTQs: readable, first line starts '@')",
     )
+    p.add_argument(
+        "--pathogen",
+        help="the run's --pathogen: primer_scheme names are checked against the schemes bundled for it "
+        "(default: the SARS-CoV-2 schemes)",
+    )
+    p.add_argument(
+        "--primer-scheme-dir",
+        action="append",
+        default=[],
+        help="directory of your own <name>.bed schemes (the run's --primer_scheme_dir); repeatable",
+    )
     args = p.parse_args(argv)
-    result = validate(Path(args.samplesheet), args.mode, args.check_files)
+    result = validate(
+        Path(args.samplesheet),
+        args.mode,
+        args.check_files,
+        args.pathogen,
+        tuple(args.primer_scheme_dir),
+    )
     print(json.dumps(result, indent=2))
     print_table(result, args.samplesheet)
     return 0 if result["ok"] else 1

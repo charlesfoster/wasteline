@@ -127,6 +127,8 @@ def test_pathogen_profiles_are_consistent():
             "gff",
             "lineage_groups_bundled",
             "freyja_container_pathogen",
+            "primer_schemes_bundled",
+            "primer_scheme_default",
         ):
             assert re.search(rf"^\s*{fact}\s*=", text, re.MULTILINE), (
                 f"{stem}.config does not set {fact}"
@@ -157,3 +159,21 @@ def test_pathogen_profiles_are_consistent():
                 )
                 # bcftools csq needs gene -> mRNA -> exon/CDS ("No usable transcripts" with NCBI's gene + CDS only)
                 assert {"gene", "mRNA", "exon", "CDS"} <= {r[2] for r in records}, gff.name
+            # bundled primer schemes (PLAN D26): the directory has BED files, each on the reference's sequence, and a
+            # default scheme is one of them
+            scheme_dir = re.search(
+                r'^\s*primer_schemes_bundled\s*=\s*"\$\{projectDir\}/([^"]+)"', text, re.MULTILINE
+            )
+            default = re.search(r"^\s*primer_scheme_default\s*=\s*'([^']+)'", text, re.MULTILINE)
+            if scheme_dir:
+                beds = list((ROOT / scheme_dir.group(1)).glob("*.bed"))
+                assert beds, f"{stem}.config names a scheme directory without BED files"
+                for bed in beds:
+                    contigs = {
+                        ln.split("\t")[0]
+                        for ln in bed.read_text().splitlines()
+                        if ln[:1] != "#" and ln
+                    }
+                    assert contigs == set(names), f"{bed.name} is not on the sequence {names}"
+            if default:
+                assert (ROOT / scheme_dir.group(1) / f"{default.group(1)}.bed").is_file()

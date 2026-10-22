@@ -188,18 +188,23 @@ validate a sheet before queuing a long run and to check files without starting N
 
 **Reference.** The default is the bundled SARS-CoV-2 reference `NC_045512.2` (`assets/references/NC_045512.fasta`) and its
 GFF3 annotation. Override with `--fasta` and `--gff`. The pathogen defaults live in `conf/pathogens/*.config`, selected by
-`--pathogen`. RSV-A (`--pathogen RSVa`), RSV-B (`--pathogen RSVb`), measles (`--pathogen MEASLESgenome`) and the five influenza pathogens
-(`H1N1`, `H3N2`, `FLU-B-VIC`, `H5Nx`, `H5Nx-cattle`; HA segment only, one run per subtype) bundle their reference (all but measles also an
-annotation) and need only a primer BED (`--primer_bed`) or `--protocol capture`. Other Freyja pathogens with a single-sequence genome
-(dengue, mpox) can be run with `--pathogen <name> --fasta <the reference of the Freyja barcodes> --primer_bed <BED>`: see
-[other_pathogens.md](other_pathogens.md) (support matrix, how to run RSV, influenza and measles, the validation results). MTB is refused at
+`--pathogen`. RSV-A (`--pathogen RSVa`), RSV-B (`--pathogen RSVb`), mpox (`--pathogen MPX`), measles (`--pathogen MEASLESgenome`) and the five
+influenza pathogens (`H1N1`, `H3N2`, `FLU-B-VIC`, `H5Nx`, `H5Nx-cattle`; HA segment only, one run per subtype) bundle their reference (all but
+measles also an annotation) and need a primer scheme (`--primer_scheme`, `--primer_bed`; ARTIC/BCCDC schemes are bundled for measles and mpox) or
+`--protocol capture`. Dengue (`DENV1-4`) can be run with `--pathogen <name> --fasta <the reference of the Freyja barcodes> --primer_bed <BED>`:
+see [other_pathogens.md](other_pathogens.md) (support matrix, how to run each pathogen, the validation results). MTB is refused at
 start-up.
 
 **Primer scheme** (modes `full`, and `demix` if you want per-amplicon coverage): choose a bundled scheme with
-`--primer_scheme`, or give your own BED with `--primer_bed <file>` (which overrides `--primer_scheme`). The default in
-`full` mode is **`qiagenv1`** (QIAseq Direct SARS-CoV-2; the old Snakemake pipeline defaulted to `midnight`, see
+`--primer_scheme`, or give your own BED with `--primer_bed <file>` (which overrides `--primer_scheme`), or a directory of your own
+schemes with `--primer_scheme_dir` ([below](#using-your-own-primer-scheme)). Bundled schemes are **per pathogen**: `--pathogen X` offers the
+schemes of X only (SARS-CoV-2 below; measles `artic-measles-v1.0.0`, mpox `bccdc-mpox-v2.3.0`; sources and licences in
+[assets/primer_schemes/README.md](../assets/primer_schemes/README.md)). The default in
+`full` mode is **`qiagenv1`** for SARS-CoV-2 (QIAseq Direct SARS-CoV-2; the old Snakemake pipeline defaulted to `midnight`, see
 [migration_from_snakemake.md](migration_from_snakemake.md#the-default-primer-scheme-changed)): if you use another protocol, say
-so with `--primer_scheme`. The scheme in effect is recorded in `pipeline_info/run_info.json` (`params.primer_scheme`), also when
+so with `--primer_scheme`. **Every other pathogen has no default scheme**: without `--primer_scheme`, `--primer_bed`, a samplesheet
+`primer_scheme` cell or `--protocol capture` the run stops at start-up with a message that lists the schemes bundled for the pathogen.
+The scheme in effect is recorded in `pipeline_info/run_info.json` (`params.primer_scheme`), also when
 you did not give one. In mode `demix` amplicon-level QC happens only when you give a scheme or BED explicitly (the scheme of
 old results is not known). The BED's contig name **must** match a contig of the reference FASTA, otherwise the run stops
 at start-up (otherwise `ivar trim` would silently trim nothing).
@@ -216,9 +221,15 @@ at start-up (otherwise `ivar trim` would silently trim nothing).
 | `qiagenv1` (default) | 223       | `QIAseq_221_LEFT`             |
 | `xgen`               | 343       | `covid19genome_0-200_s0_M1F`  |
 
-All nine bundled BEDs use the contig name `NC_045512.2`, the same as the bundled reference, so every scheme works as-is
+All nine bundled SARS-CoV-2 BEDs use the contig name `NC_045512.2`, the same as the bundled reference, so every scheme works as-is
 (the start-up contig check passes for each of them; verified with `-preview`). Amplicon counts were measured with
-`bin/amplicon_coverage.py` on each bundled BED.
+`bin/amplicon_coverage.py` on each bundled BED. The bundled schemes of the other pathogens (CC BY-SA 4.0, from the
+[primerschemes](https://github.com/quick-lab/primerschemes) repository) are:
+
+| `--pathogen`    | `--primer_scheme`      | Amplicons | Contig        | Primer names look like |
+| --------------- | ---------------------- | --------- | ------------- | ---------------------- |
+| `MEASLESgenome` | `artic-measles-v1.0.0` | 47        | `NC_001498.1` | `177e6ebb_0_LEFT_0`    |
+| `MPX`           | `bccdc-mpox-v2.3.0`    | 79        | `NC_063383.1` | `MPXV_1_LEFT_1`        |
 
 **A custom BED must use the contig name of the reference.** A BED copied from elsewhere often names the contig
 `MN908947.3` (the same Wuhan-Hu-1 sequence, a different accession). The run then stops at start-up, before any work is done:
@@ -241,6 +252,49 @@ Custom BEDs: tab-separated BED6-like (`contig  start  end  name  pool  strand`),
 [qc_scripts.md](qc_scripts.md) for the naming rules). `--ivar_offset` sets `ivar trim -x` (default 5 for `swift`,
 otherwise 0). If you use a different amplicon length distribution, expect more or fewer `amplicon_dropout` flags; tune
 `--amplicon_min_depth` and `--qc_max_dropped_amplicons`.
+
+### Using your own primer scheme
+
+Three ways to give the pipeline a primer scheme that is not bundled (all are checked at start-up, before any work):
+
+| Route                                      | How                                                                                                                                    | Use it when                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `--primer_bed my_scheme.bed`               | one BED for every amplicon sample of the run (overrides `--primer_scheme`)                                                             | one panel, used once                            |
+| a BED path in the samplesheet              | the `primer_scheme` cell of a sample is a path (contains a `/` or ends in `.bed`; relative to the launch directory)                    | several panels in one run                       |
+| `--primer_scheme_dir schemes/` plus a name | a directory of `<name>.bed` files; then `--primer_scheme <name>` (run default) and/or `<name>` in the samplesheet `primer_scheme` cell | a lab's own panels, re-used by name across runs |
+
+```bash
+mkdir myschemes && cp my_panel_v2.bed myschemes/mypanel-v2.bed
+nextflow run charlesfoster/wasteline -profile docker --input samplesheet.csv --outdir results \
+    --pathogen MPX --primer_scheme_dir myschemes --primer_scheme mypanel-v2
+```
+
+- **Names**: a scheme name is looked up in `--primer_scheme_dir` first, then among the schemes bundled for the pathogen. A name that exists in both
+  uses **your file**, with one warning. An unknown name stops the run at start-up, naming the sample (or `--primer_scheme`) and listing the
+  available names; a name that is bundled for another pathogen says so. `--primer_scheme_dir` itself must exist (an empty one gives a warning).
+  The scheme is recorded in `pipeline_info/run_info.json` as `custom: <name>.bed` with the BED's sha256 (a bundled scheme is recorded by name).
+- **Contig name**: column 1 must be the name of the reference sequence, the first word of its FASTA header (`NC_045512.2` for SARS-CoV-2,
+  `NC_063383.1` for `--pathogen MPX`, ...; the error message lists the reference's name). A BED with no line on the reference is refused for
+  every route; if the BED also has lines of other contigs they are dropped with one warning (whole-genome influenza panels, see
+  [other_pathogens.md](other_pathogens.md#running-influenza-ha-segment-only)). A scheme made for another accession of the same genome needs only
+  the first column renamed if the sequences are identical (`sed`, see above); if they differ (insertions, a different strain) the
+  coordinates differ and the BED must be re-mapped first. The pipeline never renames contigs for you.
+- **Columns**: tab-separated, at least 6: `contig  start  end  name  pool  strand` (BED, 0-based start). The primalscheme `primer.bed` has a seventh
+  column (the primer sequence or a weight): fine, extra columns are ignored. Lines starting with `#`, `track` or `browser` are ignored.
+- **Primer names** decide how primers become amplicons (`amplicon_coverage.tsv`, dropout calls): use the primalscheme names
+  `<scheme>_<n>_LEFT_<alt>` / `<scheme>_<n>_RIGHT_<alt>` (primers with the same `<scheme>_<n>` form one amplicon, alternates `<alt>` are merged;
+  e.g. `MPXV_12_LEFT_1`, `177e6ebb_0_RIGHT_2`). Also understood: `X_LEFT`/`X_RIGHT`, `X_F`/`X_R`, `X_altN_F` and the ARTIC v3/v4 and
+  QIAseq/swift styles of the bundled schemes. **Other naming**: a name without such a suffix is paired by the strand column only when it has
+  one, and then each primer is its own group with no partner, so `amplicon_coverage.py` warns `primer group ... has no partner; ignored` for each
+  and derives **no amplicons** (empty table; the sample's amplicon columns are `NA`, no `amplicon_dropout` rule, no dropout impact); a BED row
+  whose name has no direction suffix **and** no strand column makes the script stop (that sample again gets `NA`). Trimming itself
+  (`ivar trim`) only needs the coordinates and the strand and works with any names.
+- **`--ivar_offset N`** is `ivar trim -x N`: reads whose start lies within N bases of a primer start are trimmed as if they began at the
+  primer, which absorbs imprecise primer coordinates or reads that start a few bases inside the primer. The default is 0 for every scheme
+  except the bundled `swift` (5). It is a run-wide setting; the Freyja measles tutorial uses 3 with the ARTIC measles panel. Set it only if
+  your panel's reads show untrimmed primer sequence.
+- `bin/check_samplesheet.py sheet.csv --mode full --pathogen MPX --primer-scheme-dir myschemes` checks the names of the `primer_scheme` cells
+  beforehand.
 
 ### Probe-capture data (e.g. Twist): `--protocol capture`
 
@@ -287,10 +341,10 @@ amplicon coverage (it is never computed for `capture`); demix has no BAM, so dup
 
 Two optional samplesheet columns override the run defaults for one sample (PLAN D20):
 
-| Column          | Values                                                                                                                                                                        | Blank means                                                    |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `protocol`      | `amplicon` or `capture`                                                                                                                                                       | `--protocol` (default `amplicon`)                              |
-| `primer_scheme` | a bundled scheme name (`midnight`, `qiagenv1`, ... see [primer schemes](#4-reference-and-primer-schemes)) or the path to a primer BED file (contains a `/` or ends in `.bed`) | `--primer_bed`, else `--primer_scheme`, else `qiagenv1` (full) |
+| Column          | Values                                                                                                                                                                                                                                                            | Blank means                                                                                                                    |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `protocol`      | `amplicon` or `capture`                                                                                                                                                                                                                                           | `--protocol` (default `amplicon`)                                                                                              |
+| `primer_scheme` | a scheme name (bundled for the pathogen, e.g. `midnight`, `qiagenv1`, `bccdc-mpox-v2.3.0`, see [primer schemes](#4-reference-and-primer-schemes); or a `<name>.bed` of `--primer_scheme_dir`) or the path to a primer BED file (contains a `/` or ends in `.bed`) | `--primer_bed`, else `--primer_scheme`, else the pathogen's default (`qiagenv1` for SARS-CoV-2, none otherwise: the run stops) |
 
 ```csv
 sample,fastq_1,fastq_2,sample_type,collection_date,site,protocol,primer_scheme

@@ -1,0 +1,720 @@
+##gff-version 3
+##sequence-region   NC_063383.1 1 197209
+# Derived from the NCBI GFF3 of NC_063383.1 (Monkeypox virus MPXV-M5312_HM12_Rivers, clade IIb RefSeq): the gene and CDS lines are NCBI's, unchanged in coordinates; an mRNA and an exon
+# line per gene were added because bcftools csq needs gene -> transcript -> exon/CDS. Gene names are the NCBI gene symbols (OPGnnn); the four genes inside the inverted terminal repeats occur twice and the copy nearer the 3' end carries the suffix _R.
+NC_063383.1	NCBI	gene	835	1575	.	-	.	ID=gene:OPG001;Name=OPG001;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	835	1575	.	-	.	ID=transcript:OPG001;Parent=gene:OPG001;Name=OPG001;biotype=protein_coding;transcript_id=OPG001
+NC_063383.1	NCBI	exon	835	1575	.	-	.	Parent=transcript:OPG001;Name=OPG001.exon;exon_id=OPG001.exon;rank=1
+NC_063383.1	NCBI	CDS	835	1575	.	-	0	ID=CDS:OPG001;Parent=transcript:OPG001;Name=OPG001;product=Chemokine binding protein;protein_id=YP_010377002.1
+NC_063383.1	NCBI	gene	1702	2751	.	-	.	ID=gene:OPG002;Name=OPG002;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	1702	2751	.	-	.	ID=transcript:OPG002;Parent=gene:OPG002;Name=OPG002;biotype=protein_coding;transcript_id=OPG002
+NC_063383.1	NCBI	exon	1702	2751	.	-	.	Parent=transcript:OPG002;Name=OPG002.exon;exon_id=OPG002.exon;rank=1
+NC_063383.1	NCBI	CDS	1702	2751	.	-	0	ID=CDS:OPG002;Parent=transcript:OPG002;Name=OPG002;product=Crm-B secreted TNF-alpha-receptor-like protein;protein_id=YP_010377003.1
+NC_063383.1	NCBI	gene	2841	4607	.	-	.	ID=gene:OPG003;Name=OPG003;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	2841	4607	.	-	.	ID=transcript:OPG003;Parent=gene:OPG003;Name=OPG003;biotype=protein_coding;transcript_id=OPG003
+NC_063383.1	NCBI	exon	2841	4607	.	-	.	Parent=transcript:OPG003;Name=OPG003.exon;exon_id=OPG003.exon;rank=1
+NC_063383.1	NCBI	CDS	2841	4607	.	-	0	ID=CDS:OPG003;Parent=transcript:OPG003;Name=OPG003;product=Ankyrin repeat protein (25);protein_id=YP_010377004.1
+NC_063383.1	NCBI	gene	4843	6156	.	-	.	ID=gene:OPG015;Name=OPG015;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	4843	6156	.	-	.	ID=transcript:OPG015;Parent=gene:OPG015;Name=OPG015;biotype=protein_coding;transcript_id=OPG015
+NC_063383.1	NCBI	exon	4843	6156	.	-	.	Parent=transcript:OPG015;Name=OPG015.exon;exon_id=OPG015.exon;rank=1
+NC_063383.1	NCBI	CDS	4843	6156	.	-	0	ID=CDS:OPG015;Parent=transcript:OPG015;Name=OPG015;product=Ankyrin repeat protein (39);protein_id=YP_010377005.1
+NC_063383.1	NCBI	gene	7580	8008	.	+	.	ID=gene:OPG019;Name=OPG019;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	7580	8008	.	+	.	ID=transcript:OPG019;Parent=gene:OPG019;Name=OPG019;biotype=protein_coding;transcript_id=OPG019
+NC_063383.1	NCBI	exon	7580	8008	.	+	.	Parent=transcript:OPG019;Name=OPG019.exon;exon_id=OPG019.exon;rank=1
+NC_063383.1	NCBI	CDS	7580	8008	.	+	0	ID=CDS:OPG019;Parent=transcript:OPG019;Name=OPG019;product=EGF-like domain protein;protein_id=YP_010377006.1
+NC_063383.1	NCBI	gene	9587	10315	.	+	.	ID=gene:OPG021;Name=OPG021;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	9587	10315	.	+	.	ID=transcript:OPG021;Parent=gene:OPG021;Name=OPG021;biotype=protein_coding;transcript_id=OPG021
+NC_063383.1	NCBI	exon	9587	10315	.	+	.	Parent=transcript:OPG021;Name=OPG021.exon;exon_id=OPG021.exon;rank=1
+NC_063383.1	NCBI	CDS	9587	10315	.	+	0	ID=CDS:OPG021;Parent=transcript:OPG021;Name=OPG021;product=Zinc finger-like protein (2);protein_id=YP_010377007.1
+NC_063383.1	NCBI	gene	10478	10858	.	-	.	ID=gene:OPG022;Name=OPG022;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	10478	10858	.	-	.	ID=transcript:OPG022;Parent=gene:OPG022;Name=OPG022;biotype=protein_coding;transcript_id=OPG022
+NC_063383.1	NCBI	exon	10478	10858	.	-	.	Parent=transcript:OPG022;Name=OPG022.exon;exon_id=OPG022.exon;rank=1
+NC_063383.1	NCBI	CDS	10478	10858	.	-	0	ID=CDS:OPG022;Parent=transcript:OPG022;Name=OPG022;product=Interleukin-18-binding protein;protein_id=YP_010377008.1
+NC_063383.1	NCBI	gene	10918	12900	.	-	.	ID=gene:OPG023;Name=OPG023;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	10918	12900	.	-	.	ID=transcript:OPG023;Parent=gene:OPG023;Name=OPG023;biotype=protein_coding;transcript_id=OPG023
+NC_063383.1	NCBI	exon	10918	12900	.	-	.	Parent=transcript:OPG023;Name=OPG023.exon;exon_id=OPG023.exon;rank=1
+NC_063383.1	NCBI	CDS	10918	12900	.	-	0	ID=CDS:OPG023;Parent=transcript:OPG023;Name=OPG023;product=Ankyrin repeat protein (2);protein_id=YP_010377009.1
+NC_063383.1	NCBI	gene	13034	13228	.	-	.	ID=gene:OPG024;Name=OPG024;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	13034	13228	.	-	.	ID=transcript:OPG024;Parent=gene:OPG024;Name=OPG024;biotype=protein_coding;transcript_id=OPG024
+NC_063383.1	NCBI	exon	13034	13228	.	-	.	Parent=transcript:OPG024;Name=OPG024.exon;exon_id=OPG024.exon;rank=1
+NC_063383.1	NCBI	CDS	13034	13228	.	-	0	ID=CDS:OPG024;Parent=transcript:OPG024;Name=OPG024;product=retroviral pseudoprotease-like protein;protein_id=YP_010377010.1
+NC_063383.1	NCBI	gene	13375	15267	.	-	.	ID=gene:OPG025;Name=OPG025;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	13375	15267	.	-	.	ID=transcript:OPG025;Parent=gene:OPG025;Name=OPG025;biotype=protein_coding;transcript_id=OPG025
+NC_063383.1	NCBI	exon	13375	15267	.	-	.	Parent=transcript:OPG025;Name=OPG025.exon;exon_id=OPG025.exon;rank=1
+NC_063383.1	NCBI	CDS	13375	15267	.	-	0	ID=CDS:OPG025;Parent=transcript:OPG025;Name=OPG025;product=Ankyrin repeat protein (14);protein_id=YP_010377011.1
+NC_063383.1	NCBI	gene	15925	16377	.	-	.	ID=gene:OPG027;Name=OPG027;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	15925	16377	.	-	.	ID=transcript:OPG027;Parent=gene:OPG027;Name=OPG027;biotype=protein_coding;transcript_id=OPG027
+NC_063383.1	NCBI	exon	15925	16377	.	-	.	Parent=transcript:OPG027;Name=OPG027.exon;exon_id=OPG027.exon;rank=1
+NC_063383.1	NCBI	CDS	15925	16377	.	-	0	ID=CDS:OPG027;Parent=transcript:OPG027;Name=OPG027;product=Host range protein;protein_id=YP_010377012.1
+NC_063383.1	NCBI	gene	16602	17069	.	-	.	ID=gene:OPG029;Name=OPG029;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	16602	17069	.	-	.	ID=transcript:OPG029;Parent=gene:OPG029;Name=OPG029;biotype=protein_coding;transcript_id=OPG029
+NC_063383.1	NCBI	exon	16602	17069	.	-	.	Parent=transcript:OPG029;Name=OPG029.exon;exon_id=OPG029.exon;rank=1
+NC_063383.1	NCBI	CDS	16602	17069	.	-	0	ID=CDS:OPG029;Parent=transcript:OPG029;Name=OPG029;product=Bcl-2-like protein;protein_id=YP_010377013.1
+NC_063383.1	NCBI	gene	17213	17833	.	-	.	ID=gene:OPG030;Name=OPG030;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	17213	17833	.	-	.	ID=transcript:OPG030;Parent=gene:OPG030;Name=OPG030;biotype=protein_coding;transcript_id=OPG030
+NC_063383.1	NCBI	exon	17213	17833	.	-	.	Parent=transcript:OPG030;Name=OPG030.exon;exon_id=OPG030.exon;rank=1
+NC_063383.1	NCBI	CDS	17213	17833	.	-	0	ID=CDS:OPG030;Parent=transcript:OPG030;Name=OPG030;product=Kelch-like protein (1);protein_id=YP_010377014.1
+NC_063383.1	NCBI	gene	17878	18828	.	-	.	ID=gene:OPG031;Name=OPG031;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	17878	18828	.	-	.	ID=transcript:OPG031;Parent=gene:OPG031;Name=OPG031;biotype=protein_coding;transcript_id=OPG031
+NC_063383.1	NCBI	exon	17878	18828	.	-	.	Parent=transcript:OPG031;Name=OPG031.exon;exon_id=OPG031.exon;rank=1
+NC_063383.1	NCBI	CDS	17878	18828	.	-	0	ID=CDS:OPG031;Parent=transcript:OPG031;Name=OPG031;product=C4L/C10L-like family protein;protein_id=YP_010377015.1
+NC_063383.1	NCBI	gene	19361	20005	.	-	.	ID=gene:OPG034;Name=OPG034;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	19361	20005	.	-	.	ID=transcript:OPG034;Parent=gene:OPG034;Name=OPG034;biotype=protein_coding;transcript_id=OPG034
+NC_063383.1	NCBI	exon	19361	20005	.	-	.	Parent=transcript:OPG034;Name=OPG034.exon;exon_id=OPG034.exon;rank=1
+NC_063383.1	NCBI	CDS	19361	20005	.	-	0	ID=CDS:OPG034;Parent=transcript:OPG034;Name=OPG034;product=Bcl-2-like protein;protein_id=YP_010377017.1
+NC_063383.1	NCBI	gene	20051	20404	.	-	.	ID=gene:OPG035;Name=OPG035;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	20051	20404	.	-	.	ID=transcript:OPG035;Parent=gene:OPG035;Name=OPG035;biotype=protein_coding;transcript_id=OPG035
+NC_063383.1	NCBI	exon	20051	20404	.	-	.	Parent=transcript:OPG035;Name=OPG035.exon;exon_id=OPG035.exon;rank=1
+NC_063383.1	NCBI	CDS	20051	20404	.	-	0	ID=CDS:OPG035;Parent=transcript:OPG035;Name=OPG035;product=Bcl-2-like protein;protein_id=YP_010377018.1
+NC_063383.1	NCBI	gene	20531	21064	.	-	.	ID=gene:OPG036;Name=OPG036;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	20531	21064	.	-	.	ID=transcript:OPG036;Parent=gene:OPG036;Name=OPG036;biotype=protein_coding;transcript_id=OPG036
+NC_063383.1	NCBI	exon	20531	21064	.	-	.	Parent=transcript:OPG036;Name=OPG036.exon;exon_id=OPG036.exon;rank=1
+NC_063383.1	NCBI	CDS	20531	21064	.	-	0	ID=CDS:OPG036;Parent=transcript:OPG036;Name=OPG036;product=Bcl-2-like protein;protein_id=YP_010377019.1
+NC_063383.1	NCBI	gene	21105	22433	.	-	.	ID=gene:OPG037;Name=OPG037;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	21105	22433	.	-	.	ID=transcript:OPG037;Parent=gene:OPG037;Name=OPG037;biotype=protein_coding;transcript_id=OPG037
+NC_063383.1	NCBI	exon	21105	22433	.	-	.	Parent=transcript:OPG037;Name=OPG037.exon;exon_id=OPG037.exon;rank=1
+NC_063383.1	NCBI	CDS	21105	22433	.	-	0	ID=CDS:OPG037;Parent=transcript:OPG037;Name=OPG037;product=Ankyrin-like protein (1);protein_id=YP_010377020.1
+NC_063383.1	NCBI	gene	22497	23159	.	-	.	ID=gene:OPG038;Name=OPG038;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	22497	23159	.	-	.	ID=transcript:OPG038;Parent=gene:OPG038;Name=OPG038;biotype=protein_coding;transcript_id=OPG038
+NC_063383.1	NCBI	exon	22497	23159	.	-	.	Parent=transcript:OPG038;Name=OPG038.exon;exon_id=OPG038.exon;rank=1
+NC_063383.1	NCBI	CDS	22497	23159	.	-	0	ID=CDS:OPG038;Parent=transcript:OPG038;Name=OPG038;product=NFkB inhibitor;protein_id=YP_010377021.1
+NC_063383.1	NCBI	gene	23264	24118	.	-	.	ID=gene:OPG039;Name=OPG039;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	23264	24118	.	-	.	ID=transcript:OPG039;Parent=gene:OPG039;Name=OPG039;biotype=protein_coding;transcript_id=OPG039
+NC_063383.1	NCBI	exon	23264	24118	.	-	.	Parent=transcript:OPG039;Name=OPG039.exon;exon_id=OPG039.exon;rank=1
+NC_063383.1	NCBI	CDS	23264	24118	.	-	0	ID=CDS:OPG039;Parent=transcript:OPG039;Name=OPG039;product=Ankyrin-like protein (3);protein_id=YP_010377022.1
+NC_063383.1	NCBI	gene	24351	25478	.	-	.	ID=gene:OPG040;Name=OPG040;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	24351	25478	.	-	.	ID=transcript:OPG040;Parent=gene:OPG040;Name=OPG040;biotype=protein_coding;transcript_id=OPG040
+NC_063383.1	NCBI	exon	24351	25478	.	-	.	Parent=transcript:OPG040;Name=OPG040.exon;exon_id=OPG040.exon;rank=1
+NC_063383.1	NCBI	CDS	24351	25478	.	-	0	ID=CDS:OPG040;Parent=transcript:OPG040;Name=OPG040;product=Serpin;protein_id=YP_010377023.1
+NC_063383.1	NCBI	gene	25823	27097	.	-	.	ID=gene:OPG042;Name=OPG042;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	25823	27097	.	-	.	ID=transcript:OPG042;Parent=gene:OPG042;Name=OPG042;biotype=protein_coding;transcript_id=OPG042
+NC_063383.1	NCBI	exon	25823	27097	.	-	.	Parent=transcript:OPG042;Name=OPG042.exon;exon_id=OPG042.exon;rank=1
+NC_063383.1	NCBI	CDS	25823	27097	.	-	0	ID=CDS:OPG042;Parent=transcript:OPG042;Name=OPG042;product=Phospholipase-D-like protein;protein_id=YP_010377025.1
+NC_063383.1	NCBI	gene	27125	27955	.	-	.	ID=gene:OPG043;Name=OPG043;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	27125	27955	.	-	.	ID=transcript:OPG043;Parent=gene:OPG043;Name=OPG043;biotype=protein_coding;transcript_id=OPG043
+NC_063383.1	NCBI	exon	27125	27955	.	-	.	Parent=transcript:OPG043;Name=OPG043.exon;exon_id=OPG043.exon;rank=1
+NC_063383.1	NCBI	CDS	27125	27955	.	-	0	ID=CDS:OPG043;Parent=transcript:OPG043;Name=OPG043;product=Putative monoglyceride lipase;protein_id=YP_010377026.1
+NC_063383.1	NCBI	gene	28091	28540	.	+	.	ID=gene:OPG044;Name=OPG044;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	28091	28540	.	+	.	ID=transcript:OPG044;Parent=gene:OPG044;Name=OPG044;biotype=protein_coding;transcript_id=OPG044
+NC_063383.1	NCBI	exon	28091	28540	.	+	.	Parent=transcript:OPG044;Name=OPG044.exon;exon_id=OPG044.exon;rank=1
+NC_063383.1	NCBI	CDS	28091	28540	.	+	0	ID=CDS:OPG044;Parent=transcript:OPG044;Name=OPG044;product=Bcl-2-like protein;protein_id=YP_010377027.1
+NC_063383.1	NCBI	gene	28603	29262	.	-	.	ID=gene:OPG045;Name=OPG045;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	28603	29262	.	-	.	ID=transcript:OPG045;Parent=gene:OPG045;Name=OPG045;biotype=protein_coding;transcript_id=OPG045
+NC_063383.1	NCBI	exon	28603	29262	.	-	.	Parent=transcript:OPG045;Name=OPG045.exon;exon_id=OPG045.exon;rank=1
+NC_063383.1	NCBI	CDS	28603	29262	.	-	0	ID=CDS:OPG045;Parent=transcript:OPG045;Name=OPG045;product=Caspase-9 inhibitor;protein_id=YP_010377028.1
+NC_063383.1	NCBI	gene	29274	29729	.	-	.	ID=gene:OPG046;Name=OPG046;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	29274	29729	.	-	.	ID=transcript:OPG046;Parent=gene:OPG046;Name=OPG046;biotype=protein_coding;transcript_id=OPG046
+NC_063383.1	NCBI	exon	29274	29729	.	-	.	Parent=transcript:OPG046;Name=OPG046.exon;exon_id=OPG046.exon;rank=1
+NC_063383.1	NCBI	CDS	29274	29729	.	-	0	ID=CDS:OPG046;Parent=transcript:OPG046;Name=OPG046;product=dUTPase;protein_id=YP_010377029.1
+NC_063383.1	NCBI	gene	29746	31194	.	-	.	ID=gene:OPG047;Name=OPG047;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	29746	31194	.	-	.	ID=transcript:OPG047;Parent=gene:OPG047;Name=OPG047;biotype=protein_coding;transcript_id=OPG047
+NC_063383.1	NCBI	exon	29746	31194	.	-	.	Parent=transcript:OPG047;Name=OPG047.exon;exon_id=OPG047.exon;rank=1
+NC_063383.1	NCBI	CDS	29746	31194	.	-	0	ID=CDS:OPG047;Parent=transcript:OPG047;Name=OPG047;product=Kelch-like protein (2);protein_id=YP_010377030.1
+NC_063383.1	NCBI	gene	31205	32164	.	-	.	ID=gene:OPG048;Name=OPG048;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	31205	32164	.	-	.	ID=transcript:OPG048;Parent=gene:OPG048;Name=OPG048;biotype=protein_coding;transcript_id=OPG048
+NC_063383.1	NCBI	exon	31205	32164	.	-	.	Parent=transcript:OPG048;Name=OPG048.exon;exon_id=OPG048.exon;rank=1
+NC_063383.1	NCBI	CDS	31205	32164	.	-	0	ID=CDS:OPG048;Parent=transcript:OPG048;Name=OPG048;product=Ribonucleotide reductase small subunit;protein_id=YP_010377031.1
+NC_063383.1	NCBI	gene	32195	33151	.	-	.	ID=gene:OPG049;Name=OPG049;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	32195	33151	.	-	.	ID=transcript:OPG049;Parent=gene:OPG049;Name=OPG049;biotype=protein_coding;transcript_id=OPG049
+NC_063383.1	NCBI	exon	32195	33151	.	-	.	Parent=transcript:OPG049;Name=OPG049.exon;exon_id=OPG049.exon;rank=1
+NC_063383.1	NCBI	CDS	32195	33151	.	-	0	ID=CDS:OPG049;Parent=transcript:OPG049;Name=OPG049;product=Telomere-binding protein I6 (1);protein_id=YP_010377032.1
+NC_063383.1	NCBI	gene	33181	33408	.	-	.	ID=gene:OPG050;Name=OPG050;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	33181	33408	.	-	.	ID=transcript:OPG050;Parent=gene:OPG050;Name=OPG050;biotype=protein_coding;transcript_id=OPG050
+NC_063383.1	NCBI	exon	33181	33408	.	-	.	Parent=transcript:OPG050;Name=OPG050.exon;exon_id=OPG050.exon;rank=1
+NC_063383.1	NCBI	CDS	33181	33408	.	-	0	ID=CDS:OPG050;Parent=transcript:OPG050;Name=OPG050;product=CPXV053 protein;protein_id=YP_010377033.1
+NC_063383.1	NCBI	gene	33425	33649	.	-	.	ID=gene:OPG051;Name=OPG051;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	33425	33649	.	-	.	ID=transcript:OPG051;Parent=gene:OPG051;Name=OPG051;biotype=protein_coding;transcript_id=OPG051
+NC_063383.1	NCBI	exon	33425	33649	.	-	.	Parent=transcript:OPG051;Name=OPG051.exon;exon_id=OPG051.exon;rank=1
+NC_063383.1	NCBI	CDS	33425	33649	.	-	0	ID=CDS:OPG051;Parent=transcript:OPG051;Name=OPG051;product=CPXV054 protein;protein_id=YP_010377034.1
+NC_063383.1	NCBI	gene	33801	33995	.	-	.	ID=gene:OPG052;Name=OPG052;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	33801	33995	.	-	.	ID=transcript:OPG052;Parent=gene:OPG052;Name=OPG052;biotype=protein_coding;transcript_id=OPG052
+NC_063383.1	NCBI	exon	33801	33995	.	-	.	Parent=transcript:OPG052;Name=OPG052.exon;exon_id=OPG052.exon;rank=1
+NC_063383.1	NCBI	CDS	33801	33995	.	-	0	ID=CDS:OPG052;Parent=transcript:OPG052;Name=OPG052;product=Cytoplasmic protein;protein_id=YP_010377035.1
+NC_063383.1	NCBI	gene	34052	34690	.	-	.	ID=gene:OPG053;Name=OPG053;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	34052	34690	.	-	.	ID=transcript:OPG053;Parent=gene:OPG053;Name=OPG053;biotype=protein_coding;transcript_id=OPG053
+NC_063383.1	NCBI	exon	34052	34690	.	-	.	Parent=transcript:OPG053;Name=OPG053.exon;exon_id=OPG053.exon;rank=1
+NC_063383.1	NCBI	CDS	34052	34690	.	-	0	ID=CDS:OPG053;Parent=transcript:OPG053;Name=OPG053;product=IMV membrane protein L1R;protein_id=YP_010377036.1
+NC_063383.1	NCBI	gene	34677	35996	.	-	.	ID=gene:OPG054;Name=OPG054;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	34677	35996	.	-	.	ID=transcript:OPG054;Parent=gene:OPG054;Name=OPG054;biotype=protein_coding;transcript_id=OPG054
+NC_063383.1	NCBI	exon	34677	35996	.	-	.	Parent=transcript:OPG054;Name=OPG054.exon;exon_id=OPG054.exon;rank=1
+NC_063383.1	NCBI	CDS	34677	35996	.	-	0	ID=CDS:OPG054;Parent=transcript:OPG054;Name=OPG054;product=Serine/threonine-protein kinase;protein_id=YP_010377037.1
+NC_063383.1	NCBI	gene	36019	37083	.	-	.	ID=gene:OPG055;Name=OPG055;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	36019	37083	.	-	.	ID=transcript:OPG055;Parent=gene:OPG055;Name=OPG055;biotype=protein_coding;transcript_id=OPG055
+NC_063383.1	NCBI	exon	36019	37083	.	-	.	Parent=transcript:OPG055;Name=OPG055.exon;exon_id=OPG055.exon;rank=1
+NC_063383.1	NCBI	CDS	36019	37083	.	-	0	ID=CDS:OPG055;Parent=transcript:OPG055;Name=OPG055;product=Protein F11;protein_id=YP_010377038.1
+NC_063383.1	NCBI	gene	37127	39034	.	-	.	ID=gene:OPG056;Name=OPG056;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	37127	39034	.	-	.	ID=transcript:OPG056;Parent=gene:OPG056;Name=OPG056;biotype=protein_coding;transcript_id=OPG056
+NC_063383.1	NCBI	exon	37127	39034	.	-	.	Parent=transcript:OPG056;Name=OPG056.exon;exon_id=OPG056.exon;rank=1
+NC_063383.1	NCBI	CDS	37127	39034	.	-	0	ID=CDS:OPG056;Parent=transcript:OPG056;Name=OPG056;product=EEV maturation protein;protein_id=YP_010377039.1
+NC_063383.1	NCBI	gene	39077	40195	.	-	.	ID=gene:OPG057;Name=OPG057;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	39077	40195	.	-	.	ID=transcript:OPG057;Parent=gene:OPG057;Name=OPG057;biotype=protein_coding;transcript_id=OPG057
+NC_063383.1	NCBI	exon	39077	40195	.	-	.	Parent=transcript:OPG057;Name=OPG057.exon;exon_id=OPG057.exon;rank=1
+NC_063383.1	NCBI	CDS	39077	40195	.	-	0	ID=CDS:OPG057;Parent=transcript:OPG057;Name=OPG057;product=Palmytilated EEV membrane protein;protein_id=YP_010377040.1
+NC_063383.1	NCBI	gene	40213	40434	.	-	.	ID=gene:OPG058;Name=OPG058;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	40213	40434	.	-	.	ID=transcript:OPG058;Parent=gene:OPG058;Name=OPG058;biotype=protein_coding;transcript_id=OPG058
+NC_063383.1	NCBI	exon	40213	40434	.	-	.	Parent=transcript:OPG058;Name=OPG058.exon;exon_id=OPG058.exon;rank=1
+NC_063383.1	NCBI	CDS	40213	40434	.	-	0	ID=CDS:OPG058;Parent=transcript:OPG058;Name=OPG058;product=Protein F14 (1);protein_id=YP_010377041.1
+NC_063383.1	NCBI	gene	40484	40633	.	-	.	ID=gene:OPG059;Name=OPG059;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	40484	40633	.	-	.	ID=transcript:OPG059;Parent=gene:OPG059;Name=OPG059;biotype=protein_coding;transcript_id=OPG059
+NC_063383.1	NCBI	exon	40484	40633	.	-	.	Parent=transcript:OPG059;Name=OPG059.exon;exon_id=OPG059.exon;rank=1
+NC_063383.1	NCBI	CDS	40484	40633	.	-	0	ID=CDS:OPG059;Parent=transcript:OPG059;Name=OPG059;product=Cytochrome C oxidase;protein_id=YP_010377042.1
+NC_063383.1	NCBI	gene	40706	41182	.	-	.	ID=gene:OPG060;Name=OPG060;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	40706	41182	.	-	.	ID=transcript:OPG060;Parent=gene:OPG060;Name=OPG060;biotype=protein_coding;transcript_id=OPG060
+NC_063383.1	NCBI	exon	40706	41182	.	-	.	Parent=transcript:OPG060;Name=OPG060.exon;exon_id=OPG060.exon;rank=1
+NC_063383.1	NCBI	CDS	40706	41182	.	-	0	ID=CDS:OPG060;Parent=transcript:OPG060;Name=OPG060;product=Protein F15;protein_id=YP_010377043.1
+NC_063383.1	NCBI	gene	41189	41884	.	-	.	ID=gene:OPG061;Name=OPG061;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	41189	41884	.	-	.	ID=transcript:OPG061;Parent=gene:OPG061;Name=OPG061;biotype=protein_coding;transcript_id=OPG061
+NC_063383.1	NCBI	exon	41189	41884	.	-	.	Parent=transcript:OPG061;Name=OPG061.exon;exon_id=OPG061.exon;rank=1
+NC_063383.1	NCBI	CDS	41189	41884	.	-	0	ID=CDS:OPG061;Parent=transcript:OPG061;Name=OPG061;product=Protein F16 (1);protein_id=YP_010377044.1
+NC_063383.1	NCBI	gene	41947	42252	.	+	.	ID=gene:OPG062;Name=OPG062;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	41947	42252	.	+	.	ID=transcript:OPG062;Parent=gene:OPG062;Name=OPG062;biotype=protein_coding;transcript_id=OPG062
+NC_063383.1	NCBI	exon	41947	42252	.	+	.	Parent=transcript:OPG062;Name=OPG062.exon;exon_id=OPG062.exon;rank=1
+NC_063383.1	NCBI	CDS	41947	42252	.	+	0	ID=CDS:OPG062;Parent=transcript:OPG062;Name=OPG062;product=DNA-binding phosphoprotein (1);protein_id=YP_010377045.1
+NC_063383.1	NCBI	gene	42249	43688	.	-	.	ID=gene:OPG063;Name=OPG063;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	42249	43688	.	-	.	ID=transcript:OPG063;Parent=gene:OPG063;Name=OPG063;biotype=protein_coding;transcript_id=OPG063
+NC_063383.1	NCBI	exon	42249	43688	.	-	.	Parent=transcript:OPG063;Name=OPG063.exon;exon_id=OPG063.exon;rank=1
+NC_063383.1	NCBI	CDS	42249	43688	.	-	0	ID=CDS:OPG063;Parent=transcript:OPG063;Name=OPG063;product=Poly(A) polymerase catalytic subunit (3);protein_id=YP_010377046.1
+NC_063383.1	NCBI	gene	43685	45898	.	-	.	ID=gene:OPG064;Name=OPG064;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	43685	45898	.	-	.	ID=transcript:OPG064;Parent=gene:OPG064;Name=OPG064;biotype=protein_coding;transcript_id=OPG064
+NC_063383.1	NCBI	exon	43685	45898	.	-	.	Parent=transcript:OPG064;Name=OPG064.exon;exon_id=OPG064.exon;rank=1
+NC_063383.1	NCBI	CDS	43685	45898	.	-	0	ID=CDS:OPG064;Parent=transcript:OPG064;Name=OPG064;product=Iev morphogenesis protein;protein_id=YP_010377047.1
+NC_063383.1	NCBI	gene	46022	46483	.	-	.	ID=gene:OPG065;Name=OPG065;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	46022	46483	.	-	.	ID=transcript:OPG065;Parent=gene:OPG065;Name=OPG065;biotype=protein_coding;transcript_id=OPG065
+NC_063383.1	NCBI	exon	46022	46483	.	-	.	Parent=transcript:OPG065;Name=OPG065.exon;exon_id=OPG065.exon;rank=1
+NC_063383.1	NCBI	CDS	46022	46483	.	-	0	ID=CDS:OPG065;Parent=transcript:OPG065;Name=OPG065;product=Double-stranded RNA binding protein;protein_id=YP_010377048.1
+NC_063383.1	NCBI	gene	46649	47428	.	-	.	ID=gene:OPG066;Name=OPG066;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	46649	47428	.	-	.	ID=transcript:OPG066;Parent=gene:OPG066;Name=OPG066;biotype=protein_coding;transcript_id=OPG066
+NC_063383.1	NCBI	exon	46649	47428	.	-	.	Parent=transcript:OPG066;Name=OPG066.exon;exon_id=OPG066.exon;rank=1
+NC_063383.1	NCBI	CDS	46649	47428	.	-	0	ID=CDS:OPG066;Parent=transcript:OPG066;Name=OPG066;product=DNA-directed RNA polymerase 30 kDa polypeptide;protein_id=YP_010377049.1
+NC_063383.1	NCBI	gene	48201	49904	.	+	.	ID=gene:OPG068;Name=OPG068;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	48201	49904	.	+	.	ID=transcript:OPG068;Parent=gene:OPG068;Name=OPG068;biotype=protein_coding;transcript_id=OPG068
+NC_063383.1	NCBI	exon	48201	49904	.	+	.	Parent=transcript:OPG068;Name=OPG068.exon;exon_id=OPG068.exon;rank=1
+NC_063383.1	NCBI	CDS	48201	49904	.	+	0	ID=CDS:OPG068;Parent=transcript:OPG068;Name=OPG068;product=IMV membrane protein E6;protein_id=YP_010377051.1
+NC_063383.1	NCBI	gene	49986	50486	.	+	.	ID=gene:OPG069;Name=OPG069;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	49986	50486	.	+	.	ID=transcript:OPG069;Parent=gene:OPG069;Name=OPG069;biotype=protein_coding;transcript_id=OPG069
+NC_063383.1	NCBI	exon	49986	50486	.	+	.	Parent=transcript:OPG069;Name=OPG069.exon;exon_id=OPG069.exon;rank=1
+NC_063383.1	NCBI	CDS	49986	50486	.	+	0	ID=CDS:OPG069;Parent=transcript:OPG069;Name=OPG069;product=Myristoylated protein E7;protein_id=YP_010377052.1
+NC_063383.1	NCBI	gene	50590	51411	.	+	.	ID=gene:OPG070;Name=OPG070;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	50590	51411	.	+	.	ID=transcript:OPG070;Parent=gene:OPG070;Name=OPG070;biotype=protein_coding;transcript_id=OPG070
+NC_063383.1	NCBI	exon	50590	51411	.	+	.	Parent=transcript:OPG070;Name=OPG070.exon;exon_id=OPG070.exon;rank=1
+NC_063383.1	NCBI	CDS	50590	51411	.	+	0	ID=CDS:OPG070;Parent=transcript:OPG070;Name=OPG070;product=Membrane protein E8;protein_id=YP_010377053.1
+NC_063383.1	NCBI	gene	51418	54438	.	-	.	ID=gene:OPG071;Name=OPG071;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	51418	54438	.	-	.	ID=transcript:OPG071;Parent=gene:OPG071;Name=OPG071;biotype=protein_coding;transcript_id=OPG071
+NC_063383.1	NCBI	exon	51418	54438	.	-	.	Parent=transcript:OPG071;Name=OPG071.exon;exon_id=OPG071.exon;rank=1
+NC_063383.1	NCBI	CDS	51418	54438	.	-	0	ID=CDS:OPG071;Parent=transcript:OPG071;Name=OPG071;product=DNA polymerase (2);protein_id=YP_010377054.1
+NC_063383.1	NCBI	gene	54470	54757	.	+	.	ID=gene:OPG072;Name=OPG072;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	54470	54757	.	+	.	ID=transcript:OPG072;Parent=gene:OPG072;Name=OPG072;biotype=protein_coding;transcript_id=OPG072
+NC_063383.1	NCBI	exon	54470	54757	.	+	.	Parent=transcript:OPG072;Name=OPG072.exon;exon_id=OPG072.exon;rank=1
+NC_063383.1	NCBI	CDS	54470	54757	.	+	0	ID=CDS:OPG072;Parent=transcript:OPG072;Name=OPG072;product=Sulfhydryl oxidase;protein_id=YP_010377055.1
+NC_063383.1	NCBI	gene	54752	55141	.	-	.	ID=gene:OPG073;Name=OPG073;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	54752	55141	.	-	.	ID=transcript:OPG073;Parent=gene:OPG073;Name=OPG073;biotype=protein_coding;transcript_id=OPG073
+NC_063383.1	NCBI	exon	54752	55141	.	-	.	Parent=transcript:OPG073;Name=OPG073.exon;exon_id=OPG073.exon;rank=1
+NC_063383.1	NCBI	CDS	54752	55141	.	-	0	ID=CDS:OPG073;Parent=transcript:OPG073;Name=OPG073;product=Virion core protein E11;protein_id=YP_010377056.1
+NC_063383.1	NCBI	gene	55128	57125	.	-	.	ID=gene:OPG074;Name=OPG074;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	55128	57125	.	-	.	ID=transcript:OPG074;Parent=gene:OPG074;Name=OPG074;biotype=protein_coding;transcript_id=OPG074
+NC_063383.1	NCBI	exon	55128	57125	.	-	.	Parent=transcript:OPG074;Name=OPG074.exon;exon_id=OPG074.exon;rank=1
+NC_063383.1	NCBI	CDS	55128	57125	.	-	0	ID=CDS:OPG074;Parent=transcript:OPG074;Name=OPG074;product=Iev morphogenesis protein;protein_id=YP_010377057.1
+NC_063383.1	NCBI	gene	57172	57498	.	-	.	ID=gene:OPG075;Name=OPG075;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	57172	57498	.	-	.	ID=transcript:OPG075;Parent=gene:OPG075;Name=OPG075;biotype=protein_coding;transcript_id=OPG075
+NC_063383.1	NCBI	exon	57172	57498	.	-	.	Parent=transcript:OPG075;Name=OPG075.exon;exon_id=OPG075.exon;rank=1
+NC_063383.1	NCBI	CDS	57172	57498	.	-	0	ID=CDS:OPG075;Parent=transcript:OPG075;Name=OPG075;product=Glutaredoxin-1;protein_id=YP_010377058.1
+NC_063383.1	NCBI	gene	57523	57630	.	-	.	ID=gene:OPG076;Name=OPG076;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	57523	57630	.	-	.	ID=transcript:OPG076;Parent=gene:OPG076;Name=OPG076;biotype=protein_coding;transcript_id=OPG076
+NC_063383.1	NCBI	exon	57523	57630	.	-	.	Parent=transcript:OPG076;Name=OPG076.exon;exon_id=OPG076.exon;rank=1
+NC_063383.1	NCBI	CDS	57523	57630	.	-	0	ID=CDS:OPG076;Parent=transcript:OPG076;Name=OPG076;product=MV membrane EFC component;protein_id=YP_010377183.1
+NC_063383.1	NCBI	gene	57645	58583	.	-	.	ID=gene:OPG077;Name=OPG077;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	57645	58583	.	-	.	ID=transcript:OPG077;Parent=gene:OPG077;Name=OPG077;biotype=protein_coding;transcript_id=OPG077
+NC_063383.1	NCBI	exon	57645	58583	.	-	.	Parent=transcript:OPG077;Name=OPG077.exon;exon_id=OPG077.exon;rank=1
+NC_063383.1	NCBI	CDS	57645	58583	.	-	0	ID=CDS:OPG077;Parent=transcript:OPG077;Name=OPG077;product=Telomere-binding protein I1;protein_id=YP_010377059.1
+NC_063383.1	NCBI	gene	58590	58811	.	-	.	ID=gene:OPG078;Name=OPG078;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	58590	58811	.	-	.	ID=transcript:OPG078;Parent=gene:OPG078;Name=OPG078;biotype=protein_coding;transcript_id=OPG078
+NC_063383.1	NCBI	exon	58590	58811	.	-	.	Parent=transcript:OPG078;Name=OPG078.exon;exon_id=OPG078.exon;rank=1
+NC_063383.1	NCBI	CDS	58590	58811	.	-	0	ID=CDS:OPG078;Parent=transcript:OPG078;Name=OPG078;product=IMV membrane protein I2;protein_id=YP_010377060.1
+NC_063383.1	NCBI	gene	58812	59621	.	-	.	ID=gene:OPG079;Name=OPG079;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	58812	59621	.	-	.	ID=transcript:OPG079;Parent=gene:OPG079;Name=OPG079;biotype=protein_coding;transcript_id=OPG079
+NC_063383.1	NCBI	exon	58812	59621	.	-	.	Parent=transcript:OPG079;Name=OPG079.exon;exon_id=OPG079.exon;rank=1
+NC_063383.1	NCBI	CDS	58812	59621	.	-	0	ID=CDS:OPG079;Parent=transcript:OPG079;Name=OPG079;product=DNA-binding phosphoprotein (2);protein_id=YP_010377061.1
+NC_063383.1	NCBI	gene	59703	62018	.	-	.	ID=gene:OPG080;Name=OPG080;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	59703	62018	.	-	.	ID=transcript:OPG080;Parent=gene:OPG080;Name=OPG080;biotype=protein_coding;transcript_id=OPG080
+NC_063383.1	NCBI	exon	59703	62018	.	-	.	Parent=transcript:OPG080;Name=OPG080.exon;exon_id=OPG080.exon;rank=1
+NC_063383.1	NCBI	CDS	59703	62018	.	-	0	ID=CDS:OPG080;Parent=transcript:OPG080;Name=OPG080;product=Ribonucleoside-diphosphate reductase (2);protein_id=YP_010377062.1
+NC_063383.1	NCBI	gene	62046	62285	.	-	.	ID=gene:OPG081;Name=OPG081;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	62046	62285	.	-	.	ID=transcript:OPG081;Parent=gene:OPG081;Name=OPG081;biotype=protein_coding;transcript_id=OPG081
+NC_063383.1	NCBI	exon	62046	62285	.	-	.	Parent=transcript:OPG081;Name=OPG081.exon;exon_id=OPG081.exon;rank=1
+NC_063383.1	NCBI	CDS	62046	62285	.	-	0	ID=CDS:OPG081;Parent=transcript:OPG081;Name=OPG081;product=IMV membrane protein I5;protein_id=YP_010377063.1
+NC_063383.1	NCBI	gene	62304	63452	.	-	.	ID=gene:OPG082;Name=OPG082;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	62304	63452	.	-	.	ID=transcript:OPG082;Parent=gene:OPG082;Name=OPG082;biotype=protein_coding;transcript_id=OPG082
+NC_063383.1	NCBI	exon	62304	63452	.	-	.	Parent=transcript:OPG082;Name=OPG082.exon;exon_id=OPG082.exon;rank=1
+NC_063383.1	NCBI	CDS	62304	63452	.	-	0	ID=CDS:OPG082;Parent=transcript:OPG082;Name=OPG082;product=Telomere-binding protein;protein_id=YP_010377064.1
+NC_063383.1	NCBI	gene	63445	64716	.	-	.	ID=gene:OPG083;Name=OPG083;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	63445	64716	.	-	.	ID=transcript:OPG083;Parent=gene:OPG083;Name=OPG083;biotype=protein_coding;transcript_id=OPG083
+NC_063383.1	NCBI	exon	63445	64716	.	-	.	Parent=transcript:OPG083;Name=OPG083.exon;exon_id=OPG083.exon;rank=1
+NC_063383.1	NCBI	CDS	63445	64716	.	-	0	ID=CDS:OPG083;Parent=transcript:OPG083;Name=OPG083;product=Viral core cysteine proteinase;protein_id=YP_010377065.1
+NC_063383.1	NCBI	gene	64722	66752	.	+	.	ID=gene:OPG084;Name=OPG084;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	64722	66752	.	+	.	ID=transcript:OPG084;Parent=gene:OPG084;Name=OPG084;biotype=protein_coding;transcript_id=OPG084
+NC_063383.1	NCBI	exon	64722	66752	.	+	.	Parent=transcript:OPG084;Name=OPG084.exon;exon_id=OPG084.exon;rank=1
+NC_063383.1	NCBI	CDS	64722	66752	.	+	0	ID=CDS:OPG084;Parent=transcript:OPG084;Name=OPG084;product=RNA helicase NPH-II (2);protein_id=YP_010377066.1
+NC_063383.1	NCBI	gene	66756	68531	.	-	.	ID=gene:OPG085;Name=OPG085;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	66756	68531	.	-	.	ID=transcript:OPG085;Parent=gene:OPG085;Name=OPG085;biotype=protein_coding;transcript_id=OPG085
+NC_063383.1	NCBI	exon	66756	68531	.	-	.	Parent=transcript:OPG085;Name=OPG085.exon;exon_id=OPG085.exon;rank=1
+NC_063383.1	NCBI	CDS	66756	68531	.	-	0	ID=CDS:OPG085;Parent=transcript:OPG085;Name=OPG085;product=Metalloendopeptidase;protein_id=YP_010377067.1
+NC_063383.1	NCBI	gene	68528	68863	.	-	.	ID=gene:OPG086;Name=OPG086;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	68528	68863	.	-	.	ID=transcript:OPG086;Parent=gene:OPG086;Name=OPG086;biotype=protein_coding;transcript_id=OPG086
+NC_063383.1	NCBI	exon	68528	68863	.	-	.	Parent=transcript:OPG086;Name=OPG086.exon;exon_id=OPG086.exon;rank=1
+NC_063383.1	NCBI	CDS	68528	68863	.	-	0	ID=CDS:OPG086;Parent=transcript:OPG086;Name=OPG086;product=Entry/fusion complex component;protein_id=YP_010377068.1
+NC_063383.1	NCBI	gene	68857	69519	.	+	.	ID=gene:OPG087;Name=OPG087;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	68857	69519	.	+	.	ID=transcript:OPG087;Parent=gene:OPG087;Name=OPG087;biotype=protein_coding;transcript_id=OPG087
+NC_063383.1	NCBI	exon	68857	69519	.	+	.	Parent=transcript:OPG087;Name=OPG087.exon;exon_id=OPG087.exon;rank=1
+NC_063383.1	NCBI	CDS	68857	69519	.	+	0	ID=CDS:OPG087;Parent=transcript:OPG087;Name=OPG087;product=Late transcription elongation factor;protein_id=YP_010377069.1
+NC_063383.1	NCBI	gene	69489	69863	.	-	.	ID=gene:OPG088;Name=OPG088;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	69489	69863	.	-	.	ID=transcript:OPG088;Parent=gene:OPG088;Name=OPG088;biotype=protein_coding;transcript_id=OPG088
+NC_063383.1	NCBI	exon	69489	69863	.	-	.	Parent=transcript:OPG088;Name=OPG088.exon;exon_id=OPG088.exon;rank=1
+NC_063383.1	NCBI	CDS	69489	69863	.	-	0	ID=CDS:OPG088;Parent=transcript:OPG088;Name=OPG088;product=Glutaredoxin-2;protein_id=YP_010377070.1
+NC_063383.1	NCBI	gene	69866	71170	.	+	.	ID=gene:OPG089;Name=OPG089;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	69866	71170	.	+	.	ID=transcript:OPG089;Parent=gene:OPG089;Name=OPG089;biotype=protein_coding;transcript_id=OPG089
+NC_063383.1	NCBI	exon	69866	71170	.	+	.	Parent=transcript:OPG089;Name=OPG089.exon;exon_id=OPG089.exon;rank=1
+NC_063383.1	NCBI	CDS	69866	71170	.	+	0	ID=CDS:OPG089;Parent=transcript:OPG089;Name=OPG089;product=FEN1-like nuclease;protein_id=YP_010377071.1
+NC_063383.1	NCBI	gene	71179	71370	.	+	.	ID=gene:OPG090;Name=OPG090;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	71179	71370	.	+	.	ID=transcript:OPG090;Parent=gene:OPG090;Name=OPG090;biotype=protein_coding;transcript_id=OPG090
+NC_063383.1	NCBI	exon	71179	71370	.	+	.	Parent=transcript:OPG090;Name=OPG090.exon;exon_id=OPG090.exon;rank=1
+NC_063383.1	NCBI	CDS	71179	71370	.	+	0	ID=CDS:OPG090;Parent=transcript:OPG090;Name=OPG090;product=DNA-directed RNA polymerase 7 kDa subunit;protein_id=YP_010377072.1
+NC_063383.1	NCBI	gene	71370	71867	.	+	.	ID=gene:OPG091;Name=OPG091;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	71370	71867	.	+	.	ID=transcript:OPG091;Parent=gene:OPG091;Name=OPG091;biotype=protein_coding;transcript_id=OPG091
+NC_063383.1	NCBI	exon	71370	71867	.	+	.	Parent=transcript:OPG091;Name=OPG091.exon;exon_id=OPG091.exon;rank=1
+NC_063383.1	NCBI	CDS	71370	71867	.	+	0	ID=CDS:OPG091;Parent=transcript:OPG091;Name=OPG091;product=Nlpc/p60 superfamily protein;protein_id=YP_010377073.1
+NC_063383.1	NCBI	gene	71832	72947	.	-	.	ID=gene:OPG092;Name=OPG092;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	71832	72947	.	-	.	ID=transcript:OPG092;Parent=gene:OPG092;Name=OPG092;biotype=protein_coding;transcript_id=OPG092
+NC_063383.1	NCBI	exon	71832	72947	.	-	.	Parent=transcript:OPG092;Name=OPG092.exon;exon_id=OPG092.exon;rank=1
+NC_063383.1	NCBI	CDS	71832	72947	.	-	0	ID=CDS:OPG092;Parent=transcript:OPG092;Name=OPG092;product=Assembly protein G7;protein_id=YP_010377074.1
+NC_063383.1	NCBI	gene	72978	73760	.	+	.	ID=gene:OPG093;Name=OPG093;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	72978	73760	.	+	.	ID=transcript:OPG093;Parent=gene:OPG093;Name=OPG093;biotype=protein_coding;transcript_id=OPG093
+NC_063383.1	NCBI	exon	72978	73760	.	+	.	Parent=transcript:OPG093;Name=OPG093.exon;exon_id=OPG093.exon;rank=1
+NC_063383.1	NCBI	CDS	72978	73760	.	+	0	ID=CDS:OPG093;Parent=transcript:OPG093;Name=OPG093;product=Late transcription factor VLTF-1;protein_id=YP_010377075.1
+NC_063383.1	NCBI	gene	73780	74802	.	+	.	ID=gene:OPG094;Name=OPG094;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	73780	74802	.	+	.	ID=transcript:OPG094;Parent=gene:OPG094;Name=OPG094;biotype=protein_coding;transcript_id=OPG094
+NC_063383.1	NCBI	exon	73780	74802	.	+	.	Parent=transcript:OPG094;Name=OPG094.exon;exon_id=OPG094.exon;rank=1
+NC_063383.1	NCBI	CDS	73780	74802	.	+	0	ID=CDS:OPG094;Parent=transcript:OPG094;Name=OPG094;product=Myristylated protein;protein_id=YP_010377076.1
+NC_063383.1	NCBI	gene	74803	75555	.	+	.	ID=gene:OPG095;Name=OPG095;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	74803	75555	.	+	.	ID=transcript:OPG095;Parent=gene:OPG095;Name=OPG095;biotype=protein_coding;transcript_id=OPG095
+NC_063383.1	NCBI	exon	74803	75555	.	+	.	Parent=transcript:OPG095;Name=OPG095.exon;exon_id=OPG095.exon;rank=1
+NC_063383.1	NCBI	CDS	74803	75555	.	+	0	ID=CDS:OPG095;Parent=transcript:OPG095;Name=OPG095;product=IMV membrane protein L1R;protein_id=YP_010377077.1
+NC_063383.1	NCBI	gene	75587	75865	.	+	.	ID=gene:OPG096;Name=OPG096;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	75587	75865	.	+	.	ID=transcript:OPG096;Parent=gene:OPG096;Name=OPG096;biotype=protein_coding;transcript_id=OPG096
+NC_063383.1	NCBI	exon	75587	75865	.	+	.	Parent=transcript:OPG096;Name=OPG096.exon;exon_id=OPG096.exon;rank=1
+NC_063383.1	NCBI	CDS	75587	75865	.	+	0	ID=CDS:OPG096;Parent=transcript:OPG096;Name=OPG096;product=Crescent membrane and immature virion formation protein;protein_id=YP_010377078.1
+NC_063383.1	NCBI	gene	75841	76875	.	-	.	ID=gene:OPG097;Name=OPG097;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	75841	76875	.	-	.	ID=transcript:OPG097;Parent=gene:OPG097;Name=OPG097;biotype=protein_coding;transcript_id=OPG097
+NC_063383.1	NCBI	exon	75841	76875	.	-	.	Parent=transcript:OPG097;Name=OPG097.exon;exon_id=OPG097.exon;rank=1
+NC_063383.1	NCBI	CDS	75841	76875	.	-	0	ID=CDS:OPG097;Parent=transcript:OPG097;Name=OPG097;product=Internal virion L3/FP4 protein;protein_id=YP_010377079.1
+NC_063383.1	NCBI	gene	76900	77655	.	+	.	ID=gene:OPG098;Name=OPG098;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	76900	77655	.	+	.	ID=transcript:OPG098;Parent=gene:OPG098;Name=OPG098;biotype=protein_coding;transcript_id=OPG098
+NC_063383.1	NCBI	exon	76900	77655	.	+	.	Parent=transcript:OPG098;Name=OPG098.exon;exon_id=OPG098.exon;rank=1
+NC_063383.1	NCBI	CDS	76900	77655	.	+	0	ID=CDS:OPG098;Parent=transcript:OPG098;Name=OPG098;product=Nucleic acid binding protein VP8/L4R;protein_id=YP_010377080.1
+NC_063383.1	NCBI	gene	77665	78051	.	+	.	ID=gene:OPG099;Name=OPG099;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	77665	78051	.	+	.	ID=transcript:OPG099;Parent=gene:OPG099;Name=OPG099;biotype=protein_coding;transcript_id=OPG099
+NC_063383.1	NCBI	exon	77665	78051	.	+	.	Parent=transcript:OPG099;Name=OPG099.exon;exon_id=OPG099.exon;rank=1
+NC_063383.1	NCBI	CDS	77665	78051	.	+	0	ID=CDS:OPG099;Parent=transcript:OPG099;Name=OPG099;product=Membrane protein CL5;protein_id=YP_010377081.1
+NC_063383.1	NCBI	gene	78008	78466	.	+	.	ID=gene:OPG100;Name=OPG100;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	78008	78466	.	+	.	ID=transcript:OPG100;Parent=gene:OPG100;Name=OPG100;biotype=protein_coding;transcript_id=OPG100
+NC_063383.1	NCBI	exon	78008	78466	.	+	.	Parent=transcript:OPG100;Name=OPG100.exon;exon_id=OPG100.exon;rank=1
+NC_063383.1	NCBI	CDS	78008	78466	.	+	0	ID=CDS:OPG100;Parent=transcript:OPG100;Name=OPG100;product=IMV membrane protein J1;protein_id=YP_010377082.1
+NC_063383.1	NCBI	gene	78486	79019	.	+	.	ID=gene:OPG101;Name=OPG101;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	78486	79019	.	+	.	ID=transcript:OPG101;Parent=gene:OPG101;Name=OPG101;biotype=protein_coding;transcript_id=OPG101
+NC_063383.1	NCBI	exon	78486	79019	.	+	.	Parent=transcript:OPG101;Name=OPG101.exon;exon_id=OPG101.exon;rank=1
+NC_063383.1	NCBI	CDS	78486	79019	.	+	0	ID=CDS:OPG101;Parent=transcript:OPG101;Name=OPG101;product=Thymidine kinase;protein_id=YP_010377083.1
+NC_063383.1	NCBI	gene	79085	80086	.	+	.	ID=gene:OPG102;Name=OPG102;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	79085	80086	.	+	.	ID=transcript:OPG102;Parent=gene:OPG102;Name=OPG102;biotype=protein_coding;transcript_id=OPG102
+NC_063383.1	NCBI	exon	79085	80086	.	+	.	Parent=transcript:OPG102;Name=OPG102.exon;exon_id=OPG102.exon;rank=1
+NC_063383.1	NCBI	CDS	79085	80086	.	+	0	ID=CDS:OPG102;Parent=transcript:OPG102;Name=OPG102;product=Cap-specific mRNA;protein_id=YP_010377084.1
+NC_063383.1	NCBI	gene	80001	80558	.	+	.	ID=gene:OPG103;Name=OPG103;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	80001	80558	.	+	.	ID=transcript:OPG103;Parent=gene:OPG103;Name=OPG103;biotype=protein_coding;transcript_id=OPG103
+NC_063383.1	NCBI	exon	80001	80558	.	+	.	Parent=transcript:OPG103;Name=OPG103.exon;exon_id=OPG103.exon;rank=1
+NC_063383.1	NCBI	CDS	80001	80558	.	+	0	ID=CDS:OPG103;Parent=transcript:OPG103;Name=OPG103;product=DNA-directed RNA polymerase subunit;protein_id=YP_010377085.1
+NC_063383.1	NCBI	gene	80618	81019	.	-	.	ID=gene:OPG104;Name=OPG104;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	80618	81019	.	-	.	ID=transcript:OPG104;Parent=gene:OPG104;Name=OPG104;biotype=protein_coding;transcript_id=OPG104
+NC_063383.1	NCBI	exon	80618	81019	.	-	.	Parent=transcript:OPG104;Name=OPG104.exon;exon_id=OPG104.exon;rank=1
+NC_063383.1	NCBI	CDS	80618	81019	.	-	0	ID=CDS:OPG104;Parent=transcript:OPG104;Name=OPG104;product=Myristylated protein;protein_id=YP_010377086.1
+NC_063383.1	NCBI	gene	81126	84986	.	+	.	ID=gene:OPG105;Name=OPG105;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	81126	84986	.	+	.	ID=transcript:OPG105;Parent=gene:OPG105;Name=OPG105;biotype=protein_coding;transcript_id=OPG105
+NC_063383.1	NCBI	exon	81126	84986	.	+	.	Parent=transcript:OPG105;Name=OPG105.exon;exon_id=OPG105.exon;rank=1
+NC_063383.1	NCBI	CDS	81126	84986	.	+	0	ID=CDS:OPG105;Parent=transcript:OPG105;Name=OPG105;product=DNA-dependent RNA polymerase subunit rpo147;protein_id=YP_010377087.1
+NC_063383.1	NCBI	gene	84983	85498	.	-	.	ID=gene:OPG106;Name=OPG106;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	84983	85498	.	-	.	ID=transcript:OPG106;Parent=gene:OPG106;Name=OPG106;biotype=protein_coding;transcript_id=OPG106
+NC_063383.1	NCBI	exon	84983	85498	.	-	.	Parent=transcript:OPG106;Name=OPG106.exon;exon_id=OPG106.exon;rank=1
+NC_063383.1	NCBI	CDS	84983	85498	.	-	0	ID=CDS:OPG106;Parent=transcript:OPG106;Name=OPG106;product=Tyr/ser protein phosphatase;protein_id=YP_010377088.1
+NC_063383.1	NCBI	gene	85512	86081	.	+	.	ID=gene:OPG107;Name=OPG107;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	85512	86081	.	+	.	ID=transcript:OPG107;Parent=gene:OPG107;Name=OPG107;biotype=protein_coding;transcript_id=OPG107
+NC_063383.1	NCBI	exon	85512	86081	.	+	.	Parent=transcript:OPG107;Name=OPG107.exon;exon_id=OPG107.exon;rank=1
+NC_063383.1	NCBI	CDS	85512	86081	.	+	0	ID=CDS:OPG107;Parent=transcript:OPG107;Name=OPG107;product=Entry-fusion complex essential component;protein_id=YP_010377089.1
+NC_063383.1	NCBI	gene	86085	87059	.	-	.	ID=gene:OPG108;Name=OPG108;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	86085	87059	.	-	.	ID=transcript:OPG108;Parent=gene:OPG108;Name=OPG108;biotype=protein_coding;transcript_id=OPG108
+NC_063383.1	NCBI	exon	86085	87059	.	-	.	Parent=transcript:OPG108;Name=OPG108.exon;exon_id=OPG108.exon;rank=1
+NC_063383.1	NCBI	CDS	86085	87059	.	-	0	ID=CDS:OPG108;Parent=transcript:OPG108;Name=OPG108;product=IMV heparin binding surface protein;protein_id=YP_010377090.1
+NC_063383.1	NCBI	gene	87060	89447	.	-	.	ID=gene:OPG109;Name=OPG109;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	87060	89447	.	-	.	ID=transcript:OPG109;Parent=gene:OPG109;Name=OPG109;biotype=protein_coding;transcript_id=OPG109
+NC_063383.1	NCBI	exon	87060	89447	.	-	.	Parent=transcript:OPG109;Name=OPG109.exon;exon_id=OPG109.exon;rank=1
+NC_063383.1	NCBI	CDS	87060	89447	.	-	0	ID=CDS:OPG109;Parent=transcript:OPG109;Name=OPG109;product=RNA polymerase-associated transcription-specificity factor RAP94;protein_id=YP_010377091.1
+NC_063383.1	NCBI	gene	89632	90264	.	+	.	ID=gene:OPG110;Name=OPG110;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	89632	90264	.	+	.	ID=transcript:OPG110;Parent=gene:OPG110;Name=OPG110;biotype=protein_coding;transcript_id=OPG110
+NC_063383.1	NCBI	exon	89632	90264	.	+	.	Parent=transcript:OPG110;Name=OPG110.exon;exon_id=OPG110.exon;rank=1
+NC_063383.1	NCBI	CDS	89632	90264	.	+	0	ID=CDS:OPG110;Parent=transcript:OPG110;Name=OPG110;product=Late transcription factor VLTF-4 (1);protein_id=YP_010377092.1
+NC_063383.1	NCBI	gene	90265	91209	.	+	.	ID=gene:OPG111;Name=OPG111;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	90265	91209	.	+	.	ID=transcript:OPG111;Parent=gene:OPG111;Name=OPG111;biotype=protein_coding;transcript_id=OPG111
+NC_063383.1	NCBI	exon	90265	91209	.	+	.	Parent=transcript:OPG111;Name=OPG111.exon;exon_id=OPG111.exon;rank=1
+NC_063383.1	NCBI	CDS	90265	91209	.	+	0	ID=CDS:OPG111;Parent=transcript:OPG111;Name=OPG111;product=DNA topoisomerase type I;protein_id=YP_010377093.1
+NC_063383.1	NCBI	gene	91247	91687	.	+	.	ID=gene:OPG112;Name=OPG112;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	91247	91687	.	+	.	ID=transcript:OPG112;Parent=gene:OPG112;Name=OPG112;biotype=protein_coding;transcript_id=OPG112
+NC_063383.1	NCBI	exon	91247	91687	.	+	.	Parent=transcript:OPG112;Name=OPG112.exon;exon_id=OPG112.exon;rank=1
+NC_063383.1	NCBI	CDS	91247	91687	.	+	0	ID=CDS:OPG112;Parent=transcript:OPG112;Name=OPG112;product=Late protein H7;protein_id=YP_010377094.1
+NC_063383.1	NCBI	gene	91731	94268	.	+	.	ID=gene:OPG113;Name=OPG113;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	91731	94268	.	+	.	ID=transcript:OPG113;Parent=gene:OPG113;Name=OPG113;biotype=protein_coding;transcript_id=OPG113
+NC_063383.1	NCBI	exon	91731	94268	.	+	.	Parent=transcript:OPG113;Name=OPG113.exon;exon_id=OPG113.exon;rank=1
+NC_063383.1	NCBI	CDS	91731	94268	.	+	0	ID=CDS:OPG113;Parent=transcript:OPG113;Name=OPG113;product=mRNA capping enzyme large subunit;protein_id=YP_010377095.1
+NC_063383.1	NCBI	gene	94227	94667	.	-	.	ID=gene:OPG114;Name=OPG114;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	94227	94667	.	-	.	ID=transcript:OPG114;Parent=gene:OPG114;Name=OPG114;biotype=protein_coding;transcript_id=OPG114
+NC_063383.1	NCBI	exon	94227	94667	.	-	.	Parent=transcript:OPG114;Name=OPG114.exon;exon_id=OPG114.exon;rank=1
+NC_063383.1	NCBI	CDS	94227	94667	.	-	0	ID=CDS:OPG114;Parent=transcript:OPG114;Name=OPG114;product=Virion protein D2;protein_id=YP_010377096.1
+NC_063383.1	NCBI	gene	94660	95361	.	+	.	ID=gene:OPG115;Name=OPG115;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	94660	95361	.	+	.	ID=transcript:OPG115;Parent=gene:OPG115;Name=OPG115;biotype=protein_coding;transcript_id=OPG115
+NC_063383.1	NCBI	exon	94660	95361	.	+	.	Parent=transcript:OPG115;Name=OPG115.exon;exon_id=OPG115.exon;rank=1
+NC_063383.1	NCBI	CDS	94660	95361	.	+	0	ID=CDS:OPG115;Parent=transcript:OPG115;Name=OPG115;product=Virion core protein D3;protein_id=YP_010377097.1
+NC_063383.1	NCBI	gene	95361	96017	.	+	.	ID=gene:OPG116;Name=OPG116;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	95361	96017	.	+	.	ID=transcript:OPG116;Parent=gene:OPG116;Name=OPG116;biotype=protein_coding;transcript_id=OPG116
+NC_063383.1	NCBI	exon	95361	96017	.	+	.	Parent=transcript:OPG116;Name=OPG116.exon;exon_id=OPG116.exon;rank=1
+NC_063383.1	NCBI	CDS	95361	96017	.	+	0	ID=CDS:OPG116;Parent=transcript:OPG116;Name=OPG116;product=Uracil DNA glycosylase superfamily;protein_id=YP_010377098.1
+NC_063383.1	NCBI	gene	96049	98406	.	+	.	ID=gene:OPG117;Name=OPG117;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	96049	98406	.	+	.	ID=transcript:OPG117;Parent=gene:OPG117;Name=OPG117;biotype=protein_coding;transcript_id=OPG117
+NC_063383.1	NCBI	exon	96049	98406	.	+	.	Parent=transcript:OPG117;Name=OPG117.exon;exon_id=OPG117.exon;rank=1
+NC_063383.1	NCBI	CDS	96049	98406	.	+	0	ID=CDS:OPG117;Parent=transcript:OPG117;Name=OPG117;product=NTPase (1);protein_id=YP_010377099.1
+NC_063383.1	NCBI	gene	98446	100359	.	+	.	ID=gene:OPG118;Name=OPG118;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	98446	100359	.	+	.	ID=transcript:OPG118;Parent=gene:OPG118;Name=OPG118;biotype=protein_coding;transcript_id=OPG118
+NC_063383.1	NCBI	exon	98446	100359	.	+	.	Parent=transcript:OPG118;Name=OPG118.exon;exon_id=OPG118.exon;rank=1
+NC_063383.1	NCBI	CDS	98446	100359	.	+	0	ID=CDS:OPG118;Parent=transcript:OPG118;Name=OPG118;product=Early transcription factor 70 kDa subunit;protein_id=YP_010377100.1
+NC_063383.1	NCBI	gene	100386	100871	.	+	.	ID=gene:OPG119;Name=OPG119;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	100386	100871	.	+	.	ID=transcript:OPG119;Parent=gene:OPG119;Name=OPG119;biotype=protein_coding;transcript_id=OPG119
+NC_063383.1	NCBI	exon	100386	100871	.	+	.	Parent=transcript:OPG119;Name=OPG119.exon;exon_id=OPG119.exon;rank=1
+NC_063383.1	NCBI	CDS	100386	100871	.	+	0	ID=CDS:OPG119;Parent=transcript:OPG119;Name=OPG119;product=RNA polymerase subunit RPO18;protein_id=YP_010377101.1
+NC_063383.1	NCBI	gene	100834	101748	.	-	.	ID=gene:OPG120;Name=OPG120;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	100834	101748	.	-	.	ID=transcript:OPG120;Parent=gene:OPG120;Name=OPG120;biotype=protein_coding;transcript_id=OPG120
+NC_063383.1	NCBI	exon	100834	101748	.	-	.	Parent=transcript:OPG120;Name=OPG120.exon;exon_id=OPG120.exon;rank=1
+NC_063383.1	NCBI	CDS	100834	101748	.	-	0	ID=CDS:OPG120;Parent=transcript:OPG120;Name=OPG120;product=Carbonic anhydrase;protein_id=YP_010377102.1
+NC_063383.1	NCBI	gene	101790	102431	.	+	.	ID=gene:OPG121;Name=OPG121;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	101790	102431	.	+	.	ID=transcript:OPG121;Parent=gene:OPG121;Name=OPG121;biotype=protein_coding;transcript_id=OPG121
+NC_063383.1	NCBI	exon	101790	102431	.	+	.	Parent=transcript:OPG121;Name=OPG121.exon;exon_id=OPG121.exon;rank=1
+NC_063383.1	NCBI	CDS	101790	102431	.	+	0	ID=CDS:OPG121;Parent=transcript:OPG121;Name=OPG121;product=NUDIX domain protein;protein_id=YP_010377103.1
+NC_063383.1	NCBI	gene	102428	103174	.	+	.	ID=gene:OPG122;Name=OPG122;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	102428	103174	.	+	.	ID=transcript:OPG122;Parent=gene:OPG122;Name=OPG122;biotype=protein_coding;transcript_id=OPG122
+NC_063383.1	NCBI	exon	102428	103174	.	+	.	Parent=transcript:OPG122;Name=OPG122.exon;exon_id=OPG122.exon;rank=1
+NC_063383.1	NCBI	CDS	102428	103174	.	+	0	ID=CDS:OPG122;Parent=transcript:OPG122;Name=OPG122;product=MutT motif protein;protein_id=YP_010377104.1
+NC_063383.1	NCBI	gene	103175	105070	.	-	.	ID=gene:OPG123;Name=OPG123;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	103175	105070	.	-	.	ID=transcript:OPG123;Parent=gene:OPG123;Name=OPG123;biotype=protein_coding;transcript_id=OPG123
+NC_063383.1	NCBI	exon	103175	105070	.	-	.	Parent=transcript:OPG123;Name=OPG123.exon;exon_id=OPG123.exon;rank=1
+NC_063383.1	NCBI	CDS	103175	105070	.	-	0	ID=CDS:OPG123;Parent=transcript:OPG123;Name=OPG123;product=Nucleoside triphosphatase I;protein_id=YP_010377105.1
+NC_063383.1	NCBI	gene	105105	105968	.	-	.	ID=gene:OPG124;Name=OPG124;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	105105	105968	.	-	.	ID=transcript:OPG124;Parent=gene:OPG124;Name=OPG124;biotype=protein_coding;transcript_id=OPG124
+NC_063383.1	NCBI	exon	105105	105968	.	-	.	Parent=transcript:OPG124;Name=OPG124.exon;exon_id=OPG124.exon;rank=1
+NC_063383.1	NCBI	CDS	105105	105968	.	-	0	ID=CDS:OPG124;Parent=transcript:OPG124;Name=OPG124;product=mRNA capping enzyme small subunit;protein_id=YP_010377106.1
+NC_063383.1	NCBI	gene	105999	107654	.	-	.	ID=gene:OPG125;Name=OPG125;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	105999	107654	.	-	.	ID=transcript:OPG125;Parent=gene:OPG125;Name=OPG125;biotype=protein_coding;transcript_id=OPG125
+NC_063383.1	NCBI	exon	105999	107654	.	-	.	Parent=transcript:OPG125;Name=OPG125.exon;exon_id=OPG125.exon;rank=1
+NC_063383.1	NCBI	CDS	105999	107654	.	-	0	ID=CDS:OPG125;Parent=transcript:OPG125;Name=OPG125;product=Rifampicin resistance protein;protein_id=YP_010377107.1
+NC_063383.1	NCBI	gene	107678	108130	.	-	.	ID=gene:OPG126;Name=OPG126;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	107678	108130	.	-	.	ID=transcript:OPG126;Parent=gene:OPG126;Name=OPG126;biotype=protein_coding;transcript_id=OPG126
+NC_063383.1	NCBI	exon	107678	108130	.	-	.	Parent=transcript:OPG126;Name=OPG126.exon;exon_id=OPG126.exon;rank=1
+NC_063383.1	NCBI	CDS	107678	108130	.	-	0	ID=CDS:OPG126;Parent=transcript:OPG126;Name=OPG126;product=Late transcription factor VLTF-2 (2);protein_id=YP_010377108.1
+NC_063383.1	NCBI	gene	108151	108825	.	-	.	ID=gene:OPG127;Name=OPG127;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	108151	108825	.	-	.	ID=transcript:OPG127;Parent=gene:OPG127;Name=OPG127;biotype=protein_coding;transcript_id=OPG127
+NC_063383.1	NCBI	exon	108151	108825	.	-	.	Parent=transcript:OPG127;Name=OPG127.exon;exon_id=OPG127.exon;rank=1
+NC_063383.1	NCBI	CDS	108151	108825	.	-	0	ID=CDS:OPG127;Parent=transcript:OPG127;Name=OPG127;product=Late transcription factor VLTF-3 (1);protein_id=YP_010377109.1
+NC_063383.1	NCBI	gene	108822	109055	.	-	.	ID=gene:OPG128;Name=OPG128;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	108822	109055	.	-	.	ID=transcript:OPG128;Parent=gene:OPG128;Name=OPG128;biotype=protein_coding;transcript_id=OPG128
+NC_063383.1	NCBI	exon	108822	109055	.	-	.	Parent=transcript:OPG128;Name=OPG128.exon;exon_id=OPG128.exon;rank=1
+NC_063383.1	NCBI	CDS	108822	109055	.	-	0	ID=CDS:OPG128;Parent=transcript:OPG128;Name=OPG128;product=S-S bond formation pathway protein;protein_id=YP_010377110.1
+NC_063383.1	NCBI	gene	109070	111004	.	-	.	ID=gene:OPG129;Name=OPG129;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	109070	111004	.	-	.	ID=transcript:OPG129;Parent=gene:OPG129;Name=OPG129;biotype=protein_coding;transcript_id=OPG129
+NC_063383.1	NCBI	exon	109070	111004	.	-	.	Parent=transcript:OPG129;Name=OPG129.exon;exon_id=OPG129.exon;rank=1
+NC_063383.1	NCBI	CDS	109070	111004	.	-	0	ID=CDS:OPG129;Parent=transcript:OPG129;Name=OPG129;product=Virion core protein P4b;protein_id=YP_010377111.1
+NC_063383.1	NCBI	gene	111057	111902	.	-	.	ID=gene:OPG130;Name=OPG130;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	111057	111902	.	-	.	ID=transcript:OPG130;Parent=gene:OPG130;Name=OPG130;biotype=protein_coding;transcript_id=OPG130
+NC_063383.1	NCBI	exon	111057	111902	.	-	.	Parent=transcript:OPG130;Name=OPG130.exon;exon_id=OPG130.exon;rank=1
+NC_063383.1	NCBI	CDS	111057	111902	.	-	0	ID=CDS:OPG130;Parent=transcript:OPG130;Name=OPG130;product=A5L protein-like;protein_id=YP_010377112.1
+NC_063383.1	NCBI	gene	111940	112425	.	+	.	ID=gene:OPG131;Name=OPG131;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	111940	112425	.	+	.	ID=transcript:OPG131;Parent=gene:OPG131;Name=OPG131;biotype=protein_coding;transcript_id=OPG131
+NC_063383.1	NCBI	exon	111940	112425	.	+	.	Parent=transcript:OPG131;Name=OPG131.exon;exon_id=OPG131.exon;rank=1
+NC_063383.1	NCBI	CDS	111940	112425	.	+	0	ID=CDS:OPG131;Parent=transcript:OPG131;Name=OPG131;product=DNA-directed RNA polymerase 19 kDa subunit;protein_id=YP_010377113.1
+NC_063383.1	NCBI	gene	112422	113540	.	-	.	ID=gene:OPG132;Name=OPG132;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	112422	113540	.	-	.	ID=transcript:OPG132;Parent=gene:OPG132;Name=OPG132;biotype=protein_coding;transcript_id=OPG132
+NC_063383.1	NCBI	exon	112422	113540	.	-	.	Parent=transcript:OPG132;Name=OPG132.exon;exon_id=OPG132.exon;rank=1
+NC_063383.1	NCBI	CDS	112422	113540	.	-	0	ID=CDS:OPG132;Parent=transcript:OPG132;Name=OPG132;product=Virion morphogenesis protein;protein_id=YP_010377114.1
+NC_063383.1	NCBI	gene	113564	115696	.	-	.	ID=gene:OPG133;Name=OPG133;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	113564	115696	.	-	.	ID=transcript:OPG133;Parent=gene:OPG133;Name=OPG133;biotype=protein_coding;transcript_id=OPG133
+NC_063383.1	NCBI	exon	113564	115696	.	-	.	Parent=transcript:OPG133;Name=OPG133.exon;exon_id=OPG133.exon;rank=1
+NC_063383.1	NCBI	CDS	113564	115696	.	-	0	ID=CDS:OPG133;Parent=transcript:OPG133;Name=OPG133;product=Early transcription factor 82 kDa subunit;protein_id=YP_010377115.1
+NC_063383.1	NCBI	gene	115750	116628	.	+	.	ID=gene:OPG134;Name=OPG134;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	115750	116628	.	+	.	ID=transcript:OPG134;Parent=gene:OPG134;Name=OPG134;biotype=protein_coding;transcript_id=OPG134
+NC_063383.1	NCBI	exon	115750	116628	.	+	.	Parent=transcript:OPG134;Name=OPG134.exon;exon_id=OPG134.exon;rank=1
+NC_063383.1	NCBI	CDS	115750	116628	.	+	0	ID=CDS:OPG134;Parent=transcript:OPG134;Name=OPG134;product=Intermediate transcription factor VITF-3 (1);protein_id=YP_010377116.1
+NC_063383.1	NCBI	gene	116609	116911	.	-	.	ID=gene:OPG135;Name=OPG135;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	116609	116911	.	-	.	ID=transcript:OPG135;Parent=gene:OPG135;Name=OPG135;biotype=protein_coding;transcript_id=OPG135
+NC_063383.1	NCBI	exon	116609	116911	.	-	.	Parent=transcript:OPG135;Name=OPG135.exon;exon_id=OPG135.exon;rank=1
+NC_063383.1	NCBI	CDS	116609	116911	.	-	0	ID=CDS:OPG135;Parent=transcript:OPG135;Name=OPG135;product=IMV membrane protein A9;protein_id=YP_010377117.1
+NC_063383.1	NCBI	gene	116912	119587	.	-	.	ID=gene:OPG136;Name=OPG136;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	116912	119587	.	-	.	ID=transcript:OPG136;Parent=gene:OPG136;Name=OPG136;biotype=protein_coding;transcript_id=OPG136
+NC_063383.1	NCBI	exon	116912	119587	.	-	.	Parent=transcript:OPG136;Name=OPG136.exon;exon_id=OPG136.exon;rank=1
+NC_063383.1	NCBI	CDS	116912	119587	.	-	0	ID=CDS:OPG136;Parent=transcript:OPG136;Name=OPG136;product=Virion core protein P4a;protein_id=YP_010377118.1
+NC_063383.1	NCBI	gene	119602	120558	.	+	.	ID=gene:OPG137;Name=OPG137;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	119602	120558	.	+	.	ID=transcript:OPG137;Parent=gene:OPG137;Name=OPG137;biotype=protein_coding;transcript_id=OPG137
+NC_063383.1	NCBI	exon	119602	120558	.	+	.	Parent=transcript:OPG137;Name=OPG137.exon;exon_id=OPG137.exon;rank=1
+NC_063383.1	NCBI	CDS	119602	120558	.	+	0	ID=CDS:OPG137;Parent=transcript:OPG137;Name=OPG137;product=Viral membrane formation protein;protein_id=YP_010377119.1
+NC_063383.1	NCBI	gene	120560	121132	.	-	.	ID=gene:OPG138;Name=OPG138;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	120560	121132	.	-	.	ID=transcript:OPG138;Parent=gene:OPG138;Name=OPG138;biotype=protein_coding;transcript_id=OPG138
+NC_063383.1	NCBI	exon	120560	121132	.	-	.	Parent=transcript:OPG138;Name=OPG138.exon;exon_id=OPG138.exon;rank=1
+NC_063383.1	NCBI	CDS	120560	121132	.	-	0	ID=CDS:OPG138;Parent=transcript:OPG138;Name=OPG138;product=A12 protein;protein_id=YP_010377120.1
+NC_063383.1	NCBI	gene	121156	121368	.	-	.	ID=gene:OPG139;Name=OPG139;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	121156	121368	.	-	.	ID=transcript:OPG139;Parent=gene:OPG139;Name=OPG139;biotype=protein_coding;transcript_id=OPG139
+NC_063383.1	NCBI	exon	121156	121368	.	-	.	Parent=transcript:OPG139;Name=OPG139.exon;exon_id=OPG139.exon;rank=1
+NC_063383.1	NCBI	CDS	121156	121368	.	-	0	ID=CDS:OPG139;Parent=transcript:OPG139;Name=OPG139;product=IMV membrane protein A13L;protein_id=YP_010377121.1
+NC_063383.1	NCBI	gene	121474	121746	.	-	.	ID=gene:OPG140;Name=OPG140;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	121474	121746	.	-	.	ID=transcript:OPG140;Parent=gene:OPG140;Name=OPG140;biotype=protein_coding;transcript_id=OPG140
+NC_063383.1	NCBI	exon	121474	121746	.	-	.	Parent=transcript:OPG140;Name=OPG140.exon;exon_id=OPG140.exon;rank=1
+NC_063383.1	NCBI	CDS	121474	121746	.	-	0	ID=CDS:OPG140;Parent=transcript:OPG140;Name=OPG140;product=IMV membrane protein A14;protein_id=YP_010377122.1
+NC_063383.1	NCBI	gene	121763	121924	.	-	.	ID=gene:OPG141;Name=OPG141;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	121763	121924	.	-	.	ID=transcript:OPG141;Parent=gene:OPG141;Name=OPG141;biotype=protein_coding;transcript_id=OPG141
+NC_063383.1	NCBI	exon	121763	121924	.	-	.	Parent=transcript:OPG141;Name=OPG141.exon;exon_id=OPG141.exon;rank=1
+NC_063383.1	NCBI	CDS	121763	121924	.	-	0	ID=CDS:OPG141;Parent=transcript:OPG141;Name=OPG141;product=DUF1029 domain protein;protein_id=YP_010377123.1
+NC_063383.1	NCBI	gene	121914	122198	.	-	.	ID=gene:OPG142;Name=OPG142;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	121914	122198	.	-	.	ID=transcript:OPG142;Parent=gene:OPG142;Name=OPG142;biotype=protein_coding;transcript_id=OPG142
+NC_063383.1	NCBI	exon	121914	122198	.	-	.	Parent=transcript:OPG142;Name=OPG142.exon;exon_id=OPG142.exon;rank=1
+NC_063383.1	NCBI	CDS	121914	122198	.	-	0	ID=CDS:OPG142;Parent=transcript:OPG142;Name=OPG142;product=Core protein A15;protein_id=YP_010377124.1
+NC_063383.1	NCBI	gene	122182	123315	.	-	.	ID=gene:OPG143;Name=OPG143;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	122182	123315	.	-	.	ID=transcript:OPG143;Parent=gene:OPG143;Name=OPG143;biotype=protein_coding;transcript_id=OPG143
+NC_063383.1	NCBI	exon	122182	123315	.	-	.	Parent=transcript:OPG143;Name=OPG143.exon;exon_id=OPG143.exon;rank=1
+NC_063383.1	NCBI	CDS	122182	123315	.	-	0	ID=CDS:OPG143;Parent=transcript:OPG143;Name=OPG143;product=Myristylated protein;protein_id=YP_010377125.1
+NC_063383.1	NCBI	gene	123318	123932	.	-	.	ID=gene:OPG144;Name=OPG144;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	123318	123932	.	-	.	ID=transcript:OPG144;Parent=gene:OPG144;Name=OPG144;biotype=protein_coding;transcript_id=OPG144
+NC_063383.1	NCBI	exon	123318	123932	.	-	.	Parent=transcript:OPG144;Name=OPG144.exon;exon_id=OPG144.exon;rank=1
+NC_063383.1	NCBI	CDS	123318	123932	.	-	0	ID=CDS:OPG144;Parent=transcript:OPG144;Name=OPG144;product=IMV membrane protein P21;protein_id=YP_010377126.1
+NC_063383.1	NCBI	gene	123947	125425	.	+	.	ID=gene:OPG145;Name=OPG145;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	123947	125425	.	+	.	ID=transcript:OPG145;Parent=gene:OPG145;Name=OPG145;biotype=protein_coding;transcript_id=OPG145
+NC_063383.1	NCBI	exon	123947	125425	.	+	.	Parent=transcript:OPG145;Name=OPG145.exon;exon_id=OPG145.exon;rank=1
+NC_063383.1	NCBI	CDS	123947	125425	.	+	0	ID=CDS:OPG145;Parent=transcript:OPG145;Name=OPG145;product=DNA helicase;protein_id=YP_010377127.1
+NC_063383.1	NCBI	gene	125406	125639	.	-	.	ID=gene:OPG146;Name=OPG146;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	125406	125639	.	-	.	ID=transcript:OPG146;Parent=gene:OPG146;Name=OPG146;biotype=protein_coding;transcript_id=OPG146
+NC_063383.1	NCBI	exon	125406	125639	.	-	.	Parent=transcript:OPG146;Name=OPG146.exon;exon_id=OPG146.exon;rank=1
+NC_063383.1	NCBI	CDS	125406	125639	.	-	0	ID=CDS:OPG146;Parent=transcript:OPG146;Name=OPG146;product=Zinc finger-like protein (1);protein_id=YP_010377128.1
+NC_063383.1	NCBI	gene	125640	125987	.	-	.	ID=gene:OPG147;Name=OPG147;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	125640	125987	.	-	.	ID=transcript:OPG147;Parent=gene:OPG147;Name=OPG147;biotype=protein_coding;transcript_id=OPG147
+NC_063383.1	NCBI	exon	125640	125987	.	-	.	Parent=transcript:OPG147;Name=OPG147.exon;exon_id=OPG147.exon;rank=1
+NC_063383.1	NCBI	CDS	125640	125987	.	-	0	ID=CDS:OPG147;Parent=transcript:OPG147;Name=OPG147;product=IMV membrane protein A21;protein_id=YP_010377129.1
+NC_063383.1	NCBI	gene	125986	127266	.	+	.	ID=gene:OPG148;Name=OPG148;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	125986	127266	.	+	.	ID=transcript:OPG148;Parent=gene:OPG148;Name=OPG148;biotype=protein_coding;transcript_id=OPG148
+NC_063383.1	NCBI	exon	125986	127266	.	+	.	Parent=transcript:OPG148;Name=OPG148.exon;exon_id=OPG148.exon;rank=1
+NC_063383.1	NCBI	CDS	125986	127266	.	+	0	ID=CDS:OPG148;Parent=transcript:OPG148;Name=OPG148;product=DNA polymerase processivity factor;protein_id=YP_010377130.1
+NC_063383.1	NCBI	gene	127196	127759	.	+	.	ID=gene:OPG149;Name=OPG149;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	127196	127759	.	+	.	ID=transcript:OPG149;Parent=gene:OPG149;Name=OPG149;biotype=protein_coding;transcript_id=OPG149
+NC_063383.1	NCBI	exon	127196	127759	.	+	.	Parent=transcript:OPG149;Name=OPG149.exon;exon_id=OPG149.exon;rank=1
+NC_063383.1	NCBI	CDS	127196	127759	.	+	0	ID=CDS:OPG149;Parent=transcript:OPG149;Name=OPG149;product=Holliday junction resolvase;protein_id=YP_010377131.1
+NC_063383.1	NCBI	gene	127779	128927	.	+	.	ID=gene:OPG150;Name=OPG150;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	127779	128927	.	+	.	ID=transcript:OPG150;Parent=gene:OPG150;Name=OPG150;biotype=protein_coding;transcript_id=OPG150
+NC_063383.1	NCBI	exon	127779	128927	.	+	.	Parent=transcript:OPG150;Name=OPG150.exon;exon_id=OPG150.exon;rank=1
+NC_063383.1	NCBI	CDS	127779	128927	.	+	0	ID=CDS:OPG150;Parent=transcript:OPG150;Name=OPG150;product=Intermediate transcription factor VITF-3 (2);protein_id=YP_010377132.1
+NC_063383.1	NCBI	gene	128924	132418	.	+	.	ID=gene:OPG151;Name=OPG151;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	128924	132418	.	+	.	ID=transcript:OPG151;Parent=gene:OPG151;Name=OPG151;biotype=protein_coding;transcript_id=OPG151
+NC_063383.1	NCBI	exon	128924	132418	.	+	.	Parent=transcript:OPG151;Name=OPG151.exon;exon_id=OPG151.exon;rank=1
+NC_063383.1	NCBI	CDS	128924	132418	.	+	0	ID=CDS:OPG151;Parent=transcript:OPG151;Name=OPG151;product=DNA-dependent RNA polymerase subunit rpo132;protein_id=YP_010377133.1
+NC_063383.1	NCBI	gene	136138	137667	.	-	.	ID=gene:OPG153;Name=OPG153;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	136138	137667	.	-	.	ID=transcript:OPG153;Parent=gene:OPG153;Name=OPG153;biotype=protein_coding;transcript_id=OPG153
+NC_063383.1	NCBI	exon	136138	137667	.	-	.	Parent=transcript:OPG153;Name=OPG153.exon;exon_id=OPG153.exon;rank=1
+NC_063383.1	NCBI	CDS	136138	137667	.	-	0	ID=CDS:OPG153;Parent=transcript:OPG153;Name=OPG153;product=Orthopoxvirus A26L/A30L protein;protein_id=YP_010377134.1
+NC_063383.1	NCBI	gene	137718	138050	.	-	.	ID=gene:OPG154;Name=OPG154;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	137718	138050	.	-	.	ID=transcript:OPG154;Parent=gene:OPG154;Name=OPG154;biotype=protein_coding;transcript_id=OPG154
+NC_063383.1	NCBI	exon	137718	138050	.	-	.	Parent=transcript:OPG154;Name=OPG154.exon;exon_id=OPG154.exon;rank=1
+NC_063383.1	NCBI	CDS	137718	138050	.	-	0	ID=CDS:OPG154;Parent=transcript:OPG154;Name=OPG154;product=IMV surface fusion protein;protein_id=YP_010377135.1
+NC_063383.1	NCBI	gene	138051	138491	.	-	.	ID=gene:OPG155;Name=OPG155;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	138051	138491	.	-	.	ID=transcript:OPG155;Parent=gene:OPG155;Name=OPG155;biotype=protein_coding;transcript_id=OPG155
+NC_063383.1	NCBI	exon	138051	138491	.	-	.	Parent=transcript:OPG155;Name=OPG155.exon;exon_id=OPG155.exon;rank=1
+NC_063383.1	NCBI	CDS	138051	138491	.	-	0	ID=CDS:OPG155;Parent=transcript:OPG155;Name=OPG155;product=Envelope protein A28 homolog;protein_id=YP_010377136.1
+NC_063383.1	NCBI	gene	138492	139409	.	-	.	ID=gene:OPG156;Name=OPG156;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	138492	139409	.	-	.	ID=transcript:OPG156;Parent=gene:OPG156;Name=OPG156;biotype=protein_coding;transcript_id=OPG156
+NC_063383.1	NCBI	exon	138492	139409	.	-	.	Parent=transcript:OPG156;Name=OPG156.exon;exon_id=OPG156.exon;rank=1
+NC_063383.1	NCBI	CDS	138492	139409	.	-	0	ID=CDS:OPG156;Parent=transcript:OPG156;Name=OPG156;product=DNA-directed RNA polymerase 35 kDa subunit;protein_id=YP_010377137.1
+NC_063383.1	NCBI	gene	139372	139608	.	-	.	ID=gene:OPG157;Name=OPG157;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	139372	139608	.	-	.	ID=transcript:OPG157;Parent=gene:OPG157;Name=OPG157;biotype=protein_coding;transcript_id=OPG157
+NC_063383.1	NCBI	exon	139372	139608	.	-	.	Parent=transcript:OPG157;Name=OPG157.exon;exon_id=OPG157.exon;rank=1
+NC_063383.1	NCBI	CDS	139372	139608	.	-	0	ID=CDS:OPG157;Parent=transcript:OPG157;Name=OPG157;product=IMV membrane protein A30;protein_id=YP_010377138.1
+NC_063383.1	NCBI	gene	139641	139769	.	-	.	ID=gene:OPG158;Name=OPG158;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	139641	139769	.	-	.	ID=transcript:OPG158;Parent=gene:OPG158;Name=OPG158;biotype=protein_coding;transcript_id=OPG158
+NC_063383.1	NCBI	exon	139641	139769	.	-	.	Parent=transcript:OPG158;Name=OPG158.exon;exon_id=OPG158.exon;rank=1
+NC_063383.1	NCBI	CDS	139641	139769	.	-	0	ID=CDS:OPG158;Parent=transcript:OPG158;Name=OPG158;product=A32.5L;protein_id=YP_010377139.1
+NC_063383.1	NCBI	gene	139768	140205	.	+	.	ID=gene:OPG159;Name=OPG159;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	139768	140205	.	+	.	ID=transcript:OPG159;Parent=gene:OPG159;Name=OPG159;biotype=protein_coding;transcript_id=OPG159
+NC_063383.1	NCBI	exon	139768	140205	.	+	.	Parent=transcript:OPG159;Name=OPG159.exon;exon_id=OPG159.exon;rank=1
+NC_063383.1	NCBI	CDS	139768	140205	.	+	0	ID=CDS:OPG159;Parent=transcript:OPG159;Name=OPG159;product=CPXV166 protein;protein_id=YP_010377140.1
+NC_063383.1	NCBI	gene	140172	141074	.	-	.	ID=gene:OPG160;Name=OPG160;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	140172	141074	.	-	.	ID=transcript:OPG160;Parent=gene:OPG160;Name=OPG160;biotype=protein_coding;transcript_id=OPG160
+NC_063383.1	NCBI	exon	140172	141074	.	-	.	Parent=transcript:OPG160;Name=OPG160.exon;exon_id=OPG160.exon;rank=1
+NC_063383.1	NCBI	CDS	140172	141074	.	-	0	ID=CDS:OPG160;Parent=transcript:OPG160;Name=OPG160;product=ATPase A32;protein_id=YP_010377141.1
+NC_063383.1	NCBI	gene	141102	141647	.	+	.	ID=gene:OPG161;Name=OPG161;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	141102	141647	.	+	.	ID=transcript:OPG161;Parent=gene:OPG161;Name=OPG161;biotype=protein_coding;transcript_id=OPG161
+NC_063383.1	NCBI	exon	141102	141647	.	+	.	Parent=transcript:OPG161;Name=OPG161.exon;exon_id=OPG161.exon;rank=1
+NC_063383.1	NCBI	CDS	141102	141647	.	+	0	ID=CDS:OPG161;Parent=transcript:OPG161;Name=OPG161;product=EEV glycoprotein (1);protein_id=YP_010377142.1
+NC_063383.1	NCBI	gene	141652	142158	.	+	.	ID=gene:OPG162;Name=OPG162;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	141652	142158	.	+	.	ID=transcript:OPG162;Parent=gene:OPG162;Name=OPG162;biotype=protein_coding;transcript_id=OPG162
+NC_063383.1	NCBI	exon	141652	142158	.	+	.	Parent=transcript:OPG162;Name=OPG162.exon;exon_id=OPG162.exon;rank=1
+NC_063383.1	NCBI	CDS	141652	142158	.	+	0	ID=CDS:OPG162;Parent=transcript:OPG162;Name=OPG162;product=EEV glycoprotein (2);protein_id=YP_010377143.1
+NC_063383.1	NCBI	gene	142202	142732	.	+	.	ID=gene:OPG163;Name=OPG163;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	142202	142732	.	+	.	ID=transcript:OPG163;Parent=gene:OPG163;Name=OPG163;biotype=protein_coding;transcript_id=OPG163
+NC_063383.1	NCBI	exon	142202	142732	.	+	.	Parent=transcript:OPG163;Name=OPG163.exon;exon_id=OPG163.exon;rank=1
+NC_063383.1	NCBI	CDS	142202	142732	.	+	0	ID=CDS:OPG163;Parent=transcript:OPG163;Name=OPG163;product=MHC class II antigen presentation inhibitor;protein_id=YP_010377144.1
+NC_063383.1	NCBI	gene	142778	143464	.	+	.	ID=gene:OPG164;Name=OPG164;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	142778	143464	.	+	.	ID=transcript:OPG164;Parent=gene:OPG164;Name=OPG164;biotype=protein_coding;transcript_id=OPG164
+NC_063383.1	NCBI	exon	142778	143464	.	+	.	Parent=transcript:OPG164;Name=OPG164.exon;exon_id=OPG164.exon;rank=1
+NC_063383.1	NCBI	CDS	142778	143464	.	+	0	ID=CDS:OPG164;Parent=transcript:OPG164;Name=OPG164;product=IEV transmembrane phosphoprotein;protein_id=YP_010377145.1
+NC_063383.1	NCBI	gene	143516	144322	.	+	.	ID=gene:OPG165;Name=OPG165;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	143516	144322	.	+	.	ID=transcript:OPG165;Parent=gene:OPG165;Name=OPG165;biotype=protein_coding;transcript_id=OPG165
+NC_063383.1	NCBI	exon	143516	144322	.	+	.	Parent=transcript:OPG165;Name=OPG165.exon;exon_id=OPG165.exon;rank=1
+NC_063383.1	NCBI	CDS	143516	144322	.	+	0	ID=CDS:OPG165;Parent=transcript:OPG165;Name=OPG165;product=CPXV173 protein;protein_id=YP_010377146.1
+NC_063383.1	NCBI	gene	144398	144577	.	+	.	ID=gene:OPG166;Name=OPG166;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	144398	144577	.	+	.	ID=transcript:OPG166;Parent=gene:OPG166;Name=OPG166;biotype=protein_coding;transcript_id=OPG166
+NC_063383.1	NCBI	exon	144398	144577	.	+	.	Parent=transcript:OPG166;Name=OPG166.exon;exon_id=OPG166.exon;rank=1
+NC_063383.1	NCBI	CDS	144398	144577	.	+	0	ID=CDS:OPG166;Parent=transcript:OPG166;Name=OPG166;product=hypothetical protein;protein_id=YP_010415322.1
+NC_063383.1	NCBI	gene	144574	145407	.	-	.	ID=gene:OPG167;Name=OPG167;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	144574	145407	.	-	.	ID=transcript:OPG167;Parent=gene:OPG167;Name=OPG167;biotype=protein_coding;transcript_id=OPG167
+NC_063383.1	NCBI	exon	144574	145407	.	-	.	Parent=transcript:OPG167;Name=OPG167.exon;exon_id=OPG167.exon;rank=1
+NC_063383.1	NCBI	CDS	144574	145407	.	-	0	ID=CDS:OPG167;Parent=transcript:OPG167;Name=OPG167;product=CD47-like protein;protein_id=YP_010377147.1
+NC_063383.1	NCBI	gene	146113	146778	.	-	.	ID=gene:OPG170;Name=OPG170;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	146113	146778	.	-	.	ID=transcript:OPG170;Parent=gene:OPG170;Name=OPG170;biotype=protein_coding;transcript_id=OPG170
+NC_063383.1	NCBI	exon	146113	146778	.	-	.	Parent=transcript:OPG170;Name=OPG170.exon;exon_id=OPG170.exon;rank=1
+NC_063383.1	NCBI	CDS	146113	146778	.	-	0	ID=CDS:OPG170;Parent=transcript:OPG170;Name=OPG170;product=Chemokine binding protein;protein_id=YP_010377148.1
+NC_063383.1	NCBI	gene	146988	147389	.	+	.	ID=gene:OPG171;Name=OPG171;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	146988	147389	.	+	.	ID=transcript:OPG171;Parent=gene:OPG171;Name=OPG171;biotype=protein_coding;transcript_id=OPG171
+NC_063383.1	NCBI	exon	146988	147389	.	+	.	Parent=transcript:OPG171;Name=OPG171.exon;exon_id=OPG171.exon;rank=1
+NC_063383.1	NCBI	CDS	146988	147389	.	+	0	ID=CDS:OPG171;Parent=transcript:OPG171;Name=OPG171;product=Profilin domain protein;protein_id=YP_010377149.1
+NC_063383.1	NCBI	gene	147427	148017	.	+	.	ID=gene:OPG172;Name=OPG172;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	147427	148017	.	+	.	ID=transcript:OPG172;Parent=gene:OPG172;Name=OPG172;biotype=protein_coding;transcript_id=OPG172
+NC_063383.1	NCBI	exon	147427	148017	.	+	.	Parent=transcript:OPG172;Name=OPG172.exon;exon_id=OPG172.exon;rank=1
+NC_063383.1	NCBI	CDS	147427	148017	.	+	0	ID=CDS:OPG172;Parent=transcript:OPG172;Name=OPG172;product=Type-I membrane glycoprotein;protein_id=YP_010377150.1
+NC_063383.1	NCBI	gene	148037	148261	.	+	.	ID=gene:OPG173;Name=OPG173;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	148037	148261	.	+	.	ID=transcript:OPG173;Parent=gene:OPG173;Name=OPG173;biotype=protein_coding;transcript_id=OPG173
+NC_063383.1	NCBI	exon	148037	148261	.	+	.	Parent=transcript:OPG173;Name=OPG173.exon;exon_id=OPG173.exon;rank=1
+NC_063383.1	NCBI	CDS	148037	148261	.	+	0	ID=CDS:OPG173;Parent=transcript:OPG173;Name=OPG173;product=MPXVgp154;protein_id=YP_010377151.1
+NC_063383.1	NCBI	gene	148355	149395	.	-	.	ID=gene:OPG174;Name=OPG174;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	148355	149395	.	-	.	ID=transcript:OPG174;Parent=gene:OPG174;Name=OPG174;biotype=protein_coding;transcript_id=OPG174
+NC_063383.1	NCBI	exon	148355	149395	.	-	.	Parent=transcript:OPG174;Name=OPG174.exon;exon_id=OPG174.exon;rank=1
+NC_063383.1	NCBI	CDS	148355	149395	.	-	0	ID=CDS:OPG174;Parent=transcript:OPG174;Name=OPG174;product=Hydroxysteroid dehydrogenase;protein_id=YP_010377152.1
+NC_063383.1	NCBI	gene	149442	149819	.	+	.	ID=gene:OPG175;Name=OPG175;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	149442	149819	.	+	.	ID=transcript:OPG175;Parent=gene:OPG175;Name=OPG175;biotype=protein_coding;transcript_id=OPG175
+NC_063383.1	NCBI	exon	149442	149819	.	+	.	Parent=transcript:OPG175;Name=OPG175.exon;exon_id=OPG175.exon;rank=1
+NC_063383.1	NCBI	CDS	149442	149819	.	+	0	ID=CDS:OPG175;Parent=transcript:OPG175;Name=OPG175;product=Copper/zinc superoxide dismutase;protein_id=YP_010377153.1
+NC_063383.1	NCBI	gene	149809	150531	.	+	.	ID=gene:OPG176;Name=OPG176;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	149809	150531	.	+	.	ID=transcript:OPG176;Parent=gene:OPG176;Name=OPG176;biotype=protein_coding;transcript_id=OPG176
+NC_063383.1	NCBI	exon	149809	150531	.	+	.	Parent=transcript:OPG176;Name=OPG176.exon;exon_id=OPG176.exon;rank=1
+NC_063383.1	NCBI	CDS	149809	150531	.	+	0	ID=CDS:OPG176;Parent=transcript:OPG176;Name=OPG176;product=Bcl-2-like protein;protein_id=YP_010377154.1
+NC_063383.1	NCBI	gene	151509	152123	.	+	.	ID=gene:OPG178;Name=OPG178;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	151509	152123	.	+	.	ID=transcript:OPG178;Parent=gene:OPG178;Name=OPG178;biotype=protein_coding;transcript_id=OPG178
+NC_063383.1	NCBI	exon	151509	152123	.	+	.	Parent=transcript:OPG178;Name=OPG178.exon;exon_id=OPG178.exon;rank=1
+NC_063383.1	NCBI	CDS	151509	152123	.	+	0	ID=CDS:OPG178;Parent=transcript:OPG178;Name=OPG178;product=Thymidylate kinase;protein_id=YP_010377155.1
+NC_063383.1	NCBI	gene	152692	154371	.	+	.	ID=gene:OPG180;Name=OPG180;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	152692	154371	.	+	.	ID=transcript:OPG180;Parent=gene:OPG180;Name=OPG180;biotype=protein_coding;transcript_id=OPG180
+NC_063383.1	NCBI	exon	152692	154371	.	+	.	Parent=transcript:OPG180;Name=OPG180.exon;exon_id=OPG180.exon;rank=1
+NC_063383.1	NCBI	CDS	152692	154371	.	+	0	ID=CDS:OPG180;Parent=transcript:OPG180;Name=OPG180;product=DNA ligase (2);protein_id=YP_010377156.1
+NC_063383.1	NCBI	gene	154412	155416	.	+	.	ID=gene:OPG181;Name=OPG181;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	154412	155416	.	+	.	ID=transcript:OPG181;Parent=gene:OPG181;Name=OPG181;biotype=protein_coding;transcript_id=OPG181
+NC_063383.1	NCBI	exon	154412	155416	.	+	.	Parent=transcript:OPG181;Name=OPG181.exon;exon_id=OPG181.exon;rank=1
+NC_063383.1	NCBI	CDS	154412	155416	.	+	0	ID=CDS:OPG181;Parent=transcript:OPG181;Name=OPG181;product=M137R;protein_id=YP_010377157.1
+NC_063383.1	NCBI	gene	158917	159858	.	+	.	ID=gene:OPG185;Name=OPG185;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	158917	159858	.	+	.	ID=transcript:OPG185;Parent=gene:OPG185;Name=OPG185;biotype=protein_coding;transcript_id=OPG185
+NC_063383.1	NCBI	exon	158917	159858	.	+	.	Parent=transcript:OPG185;Name=OPG185.exon;exon_id=OPG185.exon;rank=1
+NC_063383.1	NCBI	CDS	158917	159858	.	+	0	ID=CDS:OPG185;Parent=transcript:OPG185;Name=OPG185;product=Hemagglutinin;protein_id=YP_010377158.1
+NC_063383.1	NCBI	gene	160622	161533	.	+	.	ID=gene:OPG187;Name=OPG187;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	160622	161533	.	+	.	ID=transcript:OPG187;Parent=gene:OPG187;Name=OPG187;biotype=protein_coding;transcript_id=OPG187
+NC_063383.1	NCBI	exon	160622	161533	.	+	.	Parent=transcript:OPG187;Name=OPG187.exon;exon_id=OPG187.exon;rank=1
+NC_063383.1	NCBI	CDS	160622	161533	.	+	0	ID=CDS:OPG187;Parent=transcript:OPG187;Name=OPG187;product=Ser/thr kinase;protein_id=YP_010377159.1
+NC_063383.1	NCBI	gene	161596	163107	.	+	.	ID=gene:OPG188;Name=OPG188;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	161596	163107	.	+	.	ID=transcript:OPG188;Parent=gene:OPG188;Name=OPG188;biotype=protein_coding;transcript_id=OPG188
+NC_063383.1	NCBI	exon	161596	163107	.	+	.	Parent=transcript:OPG188;Name=OPG188.exon;exon_id=OPG188.exon;rank=1
+NC_063383.1	NCBI	CDS	161596	163107	.	+	0	ID=CDS:OPG188;Parent=transcript:OPG188;Name=OPG188;product=Schlafen (1);protein_id=YP_010377160.1
+NC_063383.1	NCBI	gene	163333	165018	.	+	.	ID=gene:OPG189;Name=OPG189;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	163333	165018	.	+	.	ID=transcript:OPG189;Parent=gene:OPG189;Name=OPG189;biotype=protein_coding;transcript_id=OPG189
+NC_063383.1	NCBI	exon	163333	165018	.	+	.	Parent=transcript:OPG189;Name=OPG189.exon;exon_id=OPG189.exon;rank=1
+NC_063383.1	NCBI	CDS	163333	165018	.	+	0	ID=CDS:OPG189;Parent=transcript:OPG189;Name=OPG189;product=Ankyrin repeat protein (25);protein_id=YP_010377161.1
+NC_063383.1	NCBI	gene	165122	166075	.	+	.	ID=gene:OPG190;Name=OPG190;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	165122	166075	.	+	.	ID=transcript:OPG190;Parent=gene:OPG190;Name=OPG190;biotype=protein_coding;transcript_id=OPG190
+NC_063383.1	NCBI	exon	165122	166075	.	+	.	Parent=transcript:OPG190;Name=OPG190.exon;exon_id=OPG190.exon;rank=1
+NC_063383.1	NCBI	CDS	165122	166075	.	+	0	ID=CDS:OPG190;Parent=transcript:OPG190;Name=OPG190;product=EEV type-I membrane glycoprotein;protein_id=YP_010377162.1
+NC_063383.1	NCBI	gene	166161	166667	.	+	.	ID=gene:OPG191;Name=OPG191;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	166161	166667	.	+	.	ID=transcript:OPG191;Parent=gene:OPG191;Name=OPG191;biotype=protein_coding;transcript_id=OPG191
+NC_063383.1	NCBI	exon	166161	166667	.	+	.	Parent=transcript:OPG191;Name=OPG191.exon;exon_id=OPG191.exon;rank=1
+NC_063383.1	NCBI	CDS	166161	166667	.	+	0	ID=CDS:OPG191;Parent=transcript:OPG191;Name=OPG191;product=Ankyrin-like protein (46);protein_id=YP_010377163.1
+NC_063383.1	NCBI	gene	166731	167279	.	+	.	ID=gene:OPG192;Name=OPG192;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	166731	167279	.	+	.	ID=transcript:OPG192;Parent=gene:OPG192;Name=OPG192;biotype=protein_coding;transcript_id=OPG192
+NC_063383.1	NCBI	exon	166731	167279	.	+	.	Parent=transcript:OPG192;Name=OPG192.exon;exon_id=OPG192.exon;rank=1
+NC_063383.1	NCBI	CDS	166731	167279	.	+	0	ID=CDS:OPG192;Parent=transcript:OPG192;Name=OPG192;product=Virulence protein;protein_id=YP_010377164.1
+NC_063383.1	NCBI	gene	167334	168137	.	+	.	ID=gene:OPG193;Name=OPG193;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	167334	168137	.	+	.	ID=transcript:OPG193;Parent=gene:OPG193;Name=OPG193;biotype=protein_coding;transcript_id=OPG193
+NC_063383.1	NCBI	exon	167334	168137	.	+	.	Parent=transcript:OPG193;Name=OPG193.exon;exon_id=OPG193.exon;rank=1
+NC_063383.1	NCBI	CDS	167334	168137	.	+	0	ID=CDS:OPG193;Parent=transcript:OPG193;Name=OPG193;product=Soluble interferon-gamma receptor-like protein;protein_id=YP_010377165.1
+NC_063383.1	NCBI	gene	168230	168895	.	+	.	ID=gene:OPG195;Name=OPG195;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	168230	168895	.	+	.	ID=transcript:OPG195;Parent=gene:OPG195;Name=OPG195;biotype=protein_coding;transcript_id=OPG195
+NC_063383.1	NCBI	exon	168230	168895	.	+	.	Parent=transcript:OPG195;Name=OPG195.exon;exon_id=OPG195.exon;rank=1
+NC_063383.1	NCBI	CDS	168230	168895	.	+	0	ID=CDS:OPG195;Parent=transcript:OPG195;Name=OPG195;product=Intracellular viral protein;protein_id=YP_010377166.1
+NC_063383.1	NCBI	gene	169670	169972	.	+	.	ID=gene:OPG197;Name=OPG197;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	169670	169972	.	+	.	ID=transcript:OPG197;Parent=gene:OPG197;Name=OPG197;biotype=protein_coding;transcript_id=OPG197
+NC_063383.1	NCBI	exon	169670	169972	.	+	.	Parent=transcript:OPG197;Name=OPG197.exon;exon_id=OPG197.exon;rank=1
+NC_063383.1	NCBI	CDS	169670	169972	.	+	0	ID=CDS:OPG197;Parent=transcript:OPG197;Name=OPG197;product=CPXV205 protein;protein_id=YP_010377167.1
+NC_063383.1	NCBI	gene	170038	170886	.	+	.	ID=gene:OPG198;Name=OPG198;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	170038	170886	.	+	.	ID=transcript:OPG198;Parent=gene:OPG198;Name=OPG198;biotype=protein_coding;transcript_id=OPG198
+NC_063383.1	NCBI	exon	170038	170886	.	+	.	Parent=transcript:OPG198;Name=OPG198.exon;exon_id=OPG198.exon;rank=1
+NC_063383.1	NCBI	CDS	170038	170886	.	+	0	ID=CDS:OPG198;Parent=transcript:OPG198;Name=OPG198;product=Ser/thr kinase;protein_id=YP_010377168.1
+NC_063383.1	NCBI	gene	170988	172022	.	+	.	ID=gene:OPG199;Name=OPG199;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	170988	172022	.	+	.	ID=transcript:OPG199;Parent=gene:OPG199;Name=OPG199;biotype=protein_coding;transcript_id=OPG199
+NC_063383.1	NCBI	exon	170988	172022	.	+	.	Parent=transcript:OPG199;Name=OPG199.exon;exon_id=OPG199.exon;rank=1
+NC_063383.1	NCBI	CDS	170988	172022	.	+	0	ID=CDS:OPG199;Parent=transcript:OPG199;Name=OPG199;product=Serpin;protein_id=YP_010377169.1
+NC_063383.1	NCBI	gene	172150	172599	.	+	.	ID=gene:OPG200;Name=OPG200;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	172150	172599	.	+	.	ID=transcript:OPG200;Parent=gene:OPG200;Name=OPG200;biotype=protein_coding;transcript_id=OPG200
+NC_063383.1	NCBI	exon	172150	172599	.	+	.	Parent=transcript:OPG200;Name=OPG200.exon;exon_id=OPG200.exon;rank=1
+NC_063383.1	NCBI	CDS	172150	172599	.	+	0	ID=CDS:OPG200;Parent=transcript:OPG200;Name=OPG200;product=Bcl-2-like protein;protein_id=YP_010377170.1
+NC_063383.1	NCBI	gene	174532	175587	.	+	.	ID=gene:OPG204;Name=OPG204;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	174532	175587	.	+	.	ID=transcript:OPG204;Parent=gene:OPG204;Name=OPG204;biotype=protein_coding;transcript_id=OPG204
+NC_063383.1	NCBI	exon	174532	175587	.	+	.	Parent=transcript:OPG204;Name=OPG204.exon;exon_id=OPG204.exon;rank=1
+NC_063383.1	NCBI	CDS	174532	175587	.	+	0	ID=CDS:OPG204;Parent=transcript:OPG204;Name=OPG204;product=IFN-alpha/beta-receptor-like secreted glycoprotein;protein_id=YP_010377172.1
+NC_063383.1	NCBI	gene	175656	178019	.	+	.	ID=gene:OPG205;Name=OPG205;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	175656	178019	.	+	.	ID=transcript:OPG205;Parent=gene:OPG205;Name=OPG205;biotype=protein_coding;transcript_id=OPG205
+NC_063383.1	NCBI	exon	175656	178019	.	+	.	Parent=transcript:OPG205;Name=OPG205.exon;exon_id=OPG205.exon;rank=1
+NC_063383.1	NCBI	CDS	175656	178019	.	+	0	ID=CDS:OPG205;Parent=transcript:OPG205;Name=OPG205;product=Ankyrin repeat protein (44);protein_id=YP_010377173.1
+NC_063383.1	NCBI	gene	179266	180339	.	+	.	ID=gene:OPG208;Name=OPG208;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	179266	180339	.	+	.	ID=transcript:OPG208;Parent=gene:OPG208;Name=OPG208;biotype=protein_coding;transcript_id=OPG208
+NC_063383.1	NCBI	exon	179266	180339	.	+	.	Parent=transcript:OPG208;Name=OPG208.exon;exon_id=OPG208.exon;rank=1
+NC_063383.1	NCBI	CDS	179266	180339	.	+	0	ID=CDS:OPG208;Parent=transcript:OPG208;Name=OPG208;product=Serpin;protein_id=YP_010377174.1
+NC_063383.1	NCBI	gene	180518	181090	.	+	.	ID=gene:OPG209;Name=OPG209;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	180518	181090	.	+	.	ID=transcript:OPG209;Parent=gene:OPG209;Name=OPG209;biotype=protein_coding;transcript_id=OPG209
+NC_063383.1	NCBI	exon	180518	181090	.	+	.	Parent=transcript:OPG209;Name=OPG209.exon;exon_id=OPG209.exon;rank=1
+NC_063383.1	NCBI	CDS	180518	181090	.	+	0	ID=CDS:OPG209;Parent=transcript:OPG209;Name=OPG209;product=Virulence protein;protein_id=YP_010377175.1
+NC_063383.1	NCBI	gene	181356	186998	.	+	.	ID=gene:OPG210;Name=OPG210;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	181356	186998	.	+	.	ID=transcript:OPG210;Parent=gene:OPG210;Name=OPG210;biotype=protein_coding;transcript_id=OPG210
+NC_063383.1	NCBI	exon	181356	186998	.	+	.	Parent=transcript:OPG210;Name=OPG210.exon;exon_id=OPG210.exon;rank=1
+NC_063383.1	NCBI	CDS	181356	186998	.	+	0	ID=CDS:OPG210;Parent=transcript:OPG210;Name=OPG210;product=B22R family protein;protein_id=YP_010377176.1
+NC_063383.1	NCBI	gene	189199	189660	.	+	.	ID=gene:OPG005;Name=OPG005;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	189199	189660	.	+	.	ID=transcript:OPG005;Parent=gene:OPG005;Name=OPG005;biotype=protein_coding;transcript_id=OPG005
+NC_063383.1	NCBI	exon	189199	189660	.	+	.	Parent=transcript:OPG005;Name=OPG005.exon;exon_id=OPG005.exon;rank=1
+NC_063383.1	NCBI	CDS	189199	189660	.	+	0	ID=CDS:OPG005;Parent=transcript:OPG005;Name=OPG005;product=Bcl-2-like protein;protein_id=YP_010377177.1
+NC_063383.1	NCBI	gene	190410	190940	.	+	.	ID=gene:OPG016;Name=OPG016;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	190410	190940	.	+	.	ID=transcript:OPG016;Parent=gene:OPG016;Name=OPG016;biotype=protein_coding;transcript_id=OPG016
+NC_063383.1	NCBI	exon	190410	190940	.	+	.	Parent=transcript:OPG016;Name=OPG016.exon;exon_id=OPG016.exon;rank=1
+NC_063383.1	NCBI	CDS	190410	190940	.	+	0	ID=CDS:OPG016;Parent=transcript:OPG016;Name=OPG016;product=Brix domain protein;protein_id=YP_010377184.1
+NC_063383.1	NCBI	gene	191054	192367	.	+	.	ID=gene:OPG015_R;Name=OPG015_R;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	191054	192367	.	+	.	ID=transcript:OPG015_R;Parent=gene:OPG015_R;Name=OPG015_R;biotype=protein_coding;transcript_id=OPG015_R
+NC_063383.1	NCBI	exon	191054	192367	.	+	.	Parent=transcript:OPG015_R;Name=OPG015_R.exon;exon_id=OPG015_R.exon;rank=1
+NC_063383.1	NCBI	CDS	191054	192367	.	+	0	ID=CDS:OPG015_R;Parent=transcript:OPG015_R;Name=OPG015_R;product=Ankyrin repeat protein (39);protein_id=YP_010377179.1
+NC_063383.1	NCBI	gene	192603	194369	.	+	.	ID=gene:OPG003_R;Name=OPG003_R;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	192603	194369	.	+	.	ID=transcript:OPG003_R;Parent=gene:OPG003_R;Name=OPG003_R;biotype=protein_coding;transcript_id=OPG003_R
+NC_063383.1	NCBI	exon	192603	194369	.	+	.	Parent=transcript:OPG003_R;Name=OPG003_R.exon;exon_id=OPG003_R.exon;rank=1
+NC_063383.1	NCBI	CDS	192603	194369	.	+	0	ID=CDS:OPG003_R;Parent=transcript:OPG003_R;Name=OPG003_R;product=Ankyrin repeat protein (25);protein_id=YP_010377180.1
+NC_063383.1	NCBI	gene	194459	195508	.	+	.	ID=gene:OPG002_R;Name=OPG002_R;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	194459	195508	.	+	.	ID=transcript:OPG002_R;Parent=gene:OPG002_R;Name=OPG002_R;biotype=protein_coding;transcript_id=OPG002_R
+NC_063383.1	NCBI	exon	194459	195508	.	+	.	Parent=transcript:OPG002_R;Name=OPG002_R.exon;exon_id=OPG002_R.exon;rank=1
+NC_063383.1	NCBI	CDS	194459	195508	.	+	0	ID=CDS:OPG002_R;Parent=transcript:OPG002_R;Name=OPG002_R;product=Crm-B secreted TNF-alpha-receptor-like protein;protein_id=YP_010377181.1
+NC_063383.1	NCBI	gene	195635	196375	.	+	.	ID=gene:OPG001_R;Name=OPG001_R;biotype=protein_coding
+NC_063383.1	NCBI	mRNA	195635	196375	.	+	.	ID=transcript:OPG001_R;Parent=gene:OPG001_R;Name=OPG001_R;biotype=protein_coding;transcript_id=OPG001_R
+NC_063383.1	NCBI	exon	195635	196375	.	+	.	Parent=transcript:OPG001_R;Name=OPG001_R.exon;exon_id=OPG001_R.exon;rank=1
+NC_063383.1	NCBI	CDS	195635	196375	.	+	0	ID=CDS:OPG001_R;Parent=transcript:OPG001_R;Name=OPG001_R;product=Chemokine binding protein;protein_id=YP_010377182.1

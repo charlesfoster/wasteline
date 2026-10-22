@@ -1,37 +1,39 @@
 # Other pathogens (`--pathogen`)
 
 wasteline was built for SARS-CoV-2, but Freyja also deconvolves other pathogens (`freyja update --pathogen X`), and
-`--pathogen X` now works end to end for the single-sequence ones (PLAN D22). RSV-A and RSV-B (`RSVa`, `RSVb`), measles and the
+`--pathogen X` now works end to end for the single-sequence ones (PLAN D22). RSV-A and RSV-B (`RSVa`, `RSVb`), mpox (`MPX`), measles and the
 five influenza pathogens (`H1N1`, `H3N2`, `FLU-B-VIC`, `H5Nx`, `H5Nx-cattle`; the HA segment only, see "Running influenza")
-are validated and bundle their reference (PLAN D23, D24). Everything is opt-in: with the default
+are validated and bundle their reference (PLAN D23, D24, D26). Primer schemes are bundled for measles and mpox only (PLAN D26, see
+"Primer schemes"). Everything is opt-in: with the default
 `--pathogen SARS-CoV-2` nothing changes. Design as built: [wiring/multi_pathogen.md](wiring/multi_pathogen.md).
 
 **Two things decide whether a pathogen works.** The reference must be one sequence (a multi-sequence FASTA is refused; Freyja's
 influenza barcodes cover only the HA segment, which is one sequence of 1.7-1.9 kb, so influenza qualifies), and it must be the
 **reference FASTA** that Freyja's barcodes are tied to: the `reference.fasta` in the pathogen's folder of the
 [Freyja-barcodes](https://github.com/andersen-lab/Freyja-barcodes) repository (a different reference gives silently wrong
-results). For RSV-A, RSV-B, measles and influenza it is bundled; for the others you pass `--fasta`. A primer BED for your amplicon
-panel (or `--protocol capture`) is the third ingredient; no primer schemes are bundled for other pathogens.
+results). For RSV-A, RSV-B, mpox, measles and influenza it is bundled; for the others you pass `--fasta`. A primer scheme for your amplicon
+panel (or `--protocol capture`) is the third ingredient: the published ARTIC/BCCDC schemes for measles and mpox are bundled, for every other
+pathogen you give a BED (`--primer_bed`, `--primer_scheme_dir`), see "Primer schemes".
 
 ## Support matrix
 
-| `--pathogen`                              | Status                                         | What you need                                                                                                              |
-| ----------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `SARS-CoV-2` (default)                    | supported, validated                           | nothing: reference, annotation, primer schemes and lineage groups are bundled                                              |
-| `RSVa`                                    | supported, **validated**                       | reference and annotation are bundled (`PP109421.1`); `--primer_bed` (or `--protocol capture`). Validation below            |
-| `RSVb`                                    | supported, **validated**                       | reference and annotation are bundled (`OP975389.1`); `--primer_bed` (or `--protocol capture`). Validation below            |
-| `MEASLESgenome`                           | supported, **validated**                       | the reference is bundled (`NC_001498.1`); `--primer_bed` (or `--protocol capture`). Validation below                       |
-| `MPX`, `DENV1`, `DENV2`, `DENV3`, `DENV4` | single sequence, **not run**                   | `--fasta` = the `reference.fasta` of the pathogen's Freyja-barcodes folder, `--primer_bed` (or `--protocol capture`)       |
-| `H1N1`                                    | supported (HA only), **validated**             | reference and annotation are bundled (`CY121680.1`, HA); `--primer_bed` (or `--protocol capture`). See "Running influenza" |
-| `H3N2`                                    | supported (HA only), **validated**             | bundled `CY163680.1` (HA); `--primer_bed` (or `--protocol capture`)                                                        |
-| `FLU-B-VIC`                               | supported (HA only), **validated (quick run)** | bundled `KX058884.1` (HA); `--primer_bed` (or `--protocol capture`)                                                        |
-| `H5Nx`, `H5Nx-cattle`                     | supported (HA only), **validated (quick run)** | bundled `AF144305.1` (HA, one file for both); `--primer_bed` (or `--protocol capture`)                                     |
-| `MTB`                                     | **unsupported, not wanted**                    | a 4.4 Mb bacterial genome, see below                                                                                       |
+| `--pathogen`                       | Status                                         | What you need                                                                                                                                                           |
+| ---------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SARS-CoV-2` (default)             | supported, validated                           | nothing: reference, annotation, primer schemes and lineage groups are bundled                                                                                           |
+| `RSVa`                             | supported, **validated**                       | reference and annotation are bundled (`PP109421.1`); `--primer_bed` (or `--protocol capture`). Validation below                                                         |
+| `RSVb`                             | supported, **validated**                       | reference and annotation are bundled (`OP975389.1`); `--primer_bed` (or `--protocol capture`). Validation below                                                         |
+| `MEASLESgenome`                    | supported, **validated**                       | the reference is bundled (`NC_001498.1`); `--primer_scheme artic-measles-v1.0.0` (bundled), `--primer_bed` or `--protocol capture`. Validation below                    |
+| `MPX`                              | supported, **validated**                       | reference and annotation are bundled (`NC_063383.1`, 197 kb); `--primer_scheme bccdc-mpox-v2.3.0` (bundled), `--primer_bed` or `--protocol capture`. See "Running mpox" |
+| `DENV1`, `DENV2`, `DENV3`, `DENV4` | single sequence, **not run**                   | `--fasta` = the `reference.fasta` of the pathogen's Freyja-barcodes folder, `--primer_bed` (or `--protocol capture`)                                                    |
+| `H1N1`                             | supported (HA only), **validated**             | reference and annotation are bundled (`CY121680.1`, HA); `--primer_bed` (or `--protocol capture`). See "Running influenza"                                              |
+| `H3N2`                             | supported (HA only), **validated**             | bundled `CY163680.1` (HA); `--primer_bed` (or `--protocol capture`)                                                                                                     |
+| `FLU-B-VIC`                        | supported (HA only), **validated (quick run)** | bundled `KX058884.1` (HA); `--primer_bed` (or `--protocol capture`)                                                                                                     |
+| `H5Nx`, `H5Nx-cattle`              | supported (HA only), **validated (quick run)** | bundled `AF144305.1` (HA, one file for both); `--primer_bed` (or `--protocol capture`)                                                                                  |
+| `MTB`                              | **unsupported, not wanted**                    | a 4.4 Mb bacterial genome, see below                                                                                                                                    |
 
 "Not run" means the code path is the same one that was validated on measles (nothing in it is pathogen-specific), but no
-data of that pathogen has been run through it: expect to check the first results yourself. MPX (about 197 kb) in particular
-is much larger than the genomes the pipeline has been timed on. "Validated" means simulated reads of known composition (no
-real reads of these pathogens were available), see the validation sections.
+data of that pathogen has been run through it: expect to check the first results yourself. "Validated" means simulated reads of
+known composition (no real reads of these pathogens were available), see the validation sections.
 
 **Unsupported pathogens stop at start-up** with the reason, before any work is done:
 
@@ -45,17 +47,17 @@ real reads of these pathogens were available), see the validation sections.
 
 ## What changes for a pathogen other than SARS-CoV-2
 
-| Part of the pipeline                                  | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reference, annotation                                 | `conf/pathogens/<profile>.config`: `measles.config` bundles `assets/references/NC_001498.1.fasta` (no annotation), `rsva.config` / `rsvb.config` bundle `PP109421.1` / `OP975389.1` with a `.gff3` each, and the influenza profiles bundle the HA record of each pathogen (`CY121680.1`, `CY163680.1`, `KX058884.1`, `AF144305.1`) with a `.gff3` each. Any other pathogen uses `generic.config`: `--fasta` is **required** (the error says it must be the reference of the barcodes), `--gff` is optional. |
-| Primer scheme                                         | The bundled schemes are SARS-CoV-2 only. Without `--primer_bed` (or a per-sample `primer_scheme` path, or `--protocol capture` / `--skip_primer_trimming`) the run stops with a message instead of trimming with the wrong BED. The BED's first column must be the reference's sequence name (checked at start-up). Lines of contigs that are not in the reference (a whole-genome influenza panel against the HA reference) are dropped with one warning, see "Running influenza".                         |
-| Freyja dataset (`--barcodes`)                         | `latest` works (`freyja update --pathogen X`). `container` does not (the Freyja container bundles SARS-CoV-2 only; refused). A dataset directory of `freyja update --pathogen X`, or a barcodes `.csv`, can be given. See "Freyja datasets" below.                                                                                                                                                                                                                                                          |
-| Lineage-group summary (`summary/lineage_summary.csv`) | **Off** unless `--lineage_groups <CSV>` is given (the bundled groups are SARS-CoV-2 Pango lineages); one `INFO` line says so. It also needs the dataset's lineage hierarchy (`<X>_lineages.yml`, only shipped for some pathogens): without it the summary is skipped with one warning. See "Known limits".                                                                                                                                                                                                  |
-| Dropout impact, unexplained mutations                 | Work from the dataset's barcodes `.csv` (there is no `lineage_mutations.json`). The unexplained-mutation significance level 0.05 / genome length follows the reference length (a user-set `--unexplained_max_pvalue` is never rescaled).                                                                                                                                                                                                                                                                    |
-| Primer scheme check (`--primer_scheme_check`)         | Skipped: it scores the reads against the bundled SARS-CoV-2 schemes, which do not fit another reference. Trimming and per-amplicon coverage use your BED as usual.                                                                                                                                                                                                                                                                                                                                          |
-| `--annotate_variants`, amino-acid columns             | Need `--gff` (an error says so). Amino-acid effects are only as good as the annotation you give; the ORF1ab slippage handling is name-based and does nothing without such a gene.                                                                                                                                                                                                                                                                                                                           |
-| Report                                                | The subtitle names the pathogen (`Wastewater MEASLESgenome lineage deconvolution`).                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `bin/reanalyse_runs.py`                               | Carries `--pathogen` over; only exercised for SARS-CoV-2.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Part of the pipeline                                  | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reference, annotation                                 | `conf/pathogens/<profile>.config`: `measles.config` bundles `assets/references/NC_001498.1.fasta` (no annotation), `mpx.config` `NC_063383.1` with a `.gff3`, `rsva.config` / `rsvb.config` bundle `PP109421.1` / `OP975389.1` with a `.gff3` each, and the influenza profiles bundle the HA record of each pathogen (`CY121680.1`, `CY163680.1`, `KX058884.1`, `AF144305.1`) with a `.gff3` each. Any other pathogen uses `generic.config`: `--fasta` is **required** (the error says it must be the reference of the barcodes), `--gff` is optional.                                                                                                                                                                                |
+| Primer scheme                                         | Bundled schemes are per pathogen (`assets/primer_schemes/<profile>/`): SARS-CoV-2 keeps its nine and the default `qiagenv1`; measles and mpox have one each; the others none. No other pathogen has a default scheme: without `--primer_scheme` / `--primer_bed` (or a per-sample `primer_scheme` cell, or `--protocol capture` / `--skip_primer_trimming`) the run stops with a message that lists the schemes bundled for the pathogen, instead of trimming with the wrong BED. The BED's first column must be the reference's sequence name (checked at start-up). Lines of contigs that are not in the reference (a whole-genome influenza panel against the HA reference) are dropped with one warning, see "Running influenza". |
+| Freyja dataset (`--barcodes`)                         | `latest` works (`freyja update --pathogen X`). `container` does not (the Freyja container bundles SARS-CoV-2 only; refused). A dataset directory of `freyja update --pathogen X`, or a barcodes `.csv`, can be given. See "Freyja datasets" below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Lineage-group summary (`summary/lineage_summary.csv`) | **Off** unless `--lineage_groups <CSV>` is given (the bundled groups are SARS-CoV-2 Pango lineages); one `INFO` line says so. It also needs the dataset's lineage hierarchy (`<X>_lineages.yml`, only shipped for some pathogens): without it the summary is skipped with one warning. See "Known limits".                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Dropout impact, unexplained mutations                 | Work from the dataset's barcodes `.csv` (there is no `lineage_mutations.json`). The unexplained-mutation significance level 0.05 / genome length follows the reference length (a user-set `--unexplained_max_pvalue` is never rescaled).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Primer scheme check (`--primer_scheme_check`)         | Skipped: it scores the reads against the bundled SARS-CoV-2 schemes, which do not fit another reference. Trimming and per-amplicon coverage use your BED as usual.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--annotate_variants`, amino-acid columns             | Need `--gff` (an error says so). Amino-acid effects are only as good as the annotation you give; the ORF1ab slippage handling is name-based and does nothing without such a gene.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Report                                                | The subtitle names the pathogen (`Wastewater MEASLESgenome lineage deconvolution`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `bin/reanalyse_runs.py`                               | Carries `--pathogen` over; only exercised for SARS-CoV-2.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ### Freyja datasets of other pathogens
 
@@ -87,13 +89,61 @@ The influenza pathogens write the same files (`H1N1_barcodes.csv`, ...; checked 
 writes a `_lineages.yml`, a valid YAML list), see "Running influenza".
 
 One upstream quirk: Freyja's `pathogen_config.yml` points `MPX` at a GitHub web page instead of the raw `lineages.yml`, so
-`freyja update --pathogen MPX` saves an HTML page as `MPX_lineages.yml` (checked today). wasteline ignores a hierarchy file that
-is not a YAML list, i.e. MPX has no usable hierarchy until Freyja fixes that.
+`freyja update --pathogen MPX` saves an HTML page as `MPX_lineages.yml` (checked today, and again in the mpox validation run below).
+wasteline ignores a hierarchy file that is not a YAML list, i.e. MPX has no usable hierarchy until Freyja fixes that.
+
+## Primer schemes (bundled and your own)
+
+PLAN D26. Bundled schemes are **per pathogen**: `--pathogen X` offers the schemes of its own directory,
+`assets/primer_schemes/` for SARS-CoV-2 (nine schemes, default `qiagenv1`, unchanged) and `assets/primer_schemes/<profile>/` for the others.
+Only the pathogen's own schemes can be named; a name that belongs to another pathogen is refused with a hint. **No pathogen except SARS-CoV-2 has a
+default scheme**: without `--primer_scheme`, `--primer_bed`, a per-sample `primer_scheme` cell, `--protocol capture` or
+`--skip_primer_trimming` the run stops at start-up and lists what is bundled for the pathogen. Sources, versions, licences and md5 of every
+bundled BED: [assets/primer_schemes/README.md](../assets/primer_schemes/README.md).
+
+| `--pathogen`             | Bundled `--primer_scheme` | Published scheme (<https://github.com/quick-lab/primerschemes>)   | Licence      | Reference of the scheme vs. ours                                                |
+| ------------------------ | ------------------------- | ----------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------- |
+| `SARS-CoV-2`             | nine (see usage.md)       | as before D26                                                     | as before    | `NC_045512.2`                                                                   |
+| `MEASLESgenome`          | `artic-measles-v1.0.0`    | `artic-measles/400/v1.0.0` (ARTIC; validated upstream)            | CC BY-SA 4.0 | `NC_001498.1`, sequence-identical                                               |
+| `MPX`                    | `bccdc-mpox-v2.3.0`       | `bccdc-mpox/2500/v2.3.0` (BCCDC PHL; validated upstream)          | CC BY-SA 4.0 | `NC_063383.1`, identical coordinates; the scheme's file masks the 3' ITR with N |
+| `RSVa`, `RSVb`           | none                      | `rsva-rsvb/1000/v1.0.0` exists                                    | CC BY-SA 4.0 | `NC_038235.1` / `NC_001781.1`, not the barcode references: not remapped         |
+| `H1N1`, `H3N2`           | none                      | `ethz-eawag-h1n1-h3n2/400/v1.0.0`, `artic-flu-a/800/v1.0.0` exist | CC BY-SA 4.0 | consensus alignments / `NC_026433.1`, not our HA records: not remapped          |
+| `FLU-B-VIC`, `H5Nx`, ... | none                      | none found                                                        | -            | -                                                                               |
+| `MPX` (other schemes)    | none                      | `artic-inrb-mpox`, `yale-mpox` exist                              | CC BY-SA 4.0 | `KJ642613.1_masked` / `MT903345`, other records than ours: not remapped         |
+
+The licence of all of them is Creative Commons Attribution-ShareAlike 4.0 (the repository's `LICENSE` and each scheme's `info.json`): the two
+bundled BEDs are unmodified copies, credited in the README next to them, and stay under CC BY-SA 4.0 (they are data, not part of the
+pipeline code). A scheme was bundled only when its reference is, base for base, the sequence of our bundled reference (so the BED's coordinates
+and contig name are right as they are); where it is not, the scheme was **not** remapped, see the README for the figures. The scheme check
+(`--primer_scheme_check`, "does the declared scheme match the reads?") scores only against the nine SARS-CoV-2 schemes and stays off for every
+other pathogen.
+
+### Using your own primer scheme
+
+Three routes, all checked at start-up (details and examples in [usage.md](usage.md#using-your-own-primer-scheme)):
+
+1. `--primer_bed my_scheme.bed`: one BED for the whole run.
+2. A BED path in the samplesheet `primer_scheme` cell (contains a `/` or ends in `.bed`): a different panel per sample.
+3. `--primer_scheme_dir schemes/`: a directory of `<name>.bed` files, then `--primer_scheme <name>` and/or `<name>` in the samplesheet cell.
+   Your file wins over a bundled scheme of the same name (one warning). An unknown name stops the run and lists the available names; the
+   scheme is recorded as `custom: <name>.bed` plus its sha256.
+
+The BED: tab-separated, at least six columns (`contig start end name pool strand`; a seventh with the primer sequence, as in primalscheme
+`primer.bed` files, is fine; `#` comment lines are fine). Column 1 must be the **reference's sequence name** (the first word of its FASTA header: `NC_063383.1`
+for `MPX`; the error shows the expected name); lines on other contigs are dropped with a warning only when some lines remain on the reference. A BED
+for another accession of the same sequence needs only column 1 renamed (`sed`); if the sequences differ, the coordinates do too and the BED
+has to be remapped first: the pipeline never does that for you. Primer **names** should be primalscheme-style, `<scheme>_<n>_LEFT_<alt>` /
+`<scheme>_<n>_RIGHT_<alt>`, so that `amplicon_coverage.py` pairs them into amplicons (`<scheme>_<n>`; alternates merged); `X_LEFT`/`X_RIGHT` and `X_F`/`X_R`
+work too. With any other naming no amplicons can be derived (a warning per primer, an empty amplicon table, `NA` amplicon columns for the
+sample, no dropout calls) or, when there is no strand column either, the amplicon step fails for that sample (`NA` again); trimming
+still works. `--ivar_offset N` (`ivar trim -x N`, default 0, 5 for the bundled `swift`) widens what counts as a primer-derived read start;
+it is run-wide, and only needed when your panel's reads show untrimmed primer bases (the Freyja measles tutorial uses 3).
 
 ## Running RSV-A and RSV-B
 
 `--pathogen RSVa` and `--pathogen RSVb` bundle the reference and its annotation, so the only extra ingredient is the library
-description. The primer BED is **not bundled** (licences of RSV panels are unclear or unknown): pass your panel's BED, whose first
+description. No primer BED is bundled (the only published RSV scheme, `rsva-rsvb`, was designed on other reference sequences than Freyja's, see
+"Primer schemes"): pass your panel's BED (or put it in a `--primer_scheme_dir`), whose first
 column must be the reference sequence name (`PP109421.1` for RSV-A, `OP975389.1` for RSV-B), or say that the library is not
 amplicon-based.
 
@@ -133,20 +183,22 @@ the dataset of 2024-03-15 today); the lineages are named `RSVa-A.D.1`, `RSVb-B.D
 
 Measles (`MEASLESgenome`) is the validated example (RSV is just below). The Freyja tutorial uses the `NC_001498.1` reference (bundled) and the
 [ARTIC measles v1.0.0](https://labs.primalscheme.com/detail/artic-measles/400/v1.0.0/) primer panel (47 amplicons, contig
-`NC_001498.1`). The primer BED is **not bundled** (licence unclear): download it (Freyja ships a copy as
-`docs/data/artic-measles-v1.0.0.bed`) and pass it.
+`NC_001498.1`). The panel is **bundled** (PLAN D26; CC BY-SA 4.0, byte-identical to the scheme's `primer.bed`, see
+[Primer schemes](#primer-schemes-bundled-and-your-own)) as `--primer_scheme artic-measles-v1.0.0`; before D26 you had to download it
+(Freyja ships a copy as `docs/data/artic-measles-v1.0.0.bed`) and pass it with `--primer_bed`.
 
 ```bash
 nextflow run charlesfoster/wasteline -profile docker \
     --input samplesheet.csv --outdir results \
     --pathogen MEASLESgenome \
-    --primer_bed artic-measles-v1.0.0.bed --ivar_offset 3
+    --primer_scheme artic-measles-v1.0.0 --ivar_offset 3
 ```
 
 - `--barcodes` defaults to `latest`: Freyja's measles barcodes are downloaded to `<db_dir>/freyja_MEASLESgenome/`. Pin them
   later with `--barcodes 2025-05-01` (the barcode date).
 - `--ivar_offset 3` is what the Freyja tutorial uses for this panel (`ivar trim -x 3`); the default for a custom BED is 0.
 - Reads must be paired (the samplesheet needs `fastq_2`).
+- Without `--primer_scheme` / `--primer_bed` the run stops at start-up (measles has no default scheme) and lists `artic-measles-v1.0.0`.
 - For a panel with another name format, the BED's 4th column must still tell left from right primers (`..._LEFT_0` / `..._RIGHT_0`,
   `..._F` / `..._R`, or the strand column). The primalscheme `<scheme>_<n>_LEFT_<alt>` names of the ARTIC panels were not understood
   before PLAN D22 (all primers collapsed into one amplicon) and now are.
@@ -160,7 +212,8 @@ simulator from the ARTIC measles panel): `GCA_031128185.1-simulated.fastq` (a pu
 (H1 20 % + D9 80 %). They are **single-end** 150 bp reads, but the pipeline needs pairs, so each read became a pair with its reverse
 complement as read 2 (a fully overlapping pair; script not kept in the repo). The reads stay outside the repository.
 
-**Run**: `--mode full --pathogen MEASLESgenome --primer_bed artic-measles-v1.0.0.bed --ivar_offset 3`, `--barcodes latest` (the
+**Run**: `--mode full --pathogen MEASLESgenome --primer_bed artic-measles-v1.0.0.bed --ivar_offset 3` (Freyja's copy of the BED; see the D26 re-run
+below for the bundled scheme), `--barcodes latest` (the
 dataset of 2025-05-01, 15 lineages), docker, Freyja 2.0.6, 49 tasks, about 1 minute on a laptop. A second run with
 `--barcodes 2025-05-01` (the pinned dataset), `--freyja_boot` (20 bootstraps) and `--lineage_groups` gave identical abundances.
 
@@ -174,7 +227,14 @@ intervals with 20 draws: D9 0.769-0.775, H1 0.225-0.231; the point estimates lie
 give). Consensus genomes are 15,894 bp with 6.6-7.3 % N. The `unexplained_mutations` table lists positions where the sample differs
 from the reference at ~100 % but no barcode lists the change (presumably the simulated genomes' private mutations; not investigated).
 
-Not run: the custom barcode file `measles-wg-barcode.csv` of the tutorial; any pathogen other than measles and SARS-CoV-2; real
+**Re-run with the bundled scheme (PLAN D26).** The same reads, `--primer_scheme artic-measles-v1.0.0 --ivar_offset 3 --barcodes 2025-05-01`
+(the scheme for `H1_pure` named in its samplesheet cell, for the mixture by the run default) gave the same results as the table above to the
+digit: `H1_pure` 100.0 % H1, 92.71 % of the genome at >= 10x, 196.34x, 47 amplicons (0 dropped); the mixture D9 77.9 % / H1 22.1 %, 93.38 %,
+617.52x, 47 amplicons (0 dropped); QC PASS. A third sample (the mixture's reads again, `primer_scheme` cell `mylab-measles`, a copy of the BED
+in a `--primer_scheme_dir`) gave identical numbers, recorded as `custom: mylab-measles.bed` with the same BED sha256. `ivar trim` has no problem with
+the `# artic-bed-version v3.0` comment line of the bundled BED. 65 tasks.
+
+Not run: the custom barcode file `measles-wg-barcode.csv` of the tutorial; any pathogen other than measles and SARS-CoV-2 in this section; real
 measles data. The SARS-CoV-2 wiring was re-checked with the 52 stub nf-tests (no snapshot changed), the single docker nf-test (synthetic
 data, passes) and the pytest suite; `tests/e2e.sh` was not re-run for this change.
 
@@ -237,6 +297,112 @@ laptop that was also running other work.
 Not run: real RSV reads (amplicon or capture); a real RSV primer panel (the BED above is a toy tiling, not a published scheme);
 `--freyja_boot`; a comparison of `latest/` with the newest dated folder of Freyja-barcodes; genomes with private mutations or
 recombinants; `tests/e2e.sh` for these pathogens.
+
+## Running mpox
+
+`--pathogen MPX` bundles the reference and its annotation, and a primer scheme (PLAN D26):
+
+```bash
+# amplicon library made with the BCCDC mpox panel (2.5 kb amplicons)
+nextflow run charlesfoster/wasteline -profile docker \
+    --input samplesheet.csv --outdir results \
+    --pathogen MPX --primer_scheme bccdc-mpox-v2.3.0
+
+# any other amplicon panel: its BED (contig NC_063383.1), or a directory of your schemes
+nextflow run charlesfoster/wasteline -profile docker --input samplesheet.csv --outdir results \
+    --pathogen MPX --primer_bed my_mpox_panel.bed
+
+# probe-capture or shotgun library
+nextflow run charlesfoster/wasteline -profile docker --input samplesheet.csv --outdir results \
+    --pathogen MPX --protocol capture --annotate_variants
+```
+
+`--barcodes` defaults to `latest` (`freyja update --pathogen MPX`; the dataset of 2025-05-01 today: 49 lineages, 1319 columns, stored in
+`<db_dir>/freyja_MPX/2025-05-01T00-00`). The lineages are named `MPX-IIb.B.1`, `MPX-Ib`, ... `--barcodes container` is refused.
+
+- **Reference**: GenBank/RefSeq `NC_063383.1` (MPXV-M5312_HM12_Rivers, clade IIb, 197,209 bp), sequence-identical to the `reference.fasta` of
+  `MPX/latest` in Freyja-barcodes, whose header is `MPXV-M5312_HM12_Rivers` (the NCBI record was found by that name and compared base for
+  base; the bundled FASTA is the NCBI record, whose first header word `NC_063383.1` is the contig name). Checked for PLAN D26: **all 1319
+  SNV columns** of the barcodes (49 lineages) have the stated reference base at the stated 1-based position: 100 %, no exceptions.
+- **Inverted terminal repeats**: the genome has identical repeats of 6,422 bp at both ends (positions 1-6,422 and the reverse complement at
+  190,788-197,209; checked: `NC_063383.1[1:6422]` equals the reverse complement of `[190788:]` exactly). The barcodes treat them as two places: 47 SNV columns lie in the
+  left repeat and 48 in the right one, 45 of them are mirror pairs (complementary bases at `p` and `197210 - p`, the same lineage pattern),
+  and two left-repeat columns (`T600G`, `C786T`) have no mirror. So a mutation in a repeat counts twice for Freyja, and reads from either
+  repeat map to both copies (`bwa` places them arbitrarily). Consequences seen in the validation: the reads of the two copies are shared between them (in the shotgun
+  simulation both repeats have the depth of the rest of the genome, 487x and 500x against 494x; with the amplicon scheme, whose amplicons cover the 5' repeat and only the first 77 bases of the 3' one,
+  both copies have 294x and 308x against 505x), and a mutation that only one copy carries in the
+  barcodes (`T600G`) appears at the mirror position (`A196610C`) in the other copy at the share of reads mapped there, where it is reported
+  as an unexplained mutation (below). Real genomes carry the same mutation in both copies; the simulator applies the barcode columns as they are.
+- **Annotation**: the NCBI RefSeq GFF3 (179 genes named `OPG001`, `OPG002`, ...), converted to gene -> mRNA -> exon + CDS as for RSV (the NCBI file
+  has only gene and CDS lines, which `bcftools csq` cannot use). The four genes inside the repeats occur twice; the copy near the 3' end is named
+  with the suffix `_R` (`OPG003` and `OPG003_R`). Sequence features (25 `sequence_feature` lines) and the repeat regions of the NCBI file are
+  not kept. `--annotate_variants` gives gene and amino-acid effects (for example `OPG002 N313T`).
+- **Lineage summary**: off (no bundled lineage groups). Freyja's `pathogen_config.yml` points `MPX` at a GitHub web page instead of the raw
+  `lineages.yml`, so `MPX_lineages.yml` in the dataset is an HTML page (confirmed in the validation run: `freyja_data.json` has
+  `lineages_yml_sha256: null`); the pipeline ignores it, and `--lineage_groups` is skipped with a warning. Dropout impact and unexplained
+  mutations work from the barcodes CSV.
+- **The 197 kb genome**: the genome is 6.6 times the size of SARS-CoV-2. What was checked: the QC thresholds are percentages of the
+  reference (no change needed); the per-position depth tables and the coverage track (600 bins of 329 bp) follow the reference length; the
+  unexplained-mutation significance level is rescaled to 0.05 / 197,209; `bcftools csq` annotates the 179 genes; the report axis reads the
+  genome length from the data. **One thing did break**: the nf-core `BWA_INDEX` module asks for 7 bytes of memory per reference base, which is
+  1.4 MB here, and Docker refuses `--memory 1m` ("Minimum memory limit allowed is 6MB"); a reference of roughly 150-860 kb fails at
+  the first process. `conf/modules.config` now sets a floor of 256 MB for that process (SARS-CoV-2 and the smaller genomes are unaffected in
+  practice). The negative-control rule (`--ntc_max_mapped_reads` 1000, `--ntc_max_genome_coverage_pct` 10 %) is more tolerant in reads than for SARS-CoV-2
+  (10 % of the genome is about 130 mapped reads of 150 bp, against 20 for SARS-CoV-2), see the validation.
+- **Primer scheme**: `bccdc-mpox-v2.3.0` has 79 amplicons of about 2.5 kb in two pools (158 primers). Libraries of such long amplicons are
+  fragmented (tagmentation) before sequencing, so reads start all over the amplicon, only few begin at a primer and `primer_trimmed_pct` is low
+  (1.4 % in the simulation); that is expected and no QC rule fires on it with the default `--qc_min_primer_trimmed_pct 0`.
+
+## Validation (mpox, simulated reads)
+
+**Why simulated**: no real mpox reads were available. `tests/simulate_pathogen_mixture.py` (a development tool, not part of the test suite)
+builds one pseudo-genome per lineage (the reference plus every mutation of the lineage's row of the dataset's barcodes CSV; all
+SNV, none skipped) and draws read pairs (2 x 150 bp, mean depth about 500x, 0.2 % substitution errors, fragment length 350 +/- 40) in fixed
+proportions. The amplicon-style samples draw each fragment from a random amplicon of the bundled BCCDC scheme (new option `--shear`: a random
+350 bp piece of the 2.5 kb amplicon, as in a tagmented library; without it a 2.5 kb amplicon would only be covered at both ends). As for RSV
+and influenza this tests the plumbing and the arithmetic, **not** how Freyja performs on real mpox diversity (private mutations, indels,
+recombinants, deletions are absent from the pseudo-genomes).
+
+**Run** (docker, Freyja 2.0.6, `--mode full --pathogen MPX --protocol capture --barcodes latest --annotate_variants`; the amplicon samples have
+`protocol` = `amplicon` and `primer_scheme` = `bccdc-mpox-v2.3.0` in their samplesheet cells): eight samples, 139 tasks, 3 min 12 s on a laptop
+(the slowest task, `FREYJA_VARIANTS`, 51 s and 470 MB). Lineages are shown without the `MPX-` prefix; only abundances of 0.3 % and more are listed
+for the minor lineages, the rest is summed.
+
+| Sample                   | Truth                                           | Recovered (`freyja_aggregated.tsv`)                                                      | Mean depth | Genome >= 10x   | Amplicons (dropped) | Consensus N | QC                     |
+| ------------------------ | ----------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------- | --------------- | ------------------- | ----------- | ---------------------- |
+| `pure_B1` (shotgun)      | IIb.B.1 100 %                                   | IIb.B.1 **99.4 %** (+ 3 lineages of 0.2 %)                                               | 494x       | 100.00 %        | -                   | 0.00 %      | PASS                   |
+| `mix2` (shotgun)         | IIb.A 30 %, IIb.B.1 70 %                        | IIb.B.1 **69.3 %**, IIb.A **29.5 %** (+ A.1 0.3 %, 5 lineages of 0.2 %)                  | 493x       | 100.00 %        | -                   | 0.00 %      | PASS                   |
+| `mix3` (shotgun)         | Ib 20 %, IIa 30 %, IIb.B.1 50 %                 | IIb.B.1 **49.1 %**, IIa **29.4 %**, Ib **19.3 %** (+ I 1.1 %, IIb.A.1 0.6 %, 3 of 0.2 %) | 493x       | 99.99 %         | -                   | 0.01 %      | PASS                   |
+| `close` (shotgun)        | IIb.B.1 70 %, IIb.F.1 30 % (12 mutations apart) | IIb.B.1 **69.2 %**, IIb.F.1 **29.5 %** (+ 5 lineages of 0.2 %)                           | 494x       | 99.99 %         | -                   | 0.01 %      | PASS                   |
+| `amp_pure_B1` (amplicon) | IIb.B.1 100 %                                   | IIb.B.1 **99.3 %** (+ 4 lineages of 0.2 %)                                               | 496x       | 99.92 %         | 79 (0)              | 0.08 %      | PASS                   |
+| `amp_mix3` (amplicon)    | Ib 20 %, IIa 30 %, IIb.B.1 50 %                 | IIb.B.1 **48.1 %**, IIa **29.9 %**, Ib **19.3 %** (+ I 0.5 %, 9 lineages of 0.2-0.4 %)   | 496x       | 99.92 %         | 79 (0)              | 0.08 %      | PASS                   |
+| `neg5` (negative)        | 5 read pairs of `pure_B1`                       | not demixed (`skipped_low_coverage`)                                                     | 0.01x      | 0.73 % at >=1x  | -                   | -           | PASS                   |
+| `neg100` (negative)      | 100 read pairs of `pure_B1`                     | not demixed (`skipped_low_coverage`)                                                     | 0.15x      | 13.80 % at >=1x | -                   | -           | **FAIL** (`ntc_reads`) |
+
+- **Abundances**: the largest error on a true lineage is 1.9 percentage points (`amp_mix3`, IIb.B.1 48.1 % for 50 %); most are under 1. The
+  pairs of lineages 12 mutations apart (IIb.B.1 / IIb.F.1) are separated correctly. Lineages one mutation apart (IIb.B.1 and its children
+  IIb.B.1.1 ... , which differ from it by a single mutation each) cannot be told apart by their barcodes: the 0.2 % abundances on neighbouring
+  `IIb.B.1.*` lineages in every sample are that, not contamination (the nested tree again, as for RSV).
+- **Consensus genomes**: 197,209 bp; compared with the pseudo-genome of the dominant lineage, no position in any of the six samples has a base
+  incompatible with it, and the pure samples are identical to it outside the Ns. The Ns are the ends of the genome that the simulated fragments
+  hardly reach: 8-15 Ns for the shotgun samples (the first 4-9 and the last 3-6 bases), 151 for the amplicon ones (positions 1-83 and
+  197,142-197,209, outside the scheme's first and last amplicon). Mixed samples carry 62 (`mix2`), 417 (`mix3`), 12
+  (`close`) and 421 (`amp_mix3`) IUPAC codes (the sites where the mixed lineages differ).
+- **Amplicon samples**: 79 amplicons, none dropped; 99.92 % of the genome at >= 10x, including the 3' repeat that the scheme does not cover (its
+  reads map to the 5' copy and the other way round). `primer_trimmed_pct` 1.43 %.
+- **Unexplained mutations**: 4 rows (`mix3`, `amp_mix3`), two sites each: `A196610C` (observed 0.09-0.19, expected 0, in the 3' repeat: the
+  mirror of the barcode column `T600G` that only the 5' copy has, see "Inverted terminal repeats"; the report flags it as a recurrent mutation
+  "possible novel lineage", which it is not) and `C179082T` (0.10-0.12, six bases from the clade-I SNVs `T179072A` and `G179076T`; presumably a
+  misaligned base next to a SNV cluster of the clade-I reads; not investigated further). Neither affects the abundances.
+- **Negative controls**: 5 read pairs (0.01x, 0.7 % of the genome) pass; 100 pairs (200 mapped reads, 0.15x, 13.8 % of the genome at >= 1x) fail
+  with `ntc_reads` because of the 10 % genome-coverage rule, as designed.
+- `annotated_variants.tsv`: 59-69 annotated variants per clade IIb sample and 273-274 for the clade-mixed ones, with gene and amino-acid effect
+  (388 missense, 403 synonymous, 2 intergenic over all samples). The report subtitle reads `Wastewater MPX lineage deconvolution`.
+- The Freyja dataset the run downloaded (`MPX_barcodes.csv`, 2025-05-01) is content-identical to `MPX/latest/barcode.csv` that the simulation used.
+
+Not run: real mpox reads; a real mpox amplicon library; lineages with indels (the barcodes list SNVs only); the other mpox primer schemes (not
+bundled, see "Primer schemes"); `--freyja_boot`; a comparison of `latest/` with the newest dated folder of Freyja-barcodes; `tests/e2e.sh` for
+this pathogen.
 
 ## Running influenza (HA segment only)
 
@@ -492,15 +658,18 @@ becomes worthwhile only if whole-genome consensus sequences or per-segment QC ar
 - Freyja's `summarized` column (what `freyja plot` groups by) is `Other` for every measles sample, so its plots have one group.
 - The bundled amplicon, QC and report defaults were tuned on SARS-CoV-2 wastewater (D17 QC thresholds: PASS at 60 % of the genome
   > = 10x); review them for your pathogen and panel.
-- Only RSV-A, RSV-B, measles and the five influenza HA pathogens have been run, all on simulated reads. For the other
-  single-sequence pathogens (MPX, dengue) read the first results critically (reference, primer BED contig names, barcodes date).
+- Only RSV-A, RSV-B, mpox, measles and the five influenza HA pathogens have been run, all on simulated reads (the measles ones are the
+  Bygul-simulated reads of the Freyja tutorial). For the other single-sequence pathogens (dengue) read the first results critically
+  (reference, primer BED contig names, barcodes date).
+- Mpox: the 6,422 bp inverted terminal repeats are in the reference twice and in the barcodes as separate columns; reads from either copy map to both,
+  so a mutation of a repeat is split between two places and can show up as an "unexplained mutation" at the mirror position (see "Running mpox").
 - Influenza: HA only, one run per subtype; the negative-control thresholds (`--ntc_max_genome_coverage_pct`, `--ntc_max_mapped_reads`)
   do not scale to a 1.75 kb reference (a few stray reads fail a negative control); abundances of mixtures are noisy below about 50x
   of HA even when QC says PASS; a lineage far from the reference (the `Am-nonGsGD` lineage of `H5Nx`, 13 %) maps poorly and is
   under-estimated; the `H5Nx-cattle` barcodes have 13 columns that do not agree with their own reference and many indistinguishable
   lineages. See "Running influenza" and its validation.
-- No RSV primer scheme is bundled; real RSV panels, real reads and the QC defaults (tuned on SARS-CoV-2 wastewater) have not been
-  tried together. The RSV barcodes are small (23 and 16 lineages, dataset 2024-03-15) and nested; do not read 0.2 % abundances as
+- No RSV primer scheme is bundled (the only published one, `rsva-rsvb`, is built on other reference sequences than Freyja's); real RSV
+  panels, real reads and the QC defaults (tuned on SARS-CoV-2 wastewater) have not been tried together. The RSV barcodes are small (23 and 16 lineages, dataset 2024-03-15) and nested; do not read 0.2 % abundances as
   detections.
 - Freyja's own `freyja plot` summaries group by its `summarized` column, which is `Other` for RSV as for measles.
 - The dataset (`~/.wasteline/db/freyja_RSVa/`) is downloaded on first use, as for measles; `--barcodes <date>` pins it.

@@ -176,7 +176,7 @@ file and open it locally, GitHub shows the HTML as source). How to read each pan
 | [docs/parameters.md](docs/parameters.md)                             | every parameter                                                                                 |
 | [docs/output.md](docs/output.md), [docs/report.md](docs/report.md)   | outputs and the HTML report                                                                     |
 | [docs/troubleshooting.md](docs/troubleshooting.md)                   | failure modes and fixes                                                                         |
-| [docs/other_pathogens.md](docs/other_pathogens.md)                   | `--pathogen` other than SARS-CoV-2 (RSV-A, RSV-B, measles, influenza HA validated; MTB refused) |
+| [docs/other_pathogens.md](docs/other_pathogens.md)                   | `--pathogen` other than SARS-CoV-2 (RSV, mpox, measles and influenza HA validated; MTB refused) |
 | [docs/migration_from_snakemake.md](docs/migration_from_snakemake.md) | moving from `covid-illumina-snakemake`                                                          |
 | [docs/README.md](docs/README.md)                                     | the full index (including developer docs)                                                       |
 

@@ -4,7 +4,8 @@
 Each lineage is a pseudo-genome: the reference with every mutation of that lineage's row in the Freyja barcodes CSV applied
 (single-nucleotide changes only; indels and ambiguous columns are skipped and counted). Read pairs are drawn from the lineages
 in the given proportions, shotgun-style (uniform fragments) or amplicon-style (--amplicon-bed: one fragment per amplicon, equal
-weight; amplicons are the LEFT/RIGHT primer pairs, named <scheme>_<n>_LEFT_<alt> / _RIGHT_<alt>, as in primalscheme BEDs).
+weight; amplicons are the LEFT/RIGHT primer pairs, named <scheme>_<n>_LEFT_<alt> / _RIGHT_<alt>, as in primalscheme BEDs;
+--shear takes a random piece of each amplicon instead of its ends, for long amplicons).
 Single-sequence references only. Writes <out>_R1.fastq.gz, <out>_R2.fastq.gz and <out>.truth.tsv (lineage, proportion, mutations).
 
   simulate_pathogen_mixture.py --reference ref.fasta --barcodes RSVa_barcodes.csv \
@@ -83,6 +84,13 @@ def sample_reads(genome, a, n, rng):
     if a.amplicon_bed:
         amps = amplicons(a.amplicon_bed)
         spans = [amps[i] for i in rng.integers(0, len(amps), n)]
+        if a.shear:  # long amplicons (2.5 kb): the fragment is a random piece of the amplicon, not the whole amplicon
+            sheared = []
+            for lo, hi in spans:
+                length = int(np.clip(rng.normal(a.insert_mean, 40), a.read_length, hi - lo))
+                start = lo + int(rng.random() * (hi - lo - length + 1))
+                sheared.append((start, start + length))
+            spans = sheared
     else:
         lens = np.clip(rng.normal(a.insert_mean, 40, n).astype(int), a.read_length, len(genome))
         starts = (rng.random(n) * (len(genome) - lens + 1)).astype(int)
@@ -112,6 +120,11 @@ def main():
     p.add_argument("--insert-mean", type=float, default=350, help="shotgun fragment mean (sd 40)")
     p.add_argument("--error-rate", type=float, default=0.002, help="substitution error per base")
     p.add_argument("--amplicon-bed", help="primer BED: amplicon fragments instead of shotgun ones")
+    p.add_argument(
+        "--shear",
+        action="store_true",
+        help="with --amplicon-bed: fragments are random pieces of the amplicons (insert-mean), as in tagmented long-amplicon libraries",
+    )
     p.add_argument("--seed", type=int, default=1)
     a = p.parse_args()
     if len(a.lineage) != len(a.proportion):

@@ -268,11 +268,10 @@ def libraryMeta(sample, protocol_cell, scheme_cell, mode) {
                 }
                 scheme = 'custom'
             }
-            else if (file("${projectDir}/assets/primer_schemes/${spec}.bed").exists()) {
-                scheme = spec
-            }
             else {
-                error("Sample '${sample}': primer_scheme '${spec}' is not a bundled scheme (${bundledPrimerSchemes().join(', ')}) and not a path to a BED file")
+                def chosen = chooseScheme(spec, "Sample '${sample}': primer_scheme '${spec}'")
+                scheme = chosen.scheme
+                bed = chosen.bed
             }
         }
         else if (params.primer_bed) {
@@ -280,13 +279,74 @@ def libraryMeta(sample, protocol_cell, scheme_cell, mode) {
             bed = params.primer_bed.toString()
         }
         else if (params.primer_scheme) {
-            scheme = params.primer_scheme.toString()
+            def chosen = chooseScheme(params.primer_scheme.toString(), "--primer_scheme '${params.primer_scheme}'")
+            scheme = chosen.scheme
+            bed = chosen.bed
         }
         else if (mode == 'full') {
+            if (!defaultPrimerScheme()) {
+                error("Sample '${sample}' has no primer scheme: ${noDefaultSchemeMessage()}")
+            }
             scheme = defaultPrimerScheme()
         }
     }
     return settings + [ primer_scheme: scheme, primer_bed: bed ]
+}
+
+//
+// Primer schemes by name (PLAN D26). A name is looked up in --primer_scheme_dir first (the user's own <name>.bed files win),
+// then in the directory of schemes bundled for the pathogen (params.primer_schemes_bundled, set by conf/pathogens/*.config:
+// assets/primer_schemes for SARS-CoV-2, assets/primer_schemes/<profile> for the others, null for pathogens without any).
+//
+def schemeNamesIn(dir) {
+    if (!dir) {
+        return []
+    }
+    def d = file(dir)
+    return d.isDirectory() ? d.listFiles().findAll { f -> f.isFile() && f.name.endsWith('.bed') }.collect { f -> f.name.substring(0, f.name.length() - 4) }.sort() : []
+}
+
+def bundledPrimerSchemes() {
+    return schemeNamesIn(params.primer_schemes_bundled)
+}
+
+def userPrimerSchemes() {
+    return schemeNamesIn(params.primer_scheme_dir)
+}
+
+//
+// What the bundled schemes of the other pathogens are called, to point a user who named one of them for the wrong pathogen
+//
+def schemesOfOtherPathogens(name) {
+    def top = file("${projectDir}/assets/primer_schemes")
+    return top.listFiles().findAll { d -> d.isDirectory() && file("${d}/${name}.bed").exists() }.collect { d -> d.name }.sort()
+}
+
+//
+// A scheme name to [ scheme, bed ] as libraryMeta() stores it: a bundled scheme keeps its name (its BED is found by
+// sourceBedFor), a scheme of --primer_scheme_dir is a custom BED (the path). Stops with the names available otherwise.
+//
+def chooseScheme(name, who) {
+    if (name in userPrimerSchemes()) {
+        return [ scheme: 'custom', bed: file("${params.primer_scheme_dir}/${name}.bed").toAbsolutePath().toString() ]
+    }
+    if (name in bundledPrimerSchemes()) {
+        return [ scheme: name, bed: null ]
+    }
+    def others = schemesOfOtherPathogens(name)
+    def hint = others ? " ('${name}' is a scheme bundled for another pathogen, in assets/primer_schemes/${others.join(', ')}/; it belongs with that pathogen's reference)" : ''
+    error("${who} is not a primer scheme available for --pathogen ${params.pathogen} and not a path to a BED file${hint}. Bundled: ${bundledPrimerSchemes().join(', ') ?: 'none'}" +
+        (params.primer_scheme_dir ? "; in --primer_scheme_dir '${params.primer_scheme_dir}': ${userPrimerSchemes().join(', ') ?: 'no .bed files'}" : "; give your own with --primer_bed <file> or --primer_scheme_dir <dir of <name>.bed files>"))
+}
+
+//
+// The message for a run that needs a primer scheme and has none (a pathogen without a default scheme)
+//
+def noDefaultSchemeMessage() {
+    def bundled = bundledPrimerSchemes()
+    return "--pathogen ${params.pathogen} has no default primer scheme (only the pipeline's default pathogen has one). Name one with --primer_scheme (or the samplesheet primer_scheme column)" +
+        (bundled ? " (bundled for ${params.pathogen}: ${bundled.join(', ')}; " : " (none is bundled for ${params.pathogen}; ") +
+        "your own: --primer_scheme_dir <dir of <name>.bed files>), pass --primer_bed <BED whose first column is the reference sequence name>, or say that the reads are not primer-trimmed with --protocol capture / --skip_primer_trimming. See docs/other_pathogens.md."
 }
 
 //
@@ -301,18 +361,14 @@ def protocolSettings(protocol) {
     ]
 }
 
-def bundledPrimerSchemes() {
-    return file("${projectDir}/assets/primer_schemes").listFiles().findAll { f -> f.name.endsWith('.bed') }.collect { f -> f.baseName }.sort()
-}
-
 //
-// The primer BED of a sample with a primer_scheme, as given (the user's file or the bundled scheme)
+// The primer BED of a sample with a primer_scheme, as given (the user's file or the bundled scheme of the pathogen)
 //
 def sourceBedFor(meta) {
     if (meta.primer_bed) {
         return file(meta.primer_bed, checkIfExists: true)
     }
-    return file("${projectDir}/assets/primer_schemes/${meta.primer_scheme}.bed", checkIfExists: true)
+    return file("${params.primer_schemes_bundled}/${meta.primer_scheme}.bed", checkIfExists: true)
 }
 
 //
@@ -535,10 +591,27 @@ def validateInputParameters(mode) {
     if ((params.protocol == 'capture' || params.skip_primer_trimming) && (params.primer_scheme || params.primer_bed) && mode in ['full', 'demix']) {
         log.warn("--primer_scheme/--primer_bed are ignored for samples that are not primer-trimmed (" + (params.protocol == 'capture' ? "--protocol capture" : "--skip_primer_trimming") + "): there is no amplicon-level analysis for them")
     }
-    if (settings.primer_trimming && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed)))) {
+    if (params.primer_scheme_dir) {
+        requireDirectory('--primer_scheme_dir', params.primer_scheme_dir)
+        if (mode in ['full', 'demix']) {
+            if (!userPrimerSchemes()) {
+                log.warn("--primer_scheme_dir '${params.primer_scheme_dir}' contains no <name>.bed files: nothing can be selected from it")
+            }
+            def clashes = userPrimerSchemes().intersect(bundledPrimerSchemes())
+            if (clashes) {
+                log.warn("--primer_scheme_dir: ${clashes.join(', ')} ${clashes.size() == 1 ? 'is' : 'are'} also bundled for --pathogen ${params.pathogen}; your file${clashes.size() == 1 ? '' : 's'} from '${params.primer_scheme_dir}' will be used")
+            }
+        }
+        else {
+            log.warn("--primer_scheme_dir is not used by --mode ${mode} and is ignored")
+        }
+    }
+    if (settings.primer_trimming && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed))) && primerBed()) {
         // The default BED must be on the same contig(s) as the reference or ivar trim silently trims nothing
         // (BEDs named in the samplesheet are checked when it is read)
         // (PLAN D24: lines of contigs that are not in the reference are dropped; only a BED with no line on it is refused)
+        // (PLAN D26: no BED here when the pathogen has no default scheme and none was given: libraryMeta() then stops
+        // for each sample that names none, so a samplesheet that gives every sample its own scheme still works)
         def bed_report = reconcileBed(primerBed())
         def fasta_contigs = fastaContigs(file(params.fasta, checkIfExists: true))
         def unknown = bed_report.no_match ? bedContigs(primerBed()) - fasta_contigs : []
@@ -691,20 +764,27 @@ def previousRuns(mode) {
 }
 
 //
-// The bundled scheme used when neither --primer_scheme nor --primer_bed is given (PLAN D14: QIAseq)
+// The bundled scheme used when neither --primer_scheme nor --primer_bed is given: the pathogen's default
+// (conf/pathogens/*.config primer_scheme_default; SARS-CoV-2: qiagenv1, PLAN D14), null for pathogens without one (PLAN D26)
 //
 def defaultPrimerScheme() {
-    return 'qiagenv1'
+    return params.primer_scheme_default ?: null
 }
 
 //
-// Primer BED of the run default: --primer_bed, else the bundled --primer_scheme (samples may name their own)
+// Primer BED of the run default: --primer_bed, else --primer_scheme (a scheme of --primer_scheme_dir or a bundled one),
+// else the pathogen's default scheme; null when none of them is set (samples may name their own)
 //
 def primerBed() {
     if (params.primer_bed) {
         return file(params.primer_bed, checkIfExists: true)
     }
-    return file("${projectDir}/assets/primer_schemes/${params.primer_scheme ?: defaultPrimerScheme()}.bed", checkIfExists: true)
+    def name = params.primer_scheme ?: defaultPrimerScheme()
+    if (!name) {
+        return null
+    }
+    def chosen = chooseScheme(name.toString(), "--primer_scheme '${name}'")
+    return chosen.bed ? file(chosen.bed, checkIfExists: true) : file("${params.primer_schemes_bundled}/${name}.bed", checkIfExists: true)
 }
 
 //
@@ -720,10 +800,10 @@ def dbDir() {
 // has nothing to compare with and is skipped; a primer BED of the user is still used for trimming and amplicon QC.
 //
 def bundledSchemesApply() {
-    if (!params.fasta) {
+    if (!params.fasta || !defaultPrimerScheme()) {
         return false
     }
-    return !(bedContigs(file("${projectDir}/assets/primer_schemes/${defaultPrimerScheme()}.bed", checkIfExists: true)) - fastaContigs(file(params.fasta, checkIfExists: true)))
+    return !(bedContigs(file("${params.primer_schemes_bundled}/${defaultPrimerScheme()}.bed", checkIfExists: true)) - fastaContigs(file(params.fasta, checkIfExists: true)))
 }
 
 def bedContigs(bed) {

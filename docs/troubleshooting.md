@@ -122,7 +122,7 @@ ERROR ~ Validation of pipeline parameters failed!
 ```
 [ERROR] Parameter `primer_sheme` was specified on the command line or params file but is not declared in the script or config
 [ERROR] Parameter `skip_consensus` with type Boolean cannot be assigned to maybe [String]
-* --primer_scheme (foo): Expected any of [[midnight, midnightv2, articv3, articv4.1, articv5.3.2, eden, swift, qiagenv1, xgen]]
+[ERROR] --primer_scheme 'foo' is not a primer scheme available for --pathogen SARS-CoV-2 and not a path to a BED file. Bundled: articv3, articv4.1, ...; give your own with --primer_bed <file> or --primer_scheme_dir <dir of <name>.bed files>
 ```
 
 A typo in a parameter name, a non-boolean value for a boolean flag, or a value outside an enum. Pipeline parameters take **two**
@@ -234,11 +234,13 @@ reads have no primers to trim and no amplicons, so the scheme is not used (and t
 [ERROR] --pathogen MTB is not supported: Mycobacterium tuberculosis is a 4.4 Mb bacterial genome ...
 [ERROR] --fasta is required with --pathogen RSVa: wasteline bundles a reference only for the pathogens that have a file in conf/pathogens/ ...
 [ERROR] The bundled default primer scheme 'qiagenv1' is for a different reference ...
+[ERROR] Sample 'S1' has no primer scheme: --pathogen MPX has no default primer scheme (only the pipeline's default pathogen has one). Name one with --primer_scheme ... (bundled for MPX: bccdc-mpox-v2.3.0; ...)
 ```
 
 **Cause.** `--pathogen` must be a Freyja pathogen name. MTB (4.4 Mb) is accepted by Freyja but not by wasteline (the influenza
 pathogens run on their HA segment, a single 1.7-1.9 kb reference); a pathogen without a bundled reference needs `--fasta` (the reference the Freyja barcodes
-were built on), and the bundled primer schemes only fit SARS-CoV-2, so a primer BED (or `--protocol capture`) is needed.
+were built on), and only SARS-CoV-2 has a default primer scheme (bundled schemes are per pathogen: measles and mpox have one each), so a scheme name, a primer BED or
+`--primer_scheme_dir` (or `--protocol capture`) is needed.
 **Fix.** See [other_pathogens.md](other_pathogens.md) for what each pathogen needs.
 
 ### `--annotate_variants` with `--skip_consensus`

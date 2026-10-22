@@ -24,7 +24,7 @@ call sites: the samplesheet rows in `PIPELINE_INITIALISATION`, `resultsRow()` an
 sample has amplicon analysis exactly when `meta.primer_scheme` is set.
 
 A cell value is a BED path when it contains `/` or ends in `.bed` (relative to the launch directory, like the FASTQ paths),
-otherwise it must be a bundled scheme. Errors name the sample. The samplesheet rows are built eagerly at start-up, so a bad
+otherwise it must be a scheme name: bundled for the run's pathogen or a `<name>.bed` of `--primer_scheme_dir` (PLAN D26, see [multi_pathogen.md](multi_pathogen.md): the bundled schemes are per pathogen and a user-directory scheme is stored as `custom` with its path). Errors name the sample. The samplesheet rows are built eagerly at start-up, so a bad
 cell stops the run before any work; `checkSampleBeds()` checks that each distinct BED is on a contig of `--fasta` (the run
 default BED is still checked in `validateInputParameters`).
 

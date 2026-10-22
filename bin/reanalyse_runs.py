@@ -73,6 +73,7 @@ NO_VARIANTS_MODES = {"demix", "aggregate", "report", "update_db"}
 CARRY_EXACT = {
     "pathogen",
     "primer_scheme",
+    "primer_scheme_dir",
     "primer_bed",
     "protocol",
     "skip_primer_trimming",
@@ -103,6 +104,7 @@ CARRY_PREFIXES = (
 )
 PATH_PARAMS = {
     "primer_bed",
+    "primer_scheme_dir",
     "mutations_of_interest",
     "lineage_groups",
     "site_aggregation",

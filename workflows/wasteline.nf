@@ -928,11 +928,11 @@ def runInfoBase(mode, metas) {
     }
     // pipelines_testdata_base_path is nf-core template plumbing (a URL), not a setting of this pipeline
     // (the per-pathogen facts of conf/pathogens/*.config follow from --pathogen and are not recorded either)
-    def plain_params = params.findAll { key, _value -> !(key.toString() in ['pipelines_testdata_base_path', 'lineage_groups_bundled', 'freyja_container_pathogen']) }.collectEntries { key, value ->
+    def plain_params = params.findAll { key, _value -> !(key.toString() in ['pipelines_testdata_base_path', 'lineage_groups_bundled', 'freyja_container_pathogen', 'primer_schemes_bundled', 'primer_scheme_default']) }.collectEntries { key, value ->
         [ (key.toString()): (value == null || value instanceof Boolean || value instanceof Number) ? value : value.toString() ]
     }
     // the effective primer scheme is recorded even when the default (null = the default scheme, D14) applies
-    if (mode == 'full' && protocolSettings(params.protocol).primer_trimming && !params.primer_bed && !params.primer_scheme) {
+    if (mode == 'full' && protocolSettings(params.protocol).primer_trimming && !params.primer_bed && !params.primer_scheme && defaultPrimerScheme()) {
         plain_params.primer_scheme = defaultPrimerScheme()
     }
     // lineage groups: which file made lineage_summary.csv (only when the summary is made)

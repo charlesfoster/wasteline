@@ -121,7 +121,7 @@
                     "mimetype": "text/plain",
                     "pattern": "^\\S+\\.fn?a(sta)?(\\.gz)?$",
                     "description": "Path to the reference FASTA (one sequence). Default: the bundled reference of the pathogen (conf/pathogens/*.config); required for pathogens without one.",
-                    "help_text": "The BWA index is built from this file once per run. For a pathogen other than SARS-CoV-2, MEASLESgenome, RSVa and RSVb this must be the reference.fasta that the Freyja barcodes were built on (the pathogen's folder in the Freyja-barcodes repository); a FASTA with several sequences (segmented genomes) is refused.",
+                    "help_text": "The BWA index is built from this file once per run. For a pathogen other than SARS-CoV-2, MEASLESgenome, MPX, RSVa, RSVb and the influenza pathogens this must be the reference.fasta that the Freyja barcodes were built on (the pathogen's folder in the Freyja-barcodes repository); a FASTA with several sequences (segmented genomes) is refused.",
                     "fa_icon": "far fa-file-code"
                 },
                 "gff": {
@@ -130,25 +130,23 @@
                     "exists": true,
                     "mimetype": "text/plain",
                     "pattern": "^\\S+\\.gff3?(\\.gz)?$",
-                    "description": "Path to the reference annotation (GFF3). Default: the bundled annotation (SARS-CoV-2, RSVa, RSVb). Optional for the other pathogens; `--annotate_variants` needs it.",
+                    "description": "Path to the reference annotation (GFF3). Default: the bundled annotation (SARS-CoV-2, MPX, RSVa, RSVb, influenza). Optional for the other pathogens; `--annotate_variants` needs it.",
                     "fa_icon": "far fa-file-code"
                 },
                 "primer_scheme": {
                     "type": "string",
-                    "enum": [
-                        "midnight",
-                        "midnightv2",
-                        "articv3",
-                        "articv4.1",
-                        "articv5.3.2",
-                        "eden",
-                        "swift",
-                        "qiagenv1",
-                        "xgen"
-                    ],
-                    "description": "Bundled amplicon primer scheme (assets/primer_schemes/). Default: `qiagenv1` in mode `full`.",
-                    "help_text": "Ignored if `--primer_bed` is given. The `swift` scheme implies `--ivar_offset 5`. In mode `demix` the scheme of the old results is unknown, so per-amplicon coverage is only computed when `--primer_scheme` or `--primer_bed` is given explicitly.",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+                    "description": "Name of an amplicon primer scheme: bundled for the pathogen (assets/primer_schemes/) or a `<name>.bed` in `--primer_scheme_dir`. Default: `qiagenv1` for SARS-CoV-2 in mode `full`; other pathogens have no default.",
+                    "help_text": "SARS-CoV-2: midnight, midnightv2, articv3, articv4.1, articv5.3.2, eden, swift, qiagenv1, xgen. MEASLESgenome: artic-measles-v1.0.0. MPX: bccdc-mpox-v2.3.0. A name found in `--primer_scheme_dir` wins over a bundled one. An unknown name stops the run at start-up and lists the names available for the pathogen. Ignored if `--primer_bed` is given. The `swift` scheme implies `--ivar_offset 5`. In mode `demix` the scheme of the old results is unknown, so per-amplicon coverage is only computed when `--primer_scheme` or `--primer_bed` is given explicitly.",
                     "fa_icon": "fas fa-cut"
+                },
+                "primer_scheme_dir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "exists": true,
+                    "description": "Directory of your own primer schemes: `<name>.bed` files, usable by name in `--primer_scheme` and in the samplesheet `primer_scheme` column.",
+                    "help_text": "Each BED needs the reference's contig name in column 1 (checked at start-up for the schemes that are used) and primalscheme-style primer names (`<scheme>_<n>_LEFT_<alt>` / `_RIGHT_<alt>`) so that amplicons can be paired. A name that is also bundled for the pathogen uses your file, with a warning. See docs/usage.md, \"Using your own primer scheme\".",
+                    "fa_icon": "fas fa-folder-open"
                 },
                 "primer_bed": {
                     "type": "string",
@@ -168,7 +166,7 @@
                 },
                 "pathogen": {
                     "type": "string",
-                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome, RSVa, RSVb and the five influenza pathogens (H1N1, H3N2, FLU-B-VIC, H5Nx, H5Nx-cattle; HA segment only) have a bundled reference; every other single-contig pathogen needs `--fasta`.",
+                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome, MPX, RSVa, RSVb and the five influenza pathogens (H1N1, H3N2, FLU-B-VIC, H5Nx, H5Nx-cattle; HA segment only) have a bundled reference; every other single-contig pathogen needs `--fasta`.",
                     "help_text": "Passed to every Freyja call. The per-pathogen defaults (reference, annotation) come from conf/pathogens/<profile>.config. Without `--fasta` and `--primer_bed` only SARS-CoV-2 runs out of the box; pass `--fasta` = the reference.fasta that the pathogen's Freyja barcodes were built on (a different one gives silently wrong results), `--primer_bed` (or `--protocol capture`), and `--lineage_groups` if you want the lineage-group summary. Freyja's influenza barcodes (H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC) cover the HA segment only: the bundled reference is the HA sequence, one run per subtype, reads of the other segments do not map. MTB (4.4 Mb) is accepted by Freyja but stops here with an explanation. See docs/other_pathogens.md.",
                     "fa_icon": "fas fa-virus",
                     "enum": [
@@ -201,6 +199,18 @@
                     "description": "Set by conf/pathogens/*.config, not for users: the pathogen whose data the pinned Freyja container bundles (`--barcodes container`); its datasets live in <db_dir>/freyja, those of other pathogens in <db_dir>/freyja_<pathogen>.",
                     "hidden": true,
                     "fa_icon": "fas fa-virus"
+                },
+                "primer_schemes_bundled": {
+                    "type": "string",
+                    "description": "Set by conf/pathogens/*.config, not for users: the directory of the pathogen's bundled `<name>.bed` primer schemes (none = no bundled scheme; use `--primer_bed`, `--primer_scheme_dir` or `--protocol capture`).",
+                    "hidden": true,
+                    "fa_icon": "fas fa-folder"
+                },
+                "primer_scheme_default": {
+                    "type": "string",
+                    "description": "Set by conf/pathogens/*.config, not for users: the bundled scheme used in mode `full` when no scheme or BED is given (SARS-CoV-2: `qiagenv1`; none for other pathogens, which then stop with a message).",
+                    "hidden": true,
+                    "fa_icon": "fas fa-cut"
                 }
             }
         },

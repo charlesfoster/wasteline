@@ -97,8 +97,29 @@ def test_per_sample_protocol_and_primer_scheme(tmp_path):
         "D,d_R1.fastq.gz,d_R2.fastq.gz,sample,,,amplicon,missing.bed\n",
     )
     r = cs.validate(bad, "full", check_files=False)
-    assert "protocol 'hybrid'" in errs(r) and "'nosuchscheme' is not a bundled scheme" in errs(r)
+    assert "protocol 'hybrid'" in errs(
+        r
+    ) and "'nosuchscheme' is not a primer scheme available" in errs(r)
     assert "missing.bed" not in errs(r)  # a BED path is only looked for with --check-files
     assert "primer_scheme BED file 'missing.bed' does not exist" in errs(
         cs.validate(bad, "full", check_files=True)
     )
+    # PLAN D26: names are per pathogen (bundled schemes live in assets/primer_schemes/<profile>/) plus the user's directory
+    mine = tmp_path / "myschemes"
+    mine.mkdir()
+    (mine / "mine.bed").write_text("c\t1\t20\tx_1_LEFT_0\t1\t+\n")
+    names = tmp_path / "names.csv"
+    names.write_text(
+        hdr + "A,a_R1.fastq.gz,a_R2.fastq.gz,sample,,,amplicon,artic-measles-v1.0.0\n"
+        "B,b_R1.fastq.gz,b_R2.fastq.gz,sample,,,amplicon,mine\n"
+        "C,c_R1.fastq.gz,c_R2.fastq.gz,sample,,,amplicon,midnight\n"
+    )
+    r = cs.validate(names, "full", pathogen="MEASLESgenome", scheme_dirs=(str(mine),))
+    assert (
+        "(A)" not in errs(r)
+        and "(B)" not in errs(r)
+        and "'midnight' is not a primer scheme" in errs(r)
+    )
+    assert "(A)" in errs(
+        cs.validate(names, "full")
+    )  # SARS-CoV-2 (the default) does not know the measles scheme
