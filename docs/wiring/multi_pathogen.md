@@ -69,7 +69,7 @@ All fail before any work. Modes `full`, `demix`, `aggregate`, `update_db`:
   explicit `--unexplained_max_pvalue` other than the default is never rescaled.
 - `bin/amplicon_coverage.py` understands primalscheme `<scheme>_<n>_LEFT_<alt>` / `_RIGHT_<alt>` names (the ARTIC measles panel;
   before, all primers collapsed into one amplicon). No bundled SARS-CoV-2 BED has such names.
-- The report subtitle is `Wastewater {{ h.pathogen or 'SARS-CoV-2' }} lineage deconvolution`.
+- The report subtitle reads `Wastewater <pathogen> lineage deconvolution`, with the pathogen taken from the report header data (falling back to SARS-CoV-2).
 
 ## Not changed
 
