@@ -27,6 +27,11 @@ alt_depth 0 and alt_freq 0; with --depths its depth is the depth at the position
 the three codon positions) and ref_depth equals depth, otherwise both are NA. If the variants file is missing or
 unreadable every row is NA (with a warning). Unparseable mutations or unresolvable amino-acid mutations are
 errors (exit 2), as is an invalid MOI file.
+
+Multi-contig references: `--contig C` selects the contig of the reference FASTA (first header word), the GFF3
+(seqid), the depths file (column 1) and, when its REGION column holds several contigs, the variants TSV. An
+input with several contigs and no `--contig` (or a `--contig` that is not in the FASTA/GFF3/depths) is an error
+(exit 2), never the first record. Without `--contig` single-contig inputs behave as before.
 """
 
 import argparse
@@ -104,8 +109,28 @@ def read_moi(path):
     return rows
 
 
-def read_variants(path):
-    """Return (rows, annotated). Rows are dicts with the columns used here; duplicates are dropped."""
+def region_filter(path, header, lines, contig):
+    """Return the REGION value to keep, or None (keep all rows).
+
+    Only a variants table whose REGION column holds several contigs is filtered: it needs `contig`
+    (ContigError otherwise). A single-region table is used as is, whatever `contig` is.
+    """
+    if "REGION" not in header:
+        return None
+    i = header.index("REGION")
+    regions = {line.split("\t")[i] for line in lines if len(line.split("\t")) > i}
+    if len(regions) <= 1:
+        return None
+    if contig is None:
+        raise ContigError(f"{path}: {len(regions)} contigs in the REGION column, pass --contig")
+    return contig
+
+
+def read_variants(path, contig=None):
+    """Return (rows, annotated). Rows are dicts with the columns used here; duplicates are dropped.
+
+    A variants table with several contigs in REGION needs `contig` and keeps that contig's rows only.
+    """
     rows = []
     seen = set()
     annotated = False
@@ -116,13 +141,15 @@ def read_variants(path):
         if missing:
             raise ValueError(f"{path}: missing columns {', '.join(missing)}")
         idx = {c: i for i, c in enumerate(header)}
-        for line in handle:
-            line = line.rstrip("\r\n")
-            if not line.strip():
-                continue
+        lines = [line.rstrip("\r\n") for line in handle]
+        lines = [line for line in lines if line.strip()]
+        keep_region = region_filter(path, header, lines, contig)
+        for line in lines:
             f = line.split("\t")
             if len(f) < len(header):
                 f += [NA] * (len(header) - len(f))
+            if keep_region is not None and f[idx["REGION"]] != keep_region:
+                continue
 
             def get(col, f=f):
                 return f[idx[col]] if col in idx else NA
@@ -150,8 +177,14 @@ def read_variants(path):
     return rows, annotated
 
 
-def read_depths(path):
+class ContigError(ValueError):
+    """Several contigs in an input and no (or an unknown) --contig: a hard error, never softened to a warning."""
+
+
+def read_depths(path, contig=None):
+    """Return {position: depth}. A depths file with several contigs needs `contig` (its rows only)."""
     depths = {}
+    contigs = set()
     with open(path) as handle:
         for line_number, line in enumerate(handle, start=1):
             line = line.rstrip("\r\n")
@@ -162,22 +195,51 @@ def read_depths(path):
                 raise ValueError(
                     f"{path}: line {line_number} has {len(f)} columns, expected at least 4"
                 )
+            contigs.add(f[0])
+            if contig is not None and f[0] != contig:
+                continue
             depths[int(f[1])] = int(float(f[3]))
+    if contig is None and len(contigs) > 1:
+        raise ContigError(f"{path}: {len(contigs)} contigs in the depths file, pass --contig")
+    if contig is not None and contigs and contig not in contigs:
+        raise ContigError(
+            f"{path}: contig {contig!r} not in the depths file (contigs: {', '.join(sorted(contigs))})"
+        )
     return depths
 
 
-def read_fasta_sequence(path):
-    seq = []
-    seen = 0
+def read_fasta_sequence(path, contig=None):
+    """Upper-case sequence of the FASTA record named `contig` (first word of the header).
+
+    Without `contig` the file must hold a single record (ContigError otherwise).
+    """
+    records = {}
+    names = []
+    current = None
     with open(path) as handle:
         for line in handle:
             line = line.strip()
             if line.startswith(">"):
-                seen += 1
-                if seen > 1:
-                    break
+                words = line[1:].split()
+                current = []
+                names.append(words[0] if words else "")
+                records.setdefault(names[-1], current)
             elif line:
-                seq.append(line)
+                if current is None:  # a header-less file is read as one record
+                    current = []
+                    names.append("")
+                    records[""] = current
+                current.append(line)
+    if contig is None:
+        if len(names) > 1:
+            raise ContigError(f"{path}: {len(names)} FASTA records, pass --contig")
+        seq = records[names[0]] if names else []
+    else:
+        if contig not in records:
+            raise ContigError(
+                f"{path}: contig {contig!r} not in the FASTA (records: {', '.join(names) or 'none'})"
+            )
+        seq = records[contig]
     if not seq:
         raise ValueError(f"{path}: no sequence")
     return "".join(seq).upper()
@@ -192,21 +254,29 @@ def _attrs(text):
     return out
 
 
-def read_cds_models(path):
+def read_cds_models(path, contig=None):
     """Return dict lower-case name -> {'name', 'positions': [1-based genomic position per CDS base]}.
 
     The feature name is the Name of the parent transcript (so ORF1a and ORF1ab are distinct although they
     share a gene Name), falling back to the gene Name, then the CDS's own Name/gene attribute.
+
+    Only features on the GFF seqid `contig` are used. Without `contig` the GFF must hold a single seqid
+    (ContigError otherwise); with it the seqid must occur in the file.
     """
     features = {}
     cds = {}
     order = []
+    seqids = []
     with open(path) as handle:
         for line in handle:
             if line.startswith("#") or not line.strip():
                 continue
             f = line.rstrip("\r\n").split("\t")
             if len(f) < 9:
+                continue
+            if f[0] not in seqids:
+                seqids.append(f[0])
+            if contig is not None and f[0] != contig:
                 continue
             attrs = _attrs(f[8])
             if f[2] in ("gene", "mRNA", "transcript") and "ID" in attrs:
@@ -217,6 +287,12 @@ def read_cds_models(path):
                     cds[parent] = []
                     order.append(parent)
                 cds[parent].append((int(f[3]), int(f[4]), f[6], attrs))
+    if contig is None and len(seqids) > 1:
+        raise ContigError(f"{path}: {len(seqids)} seqids in the GFF3, pass --contig")
+    if contig is not None and seqids and contig not in seqids:
+        raise ContigError(
+            f"{path}: contig {contig!r} not a seqid of the GFF3 (seqids: {', '.join(seqids)})"
+        )
     models = {}
     for parent in order:
         parts = sorted(cds[parent])
@@ -402,26 +478,35 @@ def main(argv=None):
     p.add_argument("--depths", help="Freyja depths file (depth of absent mutations)")
     p.add_argument("--gff", help="GFF3 with CDS features (amino-acid fallback)")
     p.add_argument("--reference", help="reference FASTA (amino-acid fallback)")
+    p.add_argument(
+        "--contig",
+        help="multi-contig inputs: use this contig of the reference FASTA, GFF3 seqid, depths and "
+        "variants REGION (required when any of them holds several contigs; an error otherwise)",
+    )
     p.add_argument("-o", "--output", default="-")
     args = p.parse_args(argv)
 
     try:
         moi = read_moi(args.moi)
-        models = read_cds_models(args.gff) if args.gff else None
-        reference = read_fasta_sequence(args.reference) if args.reference else None
+        models = read_cds_models(args.gff, args.contig) if args.gff else None
+        reference = read_fasta_sequence(args.reference, args.contig) if args.reference else None
         if models is not None and reference is None:
             raise ValueError("--gff requires --reference")
         depths = None
         if args.depths:
             try:
-                depths = read_depths(args.depths)
+                depths = read_depths(args.depths, args.contig)
+            except ContigError:
+                raise
             except (OSError, ValueError) as exc:
                 print(
                     f"warning: {args.sample}: depths unusable ({exc}); depth reported as NA",
                     file=sys.stderr,
                 )
         try:
-            rows, annotated = read_variants(args.variants)
+            rows, annotated = read_variants(args.variants, args.contig)
+        except ContigError:
+            raise
         except (OSError, ValueError) as exc:
             print(
                 f"warning: {args.sample}: variants unusable ({exc}); all values NA", file=sys.stderr

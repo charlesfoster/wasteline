@@ -130,3 +130,44 @@ def test_primer_trimmed_pct_real_log_through_stats_script(tmp_path):
     )
     row = run(tmp_path, depth_profile(), "--ivar-trim-stats", str(out))
     assert row["primer_trimmed_pct"] == "21.97"
+
+
+def test_contig_table_and_contig_low_coverage_warn_only(tmp_path):
+    """Multi-contig depths: whole-genome numbers are length-weighted; one weak contig only WARNs."""
+    depths = tmp_path / "multi.depths"
+    depths.write_text(
+        "".join(f"segA\t{i}\tA\t20\n" for i in range(1, 101))
+        + "".join(f"segB\t{i}\tA\t{20 if i <= 24 else 0}\n" for i in range(1, 41))
+    )
+    amp = tmp_path / "amp.tsv"
+    amp.write_text(
+        "sample\tamplicon\tstart\tend\tmean_depth\tmin_depth\tpct_ge_min_depth\tdropped\tcontig\n"
+        "S\ta1\t1\t10\t20.00\t20\t100.00\tfalse\tsegA\n"
+        "S\tb1\t1\t10\t0.00\t0\t0.00\ttrue\tsegB\n"
+    )
+    table = tmp_path / "contigs.tsv"
+    out = tmp_path / "row.tsv"
+    argv = ["--sample", "S", "--depths", str(depths), "--amplicons", str(amp), "-o", str(out)]
+    assert qc.main([*argv, "--contig-table", str(table), "--warn-contig-below-pct", "80"]) == 0
+    row = dict(zip(qc.COLUMNS, out.read_text().splitlines()[1].split("\t"), strict=True))
+    # (100 + 24) of 140 positions at >= 10x = 88.57 %: PASS on the whole genome, but segB (60 %) is weak
+    assert row["pct_genome_ge_10x"] == "88.57" and row["amplicons_dropped"] == "1"
+    assert (row["qc_status"], row["qc_reasons"]) == ("WARN", "contig_low_coverage")
+    lines = [line.split("\t") for line in table.read_text().splitlines()]
+    assert lines[0] == qc.CONTIG_COLUMNS
+    assert lines[1] == [
+        "S",
+        "segA",
+        "100",
+        "20.00",
+        "20.00",
+        "100.00",
+        "100.00",
+        "100.00",
+        "1",
+        "0",
+    ]
+    assert lines[2] == ["S", "segB", "40", "12.00", "20.00", "60.00", "60.00", "60.00", "1", "1"]
+    # rule off by default: the same depths give a plain PASS
+    assert qc.main(argv) == 0
+    assert out.read_text().splitlines()[1].split("\t")[qc.COLUMNS.index("qc_status")] == "PASS"

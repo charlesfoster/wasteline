@@ -2,7 +2,7 @@
 """Consensus genome statistics (consensus_stats.tsv).
 
   consensus_stats.py --fasta S.consensus.fa --sample S [--reference-length 29903]
-                     [--status-json S.consensus_status.json] -o S.stats.tsv
+                     [--status-json S.consensus_status.json] [--contig-out S.stats_contigs.tsv] -o S.stats.tsv
   consensus_stats.py --concat a.tsv b.tsv ... -o consensus_stats.tsv   (sorted by sample)
 
 Columns: sample, length, n_count, consensus_coverage_pct, ambiguous_count, status, reason.
@@ -21,6 +21,16 @@ Columns: sample, length, n_count, consensus_coverage_pct, ambiguous_count, statu
                            (all numeric fields are NA)
   reason           NA, or the text explaining a non-ok status or the warnings of an ok one (e.g. variants
                    skipped by CONSENSUS_BCFTOOLS). Tabs and newlines are replaced by spaces.
+
+--contig-out FILE accepts a FASTA with several records (multi-contig references, e.g. the eight influenza
+segments; without the flag more than one record stays an error). The sample row is then aggregated over all
+records with the same formulas (`length` = total, `n_count` = sum, `ambiguous_count` = sum, consensus_coverage_pct
+from the totals, status on the whole) and FILE gets one row per record with columns sample, contig, length,
+n_count, consensus_coverage_pct (against that record's own length), ambiguous_count, status. `contig` is the
+part of the record's first header word after the last `|` (CONSENSUS_BCFTOOLS writes `>sample|contig`). A
+record's status is computed from its sequence (`ok`, `empty`, `failed` for zero length); a `failed` or `empty`
+status in --status-json applies to the whole sample and so to every record. When the FASTA is missing or unusable
+FILE gets one row with contig NA, NA numbers and status `failed`.
 
 --status-json is the <sample>.consensus_status.json written by CONSENSUS_BCFTOOLS ({"status", "reason",
 "warnings"}). When present and readable its status wins over the one recomputed from the sequence for
@@ -42,6 +52,15 @@ COLUMNS = [
     "ambiguous_count",
     "status",
     "reason",
+]
+CONTIG_COLUMNS = [
+    "sample",
+    "contig",
+    "length",
+    "n_count",
+    "consensus_coverage_pct",
+    "ambiguous_count",
+    "status",
 ]
 LEGACY_COLUMNS = COLUMNS[:-1]  # pre-`reason` per-sample files are still accepted by --concat
 NA = "NA"
@@ -75,6 +94,35 @@ def read_single_fasta(path):
     return "".join(seqs[0])
 
 
+def read_fasta_records(path):
+    """Return [(header, sequence)] for every record of the FASTA `path`; ValueError when unreadable or empty."""
+    try:
+        with open(path) as handle:
+            text = handle.read()
+    except OSError as exc:
+        raise ValueError(f"cannot read {path}: {exc}") from exc
+    records = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith(">"):
+            records.append((line[1:].strip(), []))
+        elif not records:
+            raise ValueError(f"{path}: sequence data before the first '>' header")
+        else:
+            records[-1][1].append(line)
+    if not records:
+        raise ValueError(f"{path}: no FASTA record")
+    return [(header, "".join(parts)) for header, parts in records]
+
+
+def contig_name(header):
+    """Part of the first header word after the last `|` (the whole word without one); NA when empty."""
+    words = header.split()
+    return words[0].rsplit("|", 1)[-1] if words else NA
+
+
 def clean(text):
     """One-line, tab-free text; NA when empty."""
     text = " ".join(str(text).split()) if text is not None else ""
@@ -98,26 +146,48 @@ def read_status_json(path):
     return status, data.get("reason") or ""
 
 
-def compute_row(sample, fasta, reference_length=None, status_json=None):
+def seq_counts(seq):
+    """(n_count, ambiguous_count) of an upper-case sequence."""
+    n_count = seq.count("N") + seq.count("-")
+    ambiguous = sum(1 for c in seq if c not in _ACGT and c not in "N-")
+    return n_count, ambiguous
+
+
+def compute_row(sample, fasta, reference_length=None, status_json=None, contig_rows=None):
+    """Return the consensus_stats row of one sample.
+
+    With `contig_rows` (a list) several FASTA records are accepted: the row is aggregated over them and one
+    row per record is appended to `contig_rows` (see the module docstring). Without it more than one record
+    is a `failed` row.
+    """
     json_status, json_reason = read_status_json(status_json)
 
     def failed_row(why):
         reason = json_reason if json_status == "failed" and json_reason else why
+        if contig_rows is not None:
+            contig_rows.append([sample, NA, NA, NA, NA, NA, "failed"])
         return [sample, NA, NA, NA, NA, "failed", clean(reason)]
 
     if not fasta:
         return failed_row("no consensus file")
     try:
-        seq = read_single_fasta(fasta).upper()
+        if contig_rows is None:
+            records = [(sample, read_single_fasta(fasta))]
+        else:
+            records = read_fasta_records(fasta)
     except ValueError as exc:
         print(f"warning: {sample}: {exc}", file=sys.stderr)
         return failed_row(str(exc))
-    length = len(seq)
+    records = [(header, seq.upper()) for header, seq in records]
+    length = sum(len(seq) for _, seq in records)
     if length == 0:
         print(f"warning: {sample}: zero-length sequence", file=sys.stderr)
         return failed_row("zero-length consensus sequence")
-    n_count = seq.count("N") + seq.count("-")
-    ambiguous = sum(1 for c in seq if c not in _ACGT and c not in "N-")
+    n_count = ambiguous = 0
+    for _, seq in records:
+        n, a = seq_counts(seq)
+        n_count += n
+        ambiguous += a
     if reference_length and length != reference_length:
         print(
             f"warning: {sample}: consensus length {length} differs from reference length {reference_length}",
@@ -133,6 +203,25 @@ def compute_row(sample, fasta, reference_length=None, status_json=None):
         reason = json_reason or ("consensus failed" if json_status == "failed" else reason)
     elif json_status == "ok" and json_reason and status == "ok":
         reason = json_reason  # e.g. variants skipped
+    if contig_rows is not None:
+        for header, seq in records:
+            c_len = len(seq)
+            c_n, c_amb = seq_counts(seq)
+            if c_len == 0:
+                c_row = [sample, contig_name(header), NA, NA, NA, NA, "failed"]
+            else:
+                c_status = json_status if json_status in ("failed", "empty") else None
+                c_status = c_status or ("empty" if c_n == c_len else "ok")
+                c_row = [
+                    sample,
+                    contig_name(header),
+                    str(c_len),
+                    str(c_n),
+                    f"{max(0.0, 100.0 * (c_len - c_n) / c_len):.2f}",
+                    str(c_amb),
+                    c_status,
+                ]
+            contig_rows.append(c_row)
     return [
         sample,
         str(length),
@@ -144,10 +233,10 @@ def compute_row(sample, fasta, reference_length=None, status_json=None):
     ]
 
 
-def write_rows(path, rows):
+def write_rows(path, rows, columns=COLUMNS):
     handle = sys.stdout if path == "-" else open(path, "w")  # noqa: SIM115
     with contextlib.nullcontext(handle) if path == "-" else handle as out:
-        out.write("\t".join(COLUMNS) + "\n")
+        out.write("\t".join(columns) + "\n")
         for row in rows:
             out.write("\t".join(row) + "\n")
 
@@ -186,6 +275,10 @@ def main(argv=None):
     p.add_argument("--sample")
     p.add_argument("--reference-length", type=int)
     p.add_argument("--status-json", help="<sample>.consensus_status.json from CONSENSUS_BCFTOOLS")
+    p.add_argument(
+        "--contig-out",
+        help="accept a multi-record FASTA (one record per contig); write the per-contig table here",
+    )
     p.add_argument("-o", "--output", default="-")
     args = p.parse_args(argv)
 
@@ -199,9 +292,11 @@ def main(argv=None):
         return 0
     if not args.sample:
         p.error("--sample is required (or use --concat)")
-    write_rows(
-        args.output, [compute_row(args.sample, args.fasta, args.reference_length, args.status_json)]
-    )
+    contig_rows = [] if args.contig_out else None
+    row = compute_row(args.sample, args.fasta, args.reference_length, args.status_json, contig_rows)
+    write_rows(args.output, [row])
+    if args.contig_out:
+        write_rows(args.contig_out, contig_rows, CONTIG_COLUMNS)
     return 0
 
 

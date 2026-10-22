@@ -141,3 +141,20 @@ def test_inherited_sites_alone_do_not_flag_a_dropout(tmp_path):
     assert s["informative_sites_total"] == "7"
     assert s["n_dropped_affecting_detected_lineages"] == "1"
     # 0.0099 < 0.01: O is not detected in H8, so its T900C (outside the scheme anyway) cannot appear
+
+
+def test_contig_selects_one_contig_of_a_multi_contig_table(tmp_path):
+    rows = AMPLICONS.read_text().splitlines()
+    multi = tmp_path / "multi.tsv"
+    # the fixture's rows on contig segA, plus extra dropped rows on segB that must not count
+    multi.write_text(
+        rows[0]
+        + "\tcontig\n"
+        + "".join(f"{r}\tsegA\n" for r in rows[1:])
+        + "".join(f"{r}\tsegB\n" for r in rows[1:] if r.endswith("true"))
+    )
+    code, impact, summary = run(tmp_path, "--contig", "segA", amplicons=multi)
+    assert code == 0
+    assert impact.read_text() == (FIX / "expected_dropout_impact.tsv").read_text()
+    assert summary.read_text() == (FIX / "expected_dropout_impact_summary.tsv").read_text()
+    assert run(tmp_path, amplicons=multi)[0] == 2  # several contigs: --contig is required

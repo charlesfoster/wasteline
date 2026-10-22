@@ -68,3 +68,21 @@ def test_single_contig_alias_is_accepted(tmp_path):
     out = tmp_path / "out.tsv"
     assert ac.main(["--depths", dep, "--bed", bed, "--sample", "S", "-o", str(out)]) == 0
     assert out.read_text().splitlines()[1].split("\t")[4] == "30.00"
+
+
+def test_contig_column_only_for_multi_contig_depths(tmp_path):
+    bed = write_bed(
+        tmp_path / "p.bed",
+        ["a\t0\t5\tx_1_F", "a\t5\t10\tx_1_R", "b\t0\t5\tx_1_F", "b\t5\t10\tx_1_R"],
+    )
+    dep = tmp_path / "d.depths"
+    dep.write_text(
+        "".join(f"a\t{i}\tA\t30\n" for i in range(1, 11))
+        + "".join(f"b\t{i}\tA\t2\n" for i in range(1, 11))
+    )
+    out = tmp_path / "out.tsv"
+    assert ac.main(["--depths", str(dep), "--bed", bed, "--sample", "S", "-o", str(out)]) == 0
+    lines = [line.split("\t") for line in out.read_text().splitlines()]
+    assert lines[0] == [*ac.COLUMNS, "contig"]
+    assert lines[1] == ["S", "x_1", "1", "10", "30.00", "30", "100.00", "false", "a"]
+    assert lines[2] == ["S", "x_1", "1", "10", "2.00", "2", "0.00", "true", "b"]

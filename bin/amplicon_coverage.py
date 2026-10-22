@@ -10,6 +10,8 @@ coordinates, primers included).
 Output columns: sample, amplicon, start, end, mean_depth, min_depth, pct_ge_min_depth, dropped.
 `start`/`end` are 1-based inclusive genome positions (the same coordinates as the depths file), i.e.
 BED start + 1 and BED end. `dropped` is `true` when mean_depth < --min-depth.
+When the depths file has more than one contig (multi-contig references) a trailing `contig` column (the BED
+contig of the amplicon) is appended; with a single contig the table is exactly the columns above.
 
 The depths file has four tab-separated columns and no header: contig, 1-based position, ref base, depth.
 Positions missing from the file are treated as depth 0.
@@ -31,6 +33,8 @@ COLUMNS = [
     "pct_ge_min_depth",
     "dropped",
 ]
+
+CONTIG_COLUMN = "contig"
 
 _DIRECTION_RE = re.compile(r"^(.*?)_?(LEFT|RIGHT|F|R)$")
 _LEFT = {"LEFT", "F"}
@@ -197,6 +201,7 @@ def amplicon_rows(sample, depths_by_contig, amplicons, min_depth):
     """Compute output rows (lists of strings) for each amplicon."""
     single_depth_contig = next(iter(depths_by_contig)) if len(depths_by_contig) == 1 else None
     bed_contigs = {a[0] for a in amplicons}
+    multi = len(depths_by_contig) > 1
     rows = []
     for contig, name, start0, end in amplicons:
         if contig in depths_by_contig:
@@ -218,15 +223,16 @@ def amplicon_rows(sample, depths_by_contig, amplicons, min_depth):
                 str(min(window)),
                 f"{100.0 * sum(1 for d in window if d >= min_depth) / n:.2f}",
                 "true" if mean < min_depth else "false",
+                *([contig] if multi else []),
             ]
         )
     return rows
 
 
-def write_table(path, rows):
+def write_table(path, rows, columns=COLUMNS):
     handle = sys.stdout if path == "-" else open(path, "w")  # noqa: SIM115
     with contextlib.nullcontext(handle) if path == "-" else handle as out:
-        out.write("\t".join(COLUMNS) + "\n")
+        out.write("\t".join(columns) + "\n")
         for row in rows:
             out.write("\t".join(row) + "\n")
 
@@ -269,7 +275,8 @@ def main(argv=None):
             f"warning: BED contig {sorted(bed_contigs)} differs from depths contig {sorted(depths)}; assuming same reference",
             file=sys.stderr,
         )
-    write_table(args.output, amplicon_rows(args.sample, depths, amplicons, args.min_depth))
+    columns = [*COLUMNS, CONTIG_COLUMN] if len(depths) > 1 else COLUMNS
+    write_table(args.output, amplicon_rows(args.sample, depths, amplicons, args.min_depth), columns)
     return 0
 
 

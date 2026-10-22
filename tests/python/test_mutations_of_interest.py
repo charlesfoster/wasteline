@@ -73,3 +73,27 @@ def test_missing_variants_file_gives_na_rows(tmp_path):
     assert rc == 0
     assert all(r["alt_freq"] == "NA" and r["depth"] == "NA" for r in rows)
     assert [r["name"] for r in rows] == ["a", "b"]
+
+
+def test_contig_selects_fasta_record_gff_seqid_and_depths(tmp_path):
+    ref_seq = "".join(Path(REF).read_text().splitlines()[1:])
+    fa = tmp_path / "multi.fa"
+    fa.write_text(f">segA first\n{ref_seq}\n>segB\n{'A' * len(ref_seq)}\n")
+    gff_lines = [
+        line.replace("NC_045512.2", "segA", 1) for line in Path(GFF).read_text().splitlines()
+    ]
+    cds = next(line for line in gff_lines if "\tCDS\t" in line)
+    gff = tmp_path / "multi.gff3"
+    gff.write_text("\n".join([*gff_lines, cds.replace("segA", "segB", 1)]) + "\n")
+    depths = tmp_path / "multi.depths"
+    depths.write_text(
+        "".join(f"segA\t{p}\tA\t{p}\n" for p in (23063, 23064, 23065)) + "segB\t23063\tA\t9\n"
+    )
+    entries = [("N501Y", "S:N501Y"), ("D614G", "A23403G")]
+    multi = ["--gff", str(gff), "--reference", str(fa), "--depths", str(depths)]
+    rc, rows = run(tmp_path, SLICE, entries, *multi, "--contig", "segA")
+    assert rc == 0
+    # N501Y absent (as in the single-contig test): its depth is the minimum over the codon (23063-23065) in segA, not segB's 9
+    assert (rows[0]["alt_freq"], rows[0]["depth"]) == ("0", "23063")
+    assert rows[1]["alt_freq"] == "0.392857"
+    assert run(tmp_path, SLICE, entries, *multi)[0] == 2  # several contigs, no --contig

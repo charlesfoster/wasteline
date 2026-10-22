@@ -251,3 +251,25 @@ def test_other_pathogen_dataset_and_significance_follows_reference_length(tmp_pa
     assert um.effective_max_pvalue(1.67e-6, 15894) == pytest.approx(0.05 / 15894)
     assert um.effective_max_pvalue(1.67e-6, 29903) == 1.67e-6  # SARS-CoV-2: untouched
     assert um.effective_max_pvalue(1e-3, 15894) == 1e-3  # an explicit value is never rescaled
+
+
+def test_contig_selects_fasta_record_and_gff_seqid(tmp_path):
+    """A two-contig reference + `--contig` gives the single-contig result; without it the run is an error."""
+    seq = "".join(Path(REF).read_text().splitlines()[1:])
+    fa = tmp_path / "multi.fa"
+    fa.write_text(f">segA first\n{seq}\n>segB\n{'A' * len(seq)}\n")
+    gff_lines = [
+        line.replace("NC_045512.2", "segA", 1) for line in Path(GFF).read_text().splitlines()
+    ]
+    cds = next(line for line in gff_lines if "\tCDS\t" in line)
+    gff = tmp_path / "multi.gff3"
+    gff.write_text("\n".join([*gff_lines, cds.replace("segA", "segB", 1)]) + "\n")
+    variants = stage(tmp_path, "PURE_C_spiked.variants.tsv.gz", "PURE_C.variants.tsv")
+    args = [variants, str(FIX / "PURE_C.demix"), BARCODES_TEST]
+    rc, single = run(tmp_path, *args, "--gff", GFF, "--reference", REF, out="single.tsv")
+    assert rc == 0 and len(single) == 4
+    rc, lines = run(
+        tmp_path, *args, "--gff", str(gff), "--reference", str(fa), "--contig", "segA", out="m.tsv"
+    )
+    assert rc == 0 and lines == single
+    assert run(tmp_path, *args, "--gff", str(gff), "--reference", str(fa), out="n.tsv")[0] == 2

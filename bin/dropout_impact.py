@@ -9,7 +9,9 @@ detected in that sample (`freyja_aggregated.tsv`).
 Inputs
 ------
 --amplicons   summary/amplicon_coverage.tsv: sample, amplicon, start, end (1-based inclusive),
-              mean_depth, min_depth, pct_ge_min_depth, dropped (`true`/`false`).
+              mean_depth, min_depth, pct_ge_min_depth, dropped (`true`/`false`). A multi-contig table has a
+              trailing `contig` column; --contig C then keeps only the rows of that contig (the contig the
+              dataset's positions refer to) and is required.
 --aggregated  summary/freyja_aggregated.tsv: Freyja aggregate (unnamed index column = sample; the
               `lineages` and `abundances` columns are parallel lists, as plain space-separated text or
               as a Python/numpy repr). `summarized` is NOT used (it is a regrouping of the same estimate).
@@ -586,18 +588,33 @@ def detected_lineages(pairs, min_abundance):
 # ---------------------------------------------------------------------------------------------
 # Amplicon table
 # ---------------------------------------------------------------------------------------------
-def load_amplicons(path):
-    """amplicon_coverage.tsv -> {sample: [row dict]} (every sample, dropped or not)."""
+def load_amplicons(path, contig=None):
+    """amplicon_coverage.tsv -> {sample: [row dict]} (every sample, dropped or not).
+
+    A table with a `contig` column needs `contig`: only that contig's rows are kept (a sample without any
+    stays in the result with no rows). Without the column `contig` is not used.
+    """
     samples = {}
     with open(path, newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         missing = [c for c in AMPLICON_REQUIRED if c not in (reader.fieldnames or [])]
         if missing:
             raise ValueError(f"{path}: missing column(s) {missing}")
+        has_contig = "contig" in (reader.fieldnames or [])
+        if has_contig and not contig:
+            raise ValueError(
+                f"{path}: the table has a 'contig' column (several contigs): pass --contig"
+            )
+        seen_contigs = set()
         for line_number, row in enumerate(reader, start=2):
             sample = (row["sample"] or "").strip()
             if not sample:
                 continue
+            if has_contig:
+                seen_contigs.add(row["contig"])
+                samples.setdefault(sample, [])
+                if row["contig"] != contig:
+                    continue
             try:
                 start, end = int(float(row["start"])), int(float(row["end"]))
             except (TypeError, ValueError):
@@ -610,6 +627,10 @@ def load_amplicons(path):
                     "mean_depth": row["mean_depth"],
                     "dropped": str(row["dropped"]).strip().lower() in {"true", "t", "1", "yes"},
                 }
+            )
+        if has_contig and seen_contigs and contig not in seen_contigs:
+            raise ValueError(
+                f"{path}: --contig {contig!r} not in the table (contigs: {', '.join(sorted(seen_contigs))})"
             )
     return samples
 
@@ -742,7 +763,7 @@ def run(args):
         lineages, args.informative_max_fraction, Hierarchy(lineages, entries), args.strict_roots
     )
 
-    amplicons = load_amplicons(args.amplicons)
+    amplicons = load_amplicons(args.amplicons, args.contig)
     aggregated = load_aggregated(args.aggregated, set(amplicons), warn)
 
     unknown = set()
@@ -816,6 +837,12 @@ def parse_args(argv=None):
         default=0.95,
         help="a mutation is informative when carried by fewer than this fraction of the dataset's "
         "lineages (default 0.95)",
+    )
+    parser.add_argument(
+        "--contig",
+        default=None,
+        help="multi-contig amplicon table: keep the rows of this contig only (required when the table "
+        "has a `contig` column)",
     )
     parser.add_argument("--out", required=True, help="dropout_impact.tsv")
     parser.add_argument("--summary-out", required=True, help="dropout_impact_summary.tsv")

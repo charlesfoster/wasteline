@@ -48,3 +48,23 @@ def test_main_and_concat_sorted_with_reason_column(tmp_path):
     assert lines[0].split("\t") == cs.COLUMNS
     assert [line.split("\t")[0] for line in lines[1:]] == ["a-1", "b_2", "c"]
     assert lines[1].split("\t")[5:] == ["failed", "boom"]
+
+
+def test_contig_out_aggregates_several_records_and_the_flag_is_needed(tmp_path):
+    f = fasta(tmp_path, ">S1|segA d\nACGTNNRA\n>S1|segB\nNNNN\nNN\n>S1|segC\nACGTAC\n")
+    out, contigs = tmp_path / "o.tsv", tmp_path / "c.tsv"
+    args = ["--fasta", f, "--sample", "S1", "--contig-out", str(contigs), "-o", str(out)]
+    assert cs.main(args) == 0
+    # total 20, N 2 + 6 + 0, one IUPAC code: (20 - 8) / 20
+    assert out.read_text().splitlines()[1].split("\t") == [
+        "S1", "20", "8", "60.00", "1", "ok", "NA",
+    ]  # fmt: skip
+    lines = [line.split("\t") for line in contigs.read_text().splitlines()]
+    assert lines[0] == cs.CONTIG_COLUMNS
+    assert lines[1:] == [
+        ["S1", "segA", "8", "2", "75.00", "1", "ok"],
+        ["S1", "segB", "6", "6", "0.00", "0", "empty"],
+        ["S1", "segC", "6", "0", "100.00", "0", "ok"],
+    ]
+    # without the flag several records stay an error row
+    assert cs.compute_row("S1", f)[5] == "failed"

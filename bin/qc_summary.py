@@ -6,7 +6,8 @@ Two modes:
   qc_summary.py --sample S --sample-type sample --depths S.depths [--flagstat S.flagstat]
                 [--fastp-json S.fastp.json] [--amplicons S.amplicon_coverage.tsv]
                 [--ivar-trim-stats S.ivar_trim_stats.tsv]
-                [--primer-scheme-summary S.primer_scheme_summary.tsv] -o S.qc.tsv
+                [--primer-scheme-summary S.primer_scheme_summary.tsv]
+                [--contig-table S.contig_coverage.tsv] [--warn-contig-below-pct X] -o S.qc.tsv
       writes one row (with header).
 
   qc_summary.py --concat a.tsv b.tsv ... -o qc_summary.tsv
@@ -26,12 +27,22 @@ QC status:
           never FAIL by itself, and only when the value is known)
     PASS  otherwise
           primer_scheme_check == mismatch (reads' 5' ends fit another primer scheme; always on, WARN only)
-    reasons: low_coverage, amplicon_dropout, low_primer_trimming, primer_scheme_mismatch, no_reads
+          any contig with pct_genome_ge_min_depth below --warn-contig-below-pct (default 0 = rule off; multi-contig
+          references: the whole-genome numbers can look fine while one segment is missing; WARN only, never FAIL by
+          itself)
+    reasons: low_coverage, amplicon_dropout, low_primer_trimming, primer_scheme_mismatch, contig_low_coverage,
+             no_reads
   sample_type=negative
     FAIL  mapped_reads > --ntc-max-mapped-reads (1000) or pct_genome_ge_1x > --ntc-max-genome-coverage-pct (10)
     PASS  otherwise (never low_coverage)
     reasons: ntc_reads
-  Unreadable/empty depths: samples FAIL with `no_depths`; negatives are judged on whatever is available
+  Multi-contig references: the depths file holds every position of every contig, so all `qc_summary.tsv` numbers are
+already length-weighted whole-genome values. `--contig-table` additionally writes one row per contig (columns sample,
+contig, length, mean_depth, median_depth, pct_ge_1x, pct_ge_10x, pct_ge_min_depth, amplicons_total,
+amplicons_dropped; the amplicon counts come from the `contig` column of --amplicons, NA without --amplicons or
+without that column, 0 for a contig with no amplicons); the file is header-only when the depths are unusable.
+
+Unreadable/empty depths: samples FAIL with `no_depths`; negatives are judged on whatever is available
   (flagstat only) and are NA/`no_depths` when nothing is.
 """
 
@@ -73,11 +84,26 @@ COLUMNS = [
     "primer_scheme_enrichment",
 ]
 SCHEME_CHECKS = ("ok", "mismatch", "uninformative", "NA")
+CONTIG_COLUMNS = [
+    "sample",
+    "contig",
+    "length",
+    "mean_depth",
+    "median_depth",
+    "pct_ge_1x",
+    "pct_ge_10x",
+    "pct_ge_min_depth",
+    "amplicons_total",
+    "amplicons_dropped",
+]
 NA = "NA"
 
 
-def read_depth_values(path):
-    """Return the list of depths from a Freyja depths file; ValueError if unreadable or empty."""
+def read_depth_values(path, per_contig=None):
+    """Return the list of depths from a Freyja depths file; ValueError if unreadable or empty.
+
+    When `per_contig` is a dict it is filled with contig -> list of depths (file order).
+    """
     values = []
     try:
         with open(path) as handle:
@@ -91,7 +117,10 @@ def read_depth_values(path):
                         f"{path}: line {line_number} has {len(fields)} columns, expected at least 4"
                     )
                 try:
-                    values.append(int(float(fields[3])))
+                    depth = int(float(fields[3]))
+                    values.append(depth)
+                    if per_contig is not None:
+                        per_contig.setdefault(fields[0], []).append(depth)
                 except ValueError as exc:
                     raise ValueError(f"{path}: line {line_number}: non-numeric depth") from exc
     except OSError as exc:
@@ -157,8 +186,12 @@ def parse_fastp(path):
     )
 
 
-def parse_amplicons(path, sample):
-    """Return (total, dropped) for the sample from an amplicon_coverage.tsv."""
+def parse_amplicons(path, sample, per_contig=None):
+    """Return (total, dropped) for the sample from an amplicon_coverage.tsv.
+
+    When `per_contig` is a dict and the table has a `contig` column, it is filled with
+    contig -> [total, dropped].
+    """
     total = dropped = 0
     with open(path) as handle:
         header = handle.readline().rstrip("\r\n").split("\t")
@@ -166,6 +199,7 @@ def parse_amplicons(path, sample):
             raise ValueError(f"{path}: no 'dropped' column")
         i_drop = header.index("dropped")
         i_sample = header.index("sample") if "sample" in header else None
+        i_contig = header.index("contig") if "contig" in header else None
         for line in handle:
             fields = line.rstrip("\r\n").split("\t")
             if len(fields) <= i_drop:
@@ -174,6 +208,10 @@ def parse_amplicons(path, sample):
                 continue
             total += 1
             dropped += fields[i_drop].lower() == "true"
+            if per_contig is not None and i_contig is not None and len(fields) > i_contig:
+                counts = per_contig.setdefault(fields[i_contig], [0, 0])
+                counts[0] += 1
+                counts[1] += fields[i_drop].lower() == "true"
     return total, dropped
 
 
@@ -248,6 +286,7 @@ def assess(
     args,
     primer_trimmed_pct=None,
     scheme_check=None,
+    contig_low=False,
 ):
     """Return (qc_status, [reasons])."""
     reasons = []
@@ -274,6 +313,8 @@ def assess(
         warn_only.append("low_primer_trimming")
     if scheme_check == "mismatch":
         warn_only.append("primer_scheme_mismatch")
+    if contig_low:
+        warn_only.append("contig_low_coverage")
     if stats is None:
         return "FAIL", ["no_depths", *warn_only]
     if mapped_reads == 0 or stats["all_zero"]:
@@ -301,8 +342,9 @@ def build_row(args):
     notes = []
 
     stats = None
+    contig_depths = {} if (args.contig_table or args.warn_contig_below_pct > 0) else None
     try:
-        values = read_depth_values(args.depths)
+        values = read_depth_values(args.depths, contig_depths)
         stats = depth_stats(values, args.consensus_min_depth)
         stats["ge_status"] = 100.0 * sum(1 for v in values if v >= args.min_depth) / len(values)
     except ValueError as exc:
@@ -324,9 +366,10 @@ def build_row(args):
             notes.append(f"fastp: {exc}")
 
     amp_total = amp_dropped = None
+    contig_amplicons = {} if args.contig_table else None
     if args.amplicons:
         try:
-            amp_total, amp_dropped = parse_amplicons(args.amplicons, args.sample)
+            amp_total, amp_dropped = parse_amplicons(args.amplicons, args.sample, contig_amplicons)
         except (OSError, ValueError) as exc:
             notes.append(f"amplicons: {exc}")
 
@@ -352,6 +395,21 @@ def build_row(args):
         if denom:
             mapped_pct = 100.0 * mapped_reads / denom
 
+    contig_rows = []
+    if contig_depths and stats is not None:
+        counts = None  # contig -> [total, dropped]; None = NA
+        if amp_total is not None:
+            if contig_amplicons or amp_total == 0:
+                counts = contig_amplicons
+            elif len(contig_depths) == 1:  # a single-contig table has no `contig` column
+                counts = {next(iter(contig_depths)): [amp_total, amp_dropped]}
+        contig_rows = contig_table_rows(
+            args.sample, contig_depths, args.consensus_min_depth, counts
+        )
+    contig_low = args.warn_contig_below_pct > 0 and any(
+        float(r["pct_ge_min_depth"]) < args.warn_contig_below_pct for r in contig_rows
+    )
+
     status, reasons = assess(
         args.sample_type,
         stats,
@@ -360,7 +418,10 @@ def build_row(args):
         args,
         primer_trimmed_pct,
         scheme_check,
+        contig_low,
     )
+    if args.contig_table:
+        write_table(args.contig_table, CONTIG_COLUMNS, contig_rows)
 
     row = {c: NA for c in COLUMNS}
     row.update(
@@ -399,12 +460,42 @@ def build_row(args):
     return row
 
 
-def write_rows(path, rows):
+def write_table(path, columns, rows):
     handle = sys.stdout if path == "-" else open(path, "w")  # noqa: SIM115
     with contextlib.nullcontext(handle) if path == "-" else handle as out:
-        out.write("\t".join(COLUMNS) + "\n")
+        out.write("\t".join(columns) + "\n")
         for row in rows:
-            out.write("\t".join(row[c] for c in COLUMNS) + "\n")
+            out.write("\t".join(row[c] for c in columns) + "\n")
+
+
+def write_rows(path, rows):
+    write_table(path, COLUMNS, rows)
+
+
+def contig_table_rows(sample, contig_depths, min_depth, contig_amplicons):
+    """One row per contig (file order) of the depths: the depth statistics of that contig alone.
+
+    `contig_amplicons` is contig -> [total, dropped] (None: no usable amplicon table, counts are NA).
+    """
+    rows = []
+    for contig, values in contig_depths.items():
+        st = depth_stats(values, min_depth)
+        counts = None if contig_amplicons is None else contig_amplicons.get(contig, [0, 0])
+        rows.append(
+            {
+                "sample": sample,
+                "contig": contig,
+                "length": str(st["positions"]),
+                "mean_depth": fmt(st["mean"]),
+                "median_depth": fmt(st["median"]),
+                "pct_ge_1x": fmt(st["ge1"]),
+                "pct_ge_10x": fmt(st["ge10"]),
+                "pct_ge_min_depth": fmt(st["ge_min"]),
+                "amplicons_total": NA if counts is None else str(counts[0]),
+                "amplicons_dropped": NA if counts is None else str(counts[1]),
+            }
+        )
+    return rows
 
 
 def concat(paths):
@@ -485,6 +576,18 @@ def main(argv=None):
         type=float,
         default=0.0,
         help="WARN (low_primer_trimming) when a sample's primer_trimmed_pct is below this (default 0 = off)",
+    )
+    p.add_argument(
+        "--contig-table",
+        help="also write one row per contig of --depths (sample, contig, length, mean/median depth, "
+        "pct_ge_1x/10x/min_depth, amplicon counts) to this file (multi-contig references)",
+    )
+    p.add_argument(
+        "--warn-contig-below-pct",
+        type=float,
+        default=0.0,
+        help="WARN (contig_low_coverage) when any contig has pct_ge_min_depth below this "
+        "(default 0 = off; never FAIL by itself)",
     )
     p.add_argument("--ntc-max-mapped-reads", type=int, default=1000)
     p.add_argument("--ntc-max-genome-coverage-pct", type=float, default=10.0)

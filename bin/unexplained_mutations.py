@@ -54,7 +54,9 @@ FASTA with the translator of mutations_of_interest.py (ivar's own annotation col
 ivar ran with --annot). A position inside several CDS (ORF1a/ORF1ab, ORF7a/ORF7b) lists the genes joined by `;`
 (ORF1a is dropped when ORF1ab covers its change; at the ORF1ab slippage base two codons can be listed joined by
 `/`); effect is the most severe. Without --gff/--reference these
-three columns are NA.
+three columns are NA. `--contig C` (multi-contig references) picks the FASTA record, the GFF3 seqid and, when it
+holds several contigs, the REGION rows of the variants TSV that belong to C; several contigs without `--contig`
+(or an unknown one) is an error (exit 2), never the first record.
 
 Per-sample columns: sample, position, ref, alt, observed_freq, expected_freq, excess, depth, alt_depth, gene,
 aa_change, effect, p_value, in_dataset.
@@ -298,8 +300,11 @@ def _float(value):
         return None
 
 
-def read_variants(path):
-    """Return (rows, n_indel). Rows: dict pos, ref, alt, alt_dp, total_dp, alt_qual, freq (SNVs only, deduplicated)."""
+def read_variants(path, contig=None):
+    """Return (rows, n_indel). Rows: dict pos, ref, alt, alt_dp, total_dp, alt_qual, freq (SNVs only, deduplicated).
+
+    A variants table with several contigs in REGION needs `contig` and keeps that contig's rows only.
+    """
     rows = []
     seen = set()
     n_indel = 0
@@ -310,12 +315,14 @@ def read_variants(path):
         if missing:
             raise ValueError(f"{path}: missing columns {', '.join(missing)}")
         idx = {c: i for i, c in enumerate(header)}
-        for line in handle:
-            line = line.rstrip("\r\n")
-            if not line.strip():
-                continue
+        lines = [line.rstrip("\r\n") for line in handle]
+        lines = [line for line in lines if line.strip()]
+        keep_region = moi.region_filter(path, header, lines, contig)
+        for line in lines:
             f = line.split("\t")
             f += [NA] * (len(header) - len(f))
+            if keep_region is not None and f[idx["REGION"]] != keep_region:
+                continue
             ref, alt = f[idx["REF"]], f[idx["ALT"]]
             if len(alt) != 1 or len(ref) != 1 or alt not in "ACGT" or ref not in "ACGT":
                 n_indel += 1
@@ -519,8 +526,8 @@ def run_sample(args):
     }
     if bool(args.gff) != bool(args.reference):
         raise ValueError("--gff and --reference must be given together")
-    models = moi.read_cds_models(args.gff) if args.gff else None
-    reference = moi.read_fasta_sequence(args.reference) if args.reference else None
+    models = moi.read_cds_models(args.gff, args.contig) if args.gff else None
+    reference = moi.read_fasta_sequence(args.reference, args.contig) if args.reference else None
 
     def header_only(reason):
         warn(f"{args.sample}: {reason}; no unexplained mutations called")
@@ -534,7 +541,9 @@ def run_sample(args):
     except (OSError, ValueError) as exc:
         return header_only(f"demix unusable ({exc})")
     try:
-        rows, n_indel = read_variants(args.variants)
+        rows, n_indel = read_variants(args.variants, args.contig)
+    except moi.ContigError:
+        raise
     except (OSError, ValueError) as exc:
         return header_only(f"variants unusable ({exc})")
     if not args.dataset:
@@ -622,6 +631,11 @@ def main(argv=None):
     p.add_argument("--sample")
     p.add_argument("--gff", help="GFF3 with CDS features (gene / amino-acid annotation)")
     p.add_argument("--reference", help="reference FASTA (with --gff)")
+    p.add_argument(
+        "--contig",
+        help="multi-contig references: the contig of --reference / --gff (and of the variants REGION "
+        "column when it holds several) to use; required then (error otherwise)",
+    )
     p.add_argument("--min-depth", type=int, default=20)
     p.add_argument("--min-alt-depth", type=int, default=10)
     p.add_argument("--min-freq", type=float, default=0.05)
