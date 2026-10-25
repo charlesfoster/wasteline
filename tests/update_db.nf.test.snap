@@ -9,7 +9,7 @@
                     "freyja": "2.0.6"
                 },
                 "Workflow": {
-                    "charlesfoster/wasteline": "v0.1.0dev"
+                    "charlesfoster/wasteline": "v0.1.0"
                 }
             }
         ],

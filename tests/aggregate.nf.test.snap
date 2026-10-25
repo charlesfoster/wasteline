@@ -21,7 +21,7 @@
                     "python": "3.12.12"
                 },
                 "Workflow": {
-                    "charlesfoster/wasteline": "v0.1.0dev"
+                    "charlesfoster/wasteline": "v0.1.0"
                 }
             }
         ],

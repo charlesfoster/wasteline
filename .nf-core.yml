@@ -44,7 +44,7 @@ template:
   description: Wastewater SARS-CoV-2 lineage abundance pipeline (Illumina amplicon,
     Freyja)
   author: Charles Foster
-  version: 0.1.0dev
+  version: 0.1.0
   force: true
   skip_features:
     - nf_core_configs

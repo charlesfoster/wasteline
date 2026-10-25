@@ -3,7 +3,7 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v0.1.0dev - Unreleased
+## v0.1.0 - 2026-10-26
 
 Initial release of charlesfoster/wasteline: a Nextflow DSL2 (nf-core style) port of the wastewater workflow of
 [covid-illumina-snakemake](https://github.com/charlesfoster/covid-illumina-snakemake) for Illumina amplicon SARS-CoV-2
