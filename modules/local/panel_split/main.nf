@@ -8,11 +8,12 @@ process PANEL_SPLIT {
         : 'community.wave.seqera.io/library/htslib_samtools:1.24--d697cfb9dce007cd'}"
 
     input:
-    // bam: the sample's reads mapped to panel.fasta (any order). target: the panel target to cut out. meta is passed through
-    // (give it the per-target meta).
-    tuple val(meta), path(bam)
+    // bam: the sample's reads mapped to panel.fasta (any order). meta is the PER-TARGET meta (sampleMeta(..., target)): the target
+    // to cut out is meta.target.name. meta is passed through.
+    // The BAM is staged in a subdirectory: it is usually named <id>.bam, the name of the output, and `samtools sort -o` writes
+    // through a symlink (it would overwrite the upstream task's BAM in its work directory, and the splits of one sample race).
+    tuple val(meta), path(bam, stageAs: 'panel_mapped/*')
     path contig_map
-    val target
 
     output:
     // same shape as BAM_MAPPED_READS.out.counted: the BAM holds only this target's contigs under their ORIGINAL names (the legacy
@@ -25,6 +26,7 @@ process PANEL_SPLIT {
 
     script:
     prefix = task.ext.prefix ?: "${meta.id}"
+    def target = meta.target.name
     // Not interpolated (''' string). Primary records on the target's contigs are kept (secondary/supplementary are dropped upstream);
     // @SQ lines of other targets are dropped; contig names go back to the original; a mate that lies on another target (a discordant
     // fragment) is flagged as an unmapped mate, as samtools writes it, so the record does not point outside the trimmed header.

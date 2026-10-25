@@ -74,3 +74,45 @@ A 2-target mini panel (H1 and H3, HA marker + NA non-marker, NA 3 % diverged), 1
 real `samtools 1.24` container: stats H1 100 fragments / 1 ambiguous / 20000 bases / breadth 99.00 / depth 13.33, H3 30 / 1 / 6000 / 98.60 / 4.00,
 `panel_fragments` 171 (the 40 NA pairs count there only); calls H1 `detected`, H3 `trace` `low_fragments(30<100)`; split of H1: 281 mapped reads,
 `@SQ SN:HA`/`SN:NA` (original names), `samtools quickcheck` ok, the discordant pair flag 73.
+
+## U2: panel_front (subworkflow, not yet called)
+
+`subworkflows/local/panel_front/main.nf`, `workflow PANEL_FRONT`. Maps every sample to the panel once, types it, applies the negative-control
+barrier and cuts one BAM per analysed (sample, target) pair. U3 calls it from `workflows/wasteline.nf`.
+
+**take**
+- `ch_reads`: `[ meta, reads ]` after FASTP. `meta.id` and `meta.sample_type` are used; `collection_date`, `site`, `viral_load` are copied into the per-target
+  meta. The sample's library cells come from `meta.protocol_cell` (or, failing that, `meta.protocol`) and `meta.primer_scheme_cell`: the RAW samplesheet
+  cells (null = the run defaults). The resolved `meta.primer_scheme` / `primer_bed` of a pre-split meta are NOT reused, because they depend on the target;
+  the per-target meta is rebuilt with `sampleMeta(sample, mode, target)` (which calls `libraryMeta` with that target's schemes).
+- `panel_targets`: the list of target maps (`targetsFromParams()`), in panel order. (Not called `targets`: that name is also an emit and shadows the
+  take inside closures.)
+- `mode`: `'full'`.
+
+**What it does.** `panel_resolved.csv` (absolute FASTA paths; written under `workflow.workDir/wasteline_panel/<digest>/`, not rewritten when it is
+there, so `-resume` holds) + the distinct FASTAs (a shared FASTA once; two different files with one name are refused) -> PANEL_PREPARE -> BWA_INDEX +
+BWA_MEM (`params.aligner == 'minibwa'` is refused) -> PANEL_ASSIGN (`params.panel_mapq`) -> PANEL_CALL (`panel_min_fragments`, `panel_min_breadth_pct`,
+`panel_family_share_pct`) -> barrier (`toList` of all samples' targets files) -> PANEL_SPLIT per analysed pair.
+
+**Analysed pairs.** A non-negative sample: its `detected` targets. A negative control (`meta.sample_type == 'negative'`): every target detected in at
+least one NON-negative sample, whatever its own call (so a control with no panel reads still gets an empty BAM, count 0, per such target; it flows on as
+the single-target path's empty-BAM branch). `trace` / `not_detected` rows of non-negative samples are not split. The `analysed` column of negative
+controls is rewritten accordingly (a negative control that is detected for a target no other sample carries gets `false`). One log line:
+`panel: N samples x M targets: X analysed, Y trace, Z not detected` (Y and Z count the rows that are not analysed; a trailing clause names
+negative-control-only detections).
+
+**emit**
+- `mapped`: `[ meta_t, bam, bai, mapped_reads.txt ]` (PANEL_SPLIT.out.counted), one per analysed pair. `meta_t` = `sampleMeta(...)`, so `meta.target`,
+  `meta.key` (`<id>__<target>`), the library settings (protocol, primer_trimming, duplicates, primer_scheme, primer_bed) are set. BAM contigs carry the target's
+  original names.
+- `targets`: the run's `summary/targets.tsv` (one item; also stored in `${params.outdir}/summary` through `collectFile storeDir`): header once, samples
+  sorted by id, panel order within a sample, columns exactly as above.
+- `typing`: `[ meta, <id>.targets.tsv ]` per sample (the pre-split meta). `contig_map`, `panel_fasta`: PANEL_PREPARE's outputs (value-like, one item).
+- `analysed_pairs`: one item, a list of `[ sample id, target name ]`.
+
+**PANEL_SPLIT changed**: input is now `tuple val(meta), path(bam)` + `path contig_map`; the target is `meta.target.name` (the separate `val target` is
+gone). The BAM is staged under `panel_mapped/` because it is named like the output and `samtools sort -o` writes through a symlink (found in the first
+real run: it overwrote the upstream BWA_MEM BAM and the two splits of one sample raced).
+
+Checked (2026-10-26, scratch wrapper outside the repo, real docker run, RSV panel, `panel_min_fragments=50`, ~300 pairs/sample): pure RSVa, pure
+RSVb, 70/30 mix (`mixed=true`, 213 / 91 fragments), RSVa + 41 RSVb fragments (`trace`, not split), NTC with 5 RSVa pairs (analysed for RSVa and RSVb).

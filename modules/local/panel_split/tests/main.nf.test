@@ -15,9 +15,8 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = [ [ id:'S_1' ], file("\$projectDir/assets/samplesheet.csv") ]
+                input[0] = [ [ id:'S_1', target:[ name:'RSVa' ] ], file("\$projectDir/assets/samplesheet.csv") ]
                 input[1] = file("\$projectDir/assets/schema_input.json")
-                input[2] = 'RSVa'
                 """
             }
         }
