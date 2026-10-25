@@ -1,0 +1,32 @@
+nextflow_process {
+
+    name "Test Process PANEL_SPLIT"
+    script "../main.nf"
+    process "PANEL_SPLIT"
+    tag "modules"
+    tag "modules_local"
+    tag "panel_split"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/assets/samplesheet.csv") ]
+                input[1] = file("\$projectDir/assets/schema_input.json")
+                input[2] = 'RSVa'
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.counted.collect { m, b, i, c -> [ m, file(b.toString()).name, file(i.toString()).name, file(c.toString()).name ] }).match() }
+            )
+        }
+    }
+}

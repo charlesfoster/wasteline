@@ -1,0 +1,21 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.bam",
+                    "S_1.bam.bai",
+                    "S_1.mapped_reads.txt"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-26T10:35:39.488719",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

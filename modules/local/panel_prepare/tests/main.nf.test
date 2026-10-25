@@ -1,0 +1,31 @@
+nextflow_process {
+
+    name "Test Process PANEL_PREPARE"
+    script "../main.nf"
+    process "PANEL_PREPARE"
+    tag "modules"
+    tag "modules_local"
+    tag "panel_prepare"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = file("\$projectDir/assets/samplesheet.csv")
+                input[1] = [ file("\$projectDir/assets/schema_input.json") ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.fasta.collect { file(it.toString()).name } + process.out.contig_map.collect { file(it.toString()).name }).match() }
+            )
+        }
+    }
+}

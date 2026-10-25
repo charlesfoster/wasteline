@@ -1,0 +1,20 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1",
+                        "sample_type": "sample"
+                    },
+                    "S_1.targets.tsv"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-26T10:35:32.346548",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}

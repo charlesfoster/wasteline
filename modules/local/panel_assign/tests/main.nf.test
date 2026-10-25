@@ -1,0 +1,32 @@
+nextflow_process {
+
+    name "Test Process PANEL_ASSIGN"
+    script "../main.nf"
+    process "PANEL_ASSIGN"
+    tag "modules"
+    tag "modules_local"
+    tag "panel_assign"
+
+    test("stub") {
+
+        tag "stub"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [ [ id:'S_1' ], file("\$projectDir/assets/samplesheet.csv") ]
+                input[1] = file("\$projectDir/assets/schema_input.json")
+                input[2] = 10
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out.stats.collect { m, f -> [ m, file(f.toString()).name ] }).match() }
+            )
+        }
+    }
+}

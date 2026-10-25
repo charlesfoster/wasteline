@@ -1,0 +1,19 @@
+{
+    "stub": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "S_1"
+                    },
+                    "S_1.panel_stats.tsv"
+                ]
+            ]
+        ],
+        "timestamp": "2026-10-26T10:35:26.999511",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.10.0"
+        }
+    }
+}
