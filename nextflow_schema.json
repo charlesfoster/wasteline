@@ -227,6 +227,59 @@
                 }
             }
         },
+        "panel_options": {
+            "title": "Panel options",
+            "type": "object",
+            "fa_icon": "fas fa-layer-group",
+            "description": "Several targets (pathogens) in one run. In development: panel runs are not available in this build yet.",
+            "properties": {
+                "panel": {
+                    "type": "string",
+                    "description": "Analyse several targets in one run: a built-in panel name (`rsv`: RSVa, RSVb; `flu`: H1N1, H3N2, H5Nx, FLU-B-VIC) or the path to a panel CSV.",
+                    "help_text": "A panel CSV has a `target` column naming rows of assets/panels/registry.csv (the Freyja pathogens with barcodes) and optional columns that override a registry column of that target (for example `primer_scheme`). Each sample is typed against the panel and every detected target is analysed with its own reference and barcodes. Cannot be combined with `--pathogen`, `--fasta`, `--gff`, `--freyja_contig` or `--whole_genome`. See docs/usage.md (Panels).",
+                    "fa_icon": "fas fa-layer-group"
+                },
+                "targets": {
+                    "type": "string",
+                    "description": "Comma-separated targets of the results of a panel run that modes `demix`, `aggregate` and `report` should use (default: all targets).",
+                    "help_text": "For example `--targets RSVa,RSVb`. Names are those of the panel's targets (assets/panels/registry.csv). Not used by `--mode full`, which analyses every target of the panel.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "panel_min_fragments": {
+                    "type": "integer",
+                    "default": 100,
+                    "minimum": 1,
+                    "description": "A target is detected in a sample only with at least this many read fragments assigned to it.",
+                    "help_text": "Typing thresholds are not calibrated on real data yet. A target with some fragments that misses a threshold is reported as `trace` (listed in summary/targets.tsv, not analysed).",
+                    "fa_icon": "fas fa-ruler"
+                },
+                "panel_min_breadth_pct": {
+                    "type": "number",
+                    "default": 5,
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "A target is detected only if at least this % of its marker sequence is covered by its fragments.",
+                    "fa_icon": "fas fa-ruler"
+                },
+                "panel_family_share_pct": {
+                    "type": "number",
+                    "default": 5,
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Within a family (for example RSV, or influenza A) a target that is not the top one is detected only with at least this % of the family's fragments.",
+                    "help_text": "Guards against cross-mapping between close relatives (RSVa and RSVb) inflating a minor target.",
+                    "fa_icon": "fas fa-ruler"
+                },
+                "panel_mapq": {
+                    "type": "integer",
+                    "default": 10,
+                    "minimum": 0,
+                    "maximum": 60,
+                    "description": "A read fragment is assigned to a target only if all its mapped reads have at least this mapping quality on the target's contigs.",
+                    "fa_icon": "fas fa-ruler"
+                }
+            }
+        },
         "read_trimming_and_bam_options": {
             "title": "Read trimming and BAM options",
             "type": "object",
@@ -1082,6 +1135,9 @@
         },
         {
             "$ref": "#/$defs/reference_and_primer_options"
+        },
+        {
+            "$ref": "#/$defs/panel_options"
         },
         {
             "$ref": "#/$defs/read_trimming_and_bam_options"

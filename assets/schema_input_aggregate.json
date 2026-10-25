@@ -4,7 +4,7 @@
     "title": "charlesfoster/wasteline pipeline - params.input schema (mode 'aggregate')",
     "description": "Schema for the samplesheet provided with params.input in mode 'aggregate': existing Freyja .demix files",
     "type": "array",
-    "uniqueEntries": ["sample"],
+    "uniqueEntries": ["sample", "target"],
     "items": {
         "type": "object",
         "properties": {
@@ -39,6 +39,11 @@
                 "type": "string",
                 "errorMessage": "site must be a string",
                 "meta": ["site"]
+            },
+            "target": {
+                "type": "string",
+                "errorMessage": "target must be a string: the name of a panel target, or left blank for all targets (single-target runs)",
+                "meta": ["target"]
             },
             "viral_load": {
                 "type": "number",

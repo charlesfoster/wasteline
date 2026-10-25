@@ -1,0 +1,11 @@
+target,fasta,gff,freyja_pathogen,freyja_contig,marker_contig,family,primer_scheme_default,primer_schemes_bundled,lineage_groups_bundled,freyja_container_pathogen,barcodes
+SARS-CoV-2,assets/references/NC_045512.fasta,assets/references/NC_045512.gff3,SARS-CoV-2,,,,qiagenv1,assets/primer_schemes,assets/lineage_groups.csv,SARS-CoV-2,
+MPX,assets/references/NC_063383.1.fasta,assets/references/NC_063383.1.gff3,MPX,,,,,assets/primer_schemes/mpx,,,
+H5Nx,assets/references/AF144305.1_wg.fasta,assets/references/AF144305.1_wg.gff3,H5Nx,AF144305.1,AF144305.1,fluA,,,,,
+H5Nx-cattle,assets/references/AF144305.1_wg.fasta,assets/references/AF144305.1_wg.gff3,H5Nx-cattle,AF144305.1,AF144305.1,fluA,,,,,
+H1N1,assets/references/CY121680.1_wg.fasta,assets/references/CY121680.1_wg.gff3,H1N1,CY121680.1,CY121680.1,fluA,,,,,
+H3N2,assets/references/CY163680.1_wg.fasta,assets/references/CY163680.1_wg.gff3,H3N2,CY163680.1,CY163680.1,fluA,,,,,
+FLU-B-VIC,assets/references/KX058884.1.fasta,assets/references/KX058884.1.gff3,FLU-B-VIC,,KX058884.1,fluB,,,,,
+MEASLESgenome,assets/references/NC_001498.1.fasta,,MEASLESgenome,,,,,assets/primer_schemes/measles,,,
+RSVa,assets/references/PP109421.1.fasta,assets/references/PP109421.1.gff3,RSVa,,,rsv,,assets/primer_schemes/rsva,,,
+RSVb,assets/references/OP975389.1.fasta,assets/references/OP975389.1.gff3,RSVb,,,rsv,,assets/primer_schemes/rsvb,,,

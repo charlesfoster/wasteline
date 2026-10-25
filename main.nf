@@ -128,6 +128,12 @@ params {
     consensus_min_depth_variants    : Integer = 10
     consensus_iupac_min_af          : Float = 0.25
     consensus_iupac_min_alt_reads   : Integer = 5
+    panel                           : String? = null
+    targets                         : String? = null
+    panel_min_fragments             : Integer = 100
+    panel_min_breadth_pct           : Float = 5
+    panel_family_share_pct          : Float = 5
+    panel_mapq                      : Integer = 10
 }
 
 /*

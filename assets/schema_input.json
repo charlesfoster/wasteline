@@ -58,6 +58,11 @@
                 "errorMessage": "primer_scheme must be a bundled scheme name or the path to a primer BED file, or left blank for the run's --primer_scheme/--primer_bed",
                 "meta": ["primer_scheme"]
             },
+            "target": {
+                "type": "string",
+                "errorMessage": "target must be a string: the name of a panel target, or left blank for all targets (single-target runs)",
+                "meta": ["target"]
+            },
             "viral_load": {
                 "type": "number",
                 "exclusiveMinimum": 0,

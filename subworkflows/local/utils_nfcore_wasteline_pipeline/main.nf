@@ -223,6 +223,11 @@ def finaliseRunInfo(outdir) {
 //
 // The target of the run (the reference a sample is analysed against) from the effective parameters, i.e. after the
 // conf/pathogens/*.config defaults, --fasta / --gff and --whole_genome. With one target every sample carries this map.
+// A target map has the same keys whether it comes from here (single-target run) or from targetByName() (panel run):
+//   name, freyja_pathogen, fasta, gff, freyja_contig, marker_contig, family, primer_scheme, primer_scheme_default,
+//   primer_schemes_bundled, lineage_groups_bundled, freyja_container_pathogen, barcodes, panel, sample_sub, summary_sub
+// panel is false here; sample_sub / summary_sub are the path suffixes of per-sample / run-level outputs ('' for a
+// single-target run, which keeps the legacy layout, and '/<name>' for a panel target).
 //
 def targetFromParams() {
     def pathogen = params.pathogen ?: params.freyja_container_pathogen
@@ -234,18 +239,202 @@ def targetFromParams() {
         freyja_contig: params.freyja_contig,
         marker_contig: null,
         family: null,
+        primer_scheme: null,
         primer_scheme_default: params.primer_scheme_default,
         primer_schemes_bundled: params.primer_schemes_bundled,
         lineage_groups_bundled: params.lineage_groups_bundled,
         freyja_container_pathogen: params.freyja_container_pathogen,
+        barcodes: null,
+        panel: false,
+        sample_sub: '',
+        summary_sub: '',
     ]
 }
 
 //
-// The key that identifies a sample within its target: the sample ID while a run has one target
+// The key that identifies a sample within its target: the sample ID while a run has one target, ID__target in a panel run
 //
 def targetKey(meta) {
-    return meta.id
+    return meta.target?.panel ? "${meta.id}__${meta.target.name}" : meta.id
+}
+
+//
+// The grouping key of the run-level steps (every step that summarises all samples of ONE target): [ id: target name, target ]
+//
+def tkey(meta) {
+    return [ id: meta.target.name, target: meta.target ]
+}
+
+//
+// Does a results directory come from a panel run (several targets)? Panel runs write summary/targets.tsv.
+//
+def resultsAreMultiTarget(dir) {
+    return file("${dir}/summary/targets.tsv").exists()
+}
+
+//
+// Panels (several targets in one run, --panel). assets/panels/registry.csv holds the facts of every target wasteline can
+// analyse (the Freyja pathogens that have barcodes); a panel file (assets/panels/<name>.csv or the user's own) lists the
+// targets of a run and may override any registry column of a target (and set primer_scheme).
+//
+def panelRegistryColumns() {
+    return [ 'target', 'fasta', 'gff', 'freyja_pathogen', 'freyja_contig', 'marker_contig', 'family', 'primer_scheme_default',
+        'primer_schemes_bundled', 'lineage_groups_bundled', 'freyja_container_pathogen', 'barcodes' ]
+}
+
+def splitCsvLine(line) {
+    return line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/, -1).collect { cell -> cell.trim().replaceAll(/^"|"$/, '') }
+}
+
+def readCsvRows(csv) {
+    def lines = file(csv, checkIfExists: true).readLines().findAll { line -> line.trim() }
+    def header = splitCsvLine(lines[0])
+    return lines.drop(1).collect { line ->
+        def cells = splitCsvLine(line)
+        header.indexed().collectEntries { i, name -> [ (name): i < cells.size() && cells[i] ? cells[i] : null ] }
+    }
+}
+
+def registryRows() {
+    return readCsvRows("${projectDir}/assets/panels/registry.csv")
+}
+
+//
+// A path cell of the registry (relative to base, the pipeline directory) or of a panel file (base null: relative to the launch
+// directory) as an absolute path. A barcodes cell may also be a keyword (latest, container, a date): only paths are changed.
+//
+def panelPath(key, value, base) {
+    if (!value || value.startsWith('/')) {
+        return value
+    }
+    def is_path = key != 'barcodes' || value.contains('/') || value.endsWith('.csv') || value.endsWith('.feather')
+    if (!is_path) {
+        return value
+    }
+    return base ? "${base}/${value}" : file(value).toAbsolutePath().toString()
+}
+
+//
+// A target of the registry as a target map (see targetFromParams()); overrides replace registry columns (empty = keep).
+// Paths of the registry are relative to the pipeline directory, paths of overrides to the launch directory.
+//
+def targetByName(name, overrides = [:]) {
+    def row = registryRows().find { r -> r.target == name }
+    if (!row) {
+        error("Unknown target '${name}': the targets wasteline can analyse are ${registryRows().collect { r -> r.target }.join(', ')} (assets/panels/registry.csv)")
+    }
+    def path_keys = [ 'fasta', 'gff', 'primer_schemes_bundled', 'lineage_groups_bundled', 'barcodes' ]
+    def values = row.collectEntries { key, value -> [ (key): key in path_keys ? panelPath(key, value, projectDir.toString()) : value ] }
+    overrides.findAll { key, value -> value != null && value != '' && key != 'target' }.each { key, value ->
+        values[key] = key in path_keys ? panelPath(key, value.toString(), null) : value
+    }
+    def panel = overrides.containsKey('panel') ? overrides.panel : true
+    return [
+        name: name,
+        freyja_pathogen: values.freyja_pathogen,
+        fasta: values.fasta,
+        gff: values.gff,
+        freyja_contig: values.freyja_contig,
+        marker_contig: values.marker_contig,
+        family: values.family,
+        primer_scheme: values.primer_scheme ?: null,
+        primer_scheme_default: values.primer_scheme_default,
+        primer_schemes_bundled: values.primer_schemes_bundled,
+        lineage_groups_bundled: values.lineage_groups_bundled,
+        freyja_container_pathogen: values.freyja_container_pathogen,
+        barcodes: values.barcodes,
+        panel: panel,
+        sample_sub: panel ? "/${name}" : '',
+        summary_sub: panel ? "/${name}" : '',
+    ]
+}
+
+//
+// The panel file of --panel: a built-in name (assets/panels/<name>.csv, e.g. rsv, flu) or the path to a panel CSV
+//
+def panelFile(spec) {
+    def name = spec.toString()
+    def builtin = file("${projectDir}/assets/panels/${name}.csv")
+    if (!name.contains('/') && !name.endsWith('.csv') && name != 'registry' && builtin.exists()) {
+        return builtin
+    }
+    def custom = file(name)
+    if (!custom.isFile()) {
+        def builtins = file("${projectDir}/assets/panels").listFiles().collect { f -> f.name }.findAll { n -> n.endsWith('.csv') && n != 'registry.csv' }.collect { n -> n.substring(0, n.length() - 4) }.sort()
+        error("--panel '${name}' is neither a built-in panel (${builtins.join(', ')}) nor an existing panel CSV file (a relative path is relative to the directory you launch Nextflow from)")
+    }
+    return custom
+}
+
+//
+// The targets of the run: [ targetFromParams() ] without --panel, otherwise the rows of the panel file as target maps,
+// validated (a panel is a closed set: nothing is looked up later that could be missing)
+//
+def targetsFromParams() {
+    if (!params.panel) {
+        return [ targetFromParams() ]
+    }
+    def panel_file = panelFile(params.panel)
+    def rows = readCsvRows(panel_file)
+    def known = panelRegistryColumns() + [ 'primer_scheme' ]
+    def columns = rows ? rows[0].keySet() : []
+    if (!('target' in columns)) {
+        error("Panel file '${panel_file}' has no 'target' column (columns: ${columns.join(', ') ?: 'none'}); it lists one target per row, by name as in assets/panels/registry.csv")
+    }
+    def unknown_columns = columns.findAll { c -> !(c in known) }
+    if (unknown_columns) {
+        error("Panel file '${panel_file}' has unknown column(s) ${unknown_columns.join(', ')}; allowed: ${known.join(', ')}")
+    }
+    def names = rows.collect { r -> r.target }
+    if (names.any { n -> !n }) {
+        error("Panel file '${panel_file}' has a row without a target name")
+    }
+    def repeated = names.findAll { n -> names.count(n) > 1 }.unique()
+    if (repeated) {
+        error("Panel file '${panel_file}' lists target(s) ${repeated.join(', ')} more than once")
+    }
+    def targets = rows.collect { r -> targetByName(r.target, r) }
+    validatePanelTargets(targets)
+    return targets
+}
+
+//
+// A panel is mapped as one concatenated reference, so contig names must be unique across it. Two targets may share a FASTA
+// only when they are the same family with the same marker contig (H5Nx and H5Nx-cattle: one reference, two sets of barcodes).
+//
+def validatePanelTargets(targets) {
+    def contig_owner = [:]   // contig -> target
+    def fasta_owner = [:]    // real path of a FASTA -> [ target, contigs ]
+    targets.each { t ->
+        if (!t.fasta) {
+            error("Panel target '${t.name}' has no reference FASTA")
+        }
+        def real = file(t.fasta, checkIfExists: true).toRealPath().toString()
+        if (!fasta_owner.containsKey(real)) {
+            def contigs = fastaContigs(file(t.fasta))
+            def dup = contigs.findAll { c -> contigs.count(c) > 1 }.unique()
+            if (dup) {
+                error("Panel target '${t.name}': the reference FASTA '${t.fasta}' has several sequences named ${dup.join(', ')}; contig names must be unique")
+            }
+            contigs.each { c ->
+                def other = contig_owner[c]
+                if (other) {
+                    def hint = (t.name.startsWith('H5Nx') && other.name.startsWith('H5Nx')) ? ' (H5Nx and H5Nx-cattle must use one shared FASTA)' : ''
+                    error("Panel targets '${other.name}' and '${t.name}' both have a contig named '${c}' (in '${other.fasta}' and '${t.fasta}'): contig names must be unique across a panel because the reads are mapped to all references at once${hint}")
+                }
+                contig_owner[c] = t
+            }
+            fasta_owner[real] = [ target: t, contigs: contigs ]
+        }
+        else if (!t.family || t.family != fasta_owner[real].target.family || !t.marker_contig || t.marker_contig != fasta_owner[real].target.marker_contig) {
+            error("Panel targets '${fasta_owner[real].target.name}' and '${t.name}' use the same reference FASTA '${t.fasta}': that is only allowed for targets of one family with the same marker contig (influenza H5Nx and H5Nx-cattle share a reference)")
+        }
+        [ 'freyja_contig', 'marker_contig' ].each { key ->
+            if (t[key] && !(t[key] in fasta_owner[real].contigs)) {
+                error("Panel target '${t.name}': ${key} '${t[key]}' is not a sequence of its reference FASTA '${t.fasta}' (${fasta_owner[real].contigs.take(10).join(', ')})")
+            }
+        }
+    }
 }
 
 //
@@ -554,6 +743,38 @@ def requireDirectory(option, value) {
 }
 
 //
+// --panel (several targets in one run): the panel replaces --pathogen and the reference options, which are therefore refused
+// together with it, and its file is validated here (targetsFromParams) so a mistake stops the run before any work is done.
+// --targets selects targets of the results that modes demix, aggregate and report read.
+//
+def validatePanelParameters(mode) {
+    if (!params.panel) {
+        if (params.targets) {
+            log.warn("--targets selects targets of panel results: it is only used together with results of a --panel run and is ignored here")
+        }
+        return
+    }
+    def clashes = [
+        '--pathogen': params.pathogen,
+        '--fasta': params.fasta,
+        '--gff': params.gff,
+        '--freyja_contig': params.freyja_contig,
+        '--whole_genome': params.whole_genome,
+    ].findAll { _name, value -> value }.keySet()
+    if (params.pathogen) {
+        // --fasta, --gff and --freyja_contig are then (also) set by the pathogen's profile: name the cause
+        clashes = clashes.findAll { name -> name in ['--pathogen', '--whole_genome'] }
+    }
+    if (clashes) {
+        error("--panel cannot be combined with ${clashes.join(', ')}: a panel names its targets (assets/panels/registry.csv gives each its reference and Freyja pathogen), so --pathogen, --fasta, --gff, --freyja_contig and --whole_genome are not used with it. Give a panel CSV with the targets you want instead (see docs/usage.md, Panels).")
+    }
+    def targets = targetsFromParams()
+    if (mode in ['full', 'demix', 'aggregate', 'report']) {
+        error("--panel ${params.panel} (${targets.collect { t -> t.name }.join(', ')}) is valid, but panel runs are not implemented yet in this build. Run each target on its own with --pathogen <target> (and --fasta/--primer_bed as that pathogen needs), or use a build with panel support.")
+    }
+}
+
+//
 // Check and validate pipeline parameters for the mode. Only `outdir` is required by the schema for
 // every mode; what else is needed depends on the mode and is checked here with a helpful message.
 //
@@ -598,6 +819,8 @@ def validateInputParameters(mode) {
     if (sources.size() > 1) {
         error("Give only one of ${sources.keySet().join(', ')} with --mode ${mode}. ${hint}")
     }
+
+    validatePanelParameters(mode)
 
     // The pathogen (PLAN D22): the Freyja pathogens that need more than a reference are refused before any work is done
     if (mode in ['full', 'demix', 'aggregate', 'update_db']) {

@@ -416,6 +416,26 @@ by a factor of about 10 from all others there); on real runs watch the enrichmen
 `--qc_min_primer_trimmed_pct` (default 0, off) is a blunter WARN on the ivar trimming percentage alone. Details of the
 method are in [qc_scripts.md](qc_scripts.md#primer_scheme_checkpy).
 
+## Panels (in development)
+
+A panel is several targets (pathogens) analysed in one run: `--panel rsv` (RSVa, RSVb) or `--panel flu` (H1N1, H3N2, H5Nx,
+FLU-B-VIC), or `--panel my_panel.csv`. **Panel runs are not implemented yet in this build**: the panel files and the panel
+parameters ([parameters.md](parameters.md#panel-options)) are validated and the run then stops with a message saying so.
+
+- `assets/panels/registry.csv` has one row per target wasteline can analyse (the Freyja pathogens that have barcodes), with
+  the columns `target, fasta, gff, freyja_pathogen, freyja_contig, marker_contig, family, primer_scheme_default,
+primer_schemes_bundled, lineage_groups_bundled, freyja_container_pathogen, barcodes`. Paths are relative to the
+  pipeline directory; an empty cell means none. The influenza rows use the whole-genome references (`freyja_contig` and
+  `marker_contig` are the HA sequence; family `fluA`), except FLU-B-VIC, which stays HA-only (family `fluB`); RSVa and RSVb
+  are family `rsv`. H5Nx and H5Nx-cattle share one FASTA.
+- A panel file (`assets/panels/rsv.csv`, `flu.csv`, or your own) has a `target` column naming registry rows, one per line.
+  Any other column is an optional override of the registry column of the same name for that target (empty cell = keep the
+  registry value), plus `primer_scheme` (a bundled scheme name or a BED path). Relative paths in overrides are relative to
+  the directory you launch Nextflow from.
+- The reads are mapped to all the panel's references at once, so contig names must be unique across the panel (an error
+  names the target and contig otherwise); two targets may share a FASTA only within one family.
+- `--panel` excludes `--pathogen`, `--fasta`, `--gff`, `--freyja_contig` and `--whole_genome`.
+
 ## 5. Running each mode
 
 All examples use `-profile docker`; add `-resume` to continue an interrupted run. Pipeline parameters take **two** dashes
