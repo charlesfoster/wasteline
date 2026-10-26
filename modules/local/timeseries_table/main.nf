@@ -1,4 +1,5 @@
 process TIMESERIES_TABLE {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,11 +8,11 @@ process TIMESERIES_TABLE {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path aggregated                           // freyja_aggregated.tsv
+    tuple val(meta), path(aggregated)         // meta = the target (tkey); its freyja_aggregated.tsv
     path metadata, stageAs: 'metadata.csv'    // samplesheet-like CSV: sample, sample_type, collection_date, site and an optional numeric viral_load
 
     output:
-    path "freyja_timeseries.tsv", emit: table // long table: site, collection_date, lineage_group, abundance, abundance_load_weighted, n_samples, mean_viral_load, total_viral_load (header always written)
+    tuple val(meta), path("freyja_timeseries.tsv"), emit: table // long table: site, collection_date, lineage_group, abundance, abundance_load_weighted, n_samples, mean_viral_load, total_viral_load (header always written)
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

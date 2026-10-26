@@ -56,7 +56,10 @@ workflow PIPELINE_INITIALISATION {
     //
 
     def before_text = wastelineLogo(monochrome_logs)
-    def after_text = ""
+    // `--help` lists only the common options: say how to see the rest (`--help <name>` is a single-parameter lookup)
+    def after_text = (help && !help_full && !(help instanceof String && help != "true"))
+        ? "Only the common options are shown above. Run with --help_full for every option, or --help <name> for one option.\n"
+        : ""
 
     command = "nextflow run ${workflow.manifest.name} -profile <docker/singularity/.../institute> --input samplesheet.csv --outdir <OUTDIR>"
 
@@ -868,6 +871,18 @@ def validatePanelParameters(mode) {
             }
             resolveBarcodes(spec, dbDir(), '--barcodes', t)
         }
+        if (params.compare_barcodes) {
+            // --compare_barcodes is one spec for every target: it must be valid for each (version stamps resolve per target pathogen)
+            def compare = params.compare_barcodes.toString().trim()
+            def wrong_pathogen = targets.findAll { t -> t.freyja_pathogen != t.freyja_container_pathogen }.collect { t -> t.name }
+            if (compare == 'container' && wrong_pathogen) {
+                error("--compare_barcodes container is only available for the pathogen whose barcodes the Freyja container bundles (SARS-CoV-2), but the panel also has ${wrong_pathogen.join(', ')}. Use --compare_barcodes latest or a barcode version (YYYY-MM-DD) to compare every target.")
+            }
+            if (targets.size() > 1 && resolveBarcodes(compare, dbDir(), '--compare_barcodes', targets[0]).source == 'custom') {
+                error("--compare_barcodes ${compare} is a dataset directory or barcodes file, which belongs to one pathogen, but the panel has ${targets.size()} targets (${targets.collect { t -> t.name }.join(', ')}). Use --compare_barcodes latest or a barcode version (YYYY-MM-DD) to compare every target.")
+            }
+            targets.each { t -> resolveBarcodes(compare, dbDir(), '--compare_barcodes', t) }
+        }
         if (params.annotate_variants) {
             def without_gff = targets.findAll { t -> !t.gff }.collect { t -> t.name }
             if (without_gff) {
@@ -1022,11 +1037,10 @@ def validateInputParameters(mode) {
         resolveBarcodes(params.barcodes, dbDir(), '--barcodes')
     }
     if (params.compare_barcodes) {
-        if (params.panel && mode == 'full') {
-            log.warn("--compare_barcodes is not available for --panel runs in this build yet and is ignored")
-        }
-        else if (mode in ['full', 'demix']) {
-            resolveBarcodes(params.compare_barcodes, dbDir(), '--compare_barcodes')
+        if (mode in ['full', 'demix']) {
+            if (!params.panel) {
+                resolveBarcodes(params.compare_barcodes, dbDir(), '--compare_barcodes') // a panel's targets are checked in validatePanelParameters
+            }
         }
         else {
             log.warn("--compare_barcodes is only used by --mode full and demix and is ignored in --mode ${mode}")
@@ -1338,12 +1352,12 @@ def mutationTablesUnsupportedReason(barcodes = params.barcodes, target = targetF
 }
 
 //
-// Can the lineage-group summary read the lineage hierarchy (lineages.yml) of the Freyja dataset in effect?
+// Can the lineage-group summary read the lineage hierarchy (lineages.yml) of the Freyja dataset in effect for `target`?
 // A dataset directory has it (downloaded, pinned or bundled in the container); a bare barcodes .csv/.feather
-// file (custom --barcodes) does not. Returns null when supported, otherwise the reason.
+// file (custom --barcodes, or the barcodes cell of a panel row) does not. Returns null when supported, otherwise the reason.
 //
-def lineageHierarchyUnsupportedReason() {
-    def resolved = resolveBarcodes(params.barcodes, dbDir(), '--barcodes')
+def lineageHierarchyUnsupportedReason(target = targetFromParams()) {
+    def resolved = resolveBarcodes(target.barcodes ?: params.barcodes, dbDir(), '--barcodes', target)
     if (resolved.kind == 'fetch') {
         return null
     }
@@ -1360,8 +1374,8 @@ def lineageHierarchyUnsupportedReason() {
 // hierarchy for the default pathogen only, and for a few others (not RSV, dengue, ...): then the workflow looks at what
 // was downloaded (lineages_yml_sha256 of freyja_data.json) instead of assuming (PLAN D22).
 //
-def hierarchyMayBeMissing() {
-    return resolveBarcodes(params.barcodes, dbDir(), '--barcodes').kind == 'fetch' && params.pathogen != params.freyja_container_pathogen
+def hierarchyMayBeMissing(target = targetFromParams()) {
+    return resolveBarcodes(target.barcodes ?: params.barcodes, dbDir(), '--barcodes', target).kind == 'fetch' && target.freyja_pathogen != target.freyja_container_pathogen
 }
 
 //
@@ -1373,8 +1387,9 @@ def plotConfigFile() {
 }
 
 //
-// The lineage groups file in effect: --lineage_groups, else the bundled assets/lineage_groups.csv of the pathogen
-// (conf/pathogens/*.config: lineage_groups_bundled). null = none: the lineage-group summary is then off.
+// The lineage groups file in effect for `target`: --lineage_groups (the same file for every target of a panel), else the bundled
+// assets/lineage_groups.csv of the target (conf/pathogens/*.config or the registry: lineage_groups_bundled). null = none: the
+// lineage-group summary of that target is then off.
 //
 def lineageGroupsFile(target = targetFromParams()) {
     if (params.lineage_groups) {
@@ -1387,8 +1402,8 @@ def lineageGroupsFile(target = targetFromParams()) {
 // What run_info.json records about the lineage groups file: its name ('bundled default' for the bundled one),
 // where it came from and its sha256
 //
-def lineageGroupsInfo() {
-    def groups = lineageGroupsFile()
+def lineageGroupsInfo(target = targetFromParams()) {
+    def groups = lineageGroupsFile(target)
     if (!groups) {
         return [ lineage_groups_file: null, lineage_groups_source: null, lineage_groups_sha256: null ]
     }

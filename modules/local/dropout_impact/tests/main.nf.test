@@ -16,7 +16,7 @@ nextflow_process {
             process {
                 """
                 def d = "\$projectDir/tests/fixtures/dropout_impact"
-                input[0] = file("\$d/amplicon_coverage.tsv")
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], file("\$d/amplicon_coverage.tsv") ]
                 input[1] = file("\$d/freyja_aggregated.tsv")
                 input[2] = file("\$d/dataset")
                 """
@@ -24,13 +24,13 @@ nextflow_process {
         }
 
         then {
-            def impact = new File(process.out.impact[0].toString()).readLines()
-            def summary = new File(process.out.summary[0].toString()).readLines()
+            def impact = new File(process.out.impact[0][1].toString()).readLines()
+            def summary = new File(process.out.summary[0][1].toString()).readLines()
             assertAll(
                 { assert process.success },
                 { assert impact.size() == 1 },       // header only
                 { assert summary.size() == 1 },
-                { assert snapshot(process.out.impact, process.out.summary).match() }
+                { assert snapshot(process.out.impact.collect { f -> f[1] }, process.out.summary.collect { f -> f[1] }).match() }
             )
         }
     }

@@ -15,7 +15,7 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = file("\$projectDir/tests/fixtures/lineage_groups/freyja_aggregated.tsv")
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], file("\$projectDir/tests/fixtures/lineage_groups/freyja_aggregated.tsv") ]
                 input[1] = file("\$projectDir/tests/fixtures/lineage_groups/demix_status.tsv")
                 input[2] = []
                 input[3] = file("\$projectDir/tests/fixtures/lineage_groups/groups.csv")
@@ -31,11 +31,11 @@ nextflow_process {
                 { assert process.success },
                 { assert process.out.sites.isEmpty() },
                 // the stub leaves an empty placeholder: a stub run needs no python
-                { assert file(process.out.xlsx[0].toString()).name == 'lineage_summary.xlsx' },
+                { assert file(process.out.xlsx[0][1].toString()).name == 'lineage_summary.xlsx' },
                 { assert snapshot(
-                    file(process.out.summary[0].toString()).name,
-                    file(process.out.resolved[0].toString()).name,
-                    file(process.out.xlsx[0].toString()).name
+                    file(process.out.summary[0][1].toString()).name,
+                    file(process.out.resolved[0][1].toString()).name,
+                    file(process.out.xlsx[0][1].toString()).name
                 ).match() }
             )
         }

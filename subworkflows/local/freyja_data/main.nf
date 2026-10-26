@@ -53,18 +53,8 @@ workflow FREYJA_DATA {
     def ch_freyja_data_by_target = FREYJA_DATASET_INFO.out.freyja_data.map { meta, freyja_data -> [ meta.id, freyja_data ] }
     def ch_barcode_version_by_target = FREYJA_DATASET_INFO.out.barcode_version.map { meta, barcode_version -> [ meta.id, barcode_version ] }
 
-    // The run-level consumers (aggregate, plot, report, provenance) take ONE dataset: they get value channels for a one-target
-    // run and an empty channel otherwise (they are not available for several targets yet).
-    def one_target = targets.size() == 1
-    def ch_dataset = one_target ? ch_dataset_by_target.map { _name, dataset -> dataset }.first() : channel.empty()
-    def ch_freyja_data = one_target ? ch_freyja_data_by_target.map { _name, freyja_data -> freyja_data }.first() : channel.empty()
-    def ch_barcode_version = one_target ? ch_barcode_version_by_target.map { _name, barcode_version -> barcode_version }.first() : channel.empty()
-
     emit:
-    dataset                   = ch_dataset                    // value channel (one target only): dataset directory or barcode file
-    freyja_data               = ch_freyja_data                // value channel (one target only): full provenance block
-    barcode_version           = ch_barcode_version            // value channel (one target only): small version record
-    dataset_by_target         = ch_dataset_by_target          // [ target name, dataset ] per target
-    freyja_data_by_target     = ch_freyja_data_by_target      // [ target name, freyja_data.json ] per target
-    barcode_version_by_target = ch_barcode_version_by_target  // [ target name, barcode_version.json ] per target
+    dataset_by_target         = ch_dataset_by_target          // [ target name, dataset ] per target: dataset directory or barcode file
+    freyja_data_by_target     = ch_freyja_data_by_target      // [ target name, freyja_data.json ] per target: full provenance block
+    barcode_version_by_target = ch_barcode_version_by_target  // [ target name, barcode_version.json ] per target: small version record
 }

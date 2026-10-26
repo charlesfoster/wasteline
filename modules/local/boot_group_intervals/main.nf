@@ -1,4 +1,5 @@
 process BOOT_GROUP_INTERVALS {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,14 +8,14 @@ process BOOT_GROUP_INTERVALS {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path aggregated, stageAs: 'freyja_aggregated.tsv' // summary/freyja_aggregated.tsv (the point estimates)
+    tuple val(meta), path(aggregated, stageAs: 'freyja_aggregated.tsv') // meta = the target (tkey); summary/freyja_aggregated.tsv (the point estimates)
     path boots                                        // every sample's raw draws: <id>.boot_lineages_boot.csv (freyja boot --rawboots)
     path groups, stageAs: 'groups.csv'                // the user's lineage groups CSV (--lineage_groups)
     path dataset, stageAs: 'dataset'                  // Freyja dataset directory holding lineages.yml
     path samplesheet, stageAs: 'samplesheet.csv'      // the summary samplesheet LINEAGE_SUMMARY gets (sample, sample_type): negative controls are left out
 
     output:
-    path "lineage_group_intervals.tsv", emit: intervals // sample, group, abundance, lo, hi, n_boot (one row per sample x group + other)
+    tuple val(meta), path("lineage_group_intervals.tsv"), emit: intervals // sample, group, abundance, lo, hi, n_boot (one row per sample x group + other)
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

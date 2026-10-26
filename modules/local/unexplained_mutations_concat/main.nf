@@ -1,4 +1,5 @@
 process UNEXPLAINED_MUTATIONS_CONCAT {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,10 +8,10 @@ process UNEXPLAINED_MUTATIONS_CONCAT {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path tables, stageAs: 'unexplained/*' // one <sample>.unexplained_mutations.tsv per sample (collected)
+    tuple val(meta), path(tables, stageAs: 'unexplained/*') // meta = the target (tkey); one <sample>.unexplained_mutations.tsv per sample of the target
 
     output:
-    path "unexplained_mutations.tsv", emit: tsv
+    tuple val(meta), path("unexplained_mutations.tsv"), emit: tsv
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

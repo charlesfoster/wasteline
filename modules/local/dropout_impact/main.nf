@@ -1,4 +1,5 @@
 process DROPOUT_IMPACT {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,13 +8,13 @@ process DROPOUT_IMPACT {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path amplicons  // summary/amplicon_coverage.tsv (QC_CONCAT)
-    path aggregated // summary/freyja_aggregated.tsv (FREYJA_AGGREGATE_PLOT)
-    path dataset    // resolved Freyja dataset: a directory with lineage_mutations.json (+ lineages.yml for the hierarchy), or a barcodes .csv
+    tuple val(meta), path(amplicons) // meta = the target (tkey); summary/amplicon_coverage.tsv (QC_CONCAT)
+    path aggregated // summary/freyja_aggregated.tsv of the target (FREYJA_AGGREGATE_PLOT)
+    path dataset    // the target's resolved Freyja dataset: a directory with lineage_mutations.json (+ lineages.yml for the hierarchy), or a barcodes .csv
 
     output:
-    path "dropout_impact.tsv",         emit: impact
-    path "dropout_impact_summary.tsv", emit: summary
+    tuple val(meta), path("dropout_impact.tsv"),         emit: impact
+    tuple val(meta), path("dropout_impact_summary.tsv"), emit: summary
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

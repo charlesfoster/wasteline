@@ -1,4 +1,5 @@
 process FREYJA_DASH {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,7 +8,7 @@ process FREYJA_DASH {
         : 'quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0'}"
 
     input:
-    path aggregated                          // freyja_aggregated.tsv
+    tuple val(meta), path(aggregated)        // meta = the target (tkey); its freyja_aggregated.tsv
     path metadata, stageAs: 'metadata.csv'   // samplesheet-like CSV: sample, sample_type, collection_date, site and an optional numeric viral_load
     path dataset                             // Freyja dataset (lineages.yml is passed as --lineageyml if present)
     val title                                // dashboard title (Freyja inserts it as HTML)
@@ -15,10 +16,10 @@ process FREYJA_DASH {
     path plot_config, stageAs: 'plot_config.yml' // optional Freyja plot config (--config): lineage groups and colours ([] = none)
 
     output:
-    path "freyja_dashboard.html",                  emit: dashboard,    optional: true // Plotly is embedded; Bootstrap CSS/JS and a logo are loaded from the internet when the page is opened
-    path "freyja_dashboard_rel_growth_rates.csv",  emit: growth_rates, optional: true // the dashboard's own growth-rate table
-    path "freyja_dashboard.failed.txt",            emit: failed,       optional: true // why there is no dashboard
-    path "freyja_dashboard_inputs.json",           emit: inputs                       // what went into the dashboard: n_samples, n_dates, n_with_viral_load
+    tuple val(meta), path("freyja_dashboard.html"),                  emit: dashboard,    optional: true // Plotly is embedded; Bootstrap CSS/JS and a logo are loaded from the internet when the page is opened
+    tuple val(meta), path("freyja_dashboard_rel_growth_rates.csv"),  emit: growth_rates, optional: true // the dashboard's own growth-rate table
+    tuple val(meta), path("freyja_dashboard.failed.txt"),            emit: failed,       optional: true // why there is no dashboard
+    tuple val(meta), path("freyja_dashboard_inputs.json"),           emit: inputs                       // what went into the dashboard: n_samples, n_dates, n_with_viral_load
     tuple val("${task.process}"), val('freyja'), eval('freyja --version | sed "s/.*version //"'), emit: versions_freyja, topic: versions
 
     when:

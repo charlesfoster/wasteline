@@ -15,7 +15,7 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = [ file("\$projectDir/tests/fixtures/unexplained/concat/S_ONE.unexplained_mutations.tsv") ]
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], [ file("\$projectDir/tests/fixtures/unexplained/concat/S_ONE.unexplained_mutations.tsv") ] ]
                 """
             }
         }
@@ -23,7 +23,7 @@ nextflow_process {
         then {
             assertAll(
                 { assert process.success },
-                { assert snapshot(process.out.tsv).match() }
+                { assert snapshot(process.out.tsv.collect { f -> f[1] }).match() }
             )
         }
     }

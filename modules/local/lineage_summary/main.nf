@@ -1,4 +1,5 @@
 process LINEAGE_SUMMARY {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,7 +8,7 @@ process LINEAGE_SUMMARY {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path aggregated, stageAs: 'freyja_aggregated.tsv'               // summary/freyja_aggregated.tsv
+    tuple val(meta), path(aggregated, stageAs: 'freyja_aggregated.tsv') // meta = the target (tkey); summary/freyja_aggregated.tsv
     path demix_status, stageAs: 'demix_status.tsv'                  // summary/demix_status.tsv: every sample gets a row; [] when no sample needs one (aggregate mode)
     path samplesheet, stageAs: 'samplesheet.csv'                    // summary/samplesheet.csv (site, collection_date, sample_type); [] allowed
     path groups, stageAs: 'groups.csv'                              // the user's lineage groups CSV (--lineage_groups)
@@ -16,12 +17,12 @@ process LINEAGE_SUMMARY {
     path aggregated_sites_meta, stageAs: 'site_aggregates_meta.tsv' // optional: its meta TSV; [] when absent
 
     output:
-    path "lineage_summary.csv", emit: summary                                              // one row per sample; one column per group
-    path "lineage_groups_resolved.tsv", emit: resolved                                     // audit: what each group matched in the dataset
-    path "lineage_groups_used.csv", emit: used                                             // byte-identical copy of the groups file used: a starting point for the next edit
-    path "lineage_ungrouped_summary.tsv", emit: ungrouped                                  // lineages in no in_total group (`other`), biggest first, with a suggested pattern
-    path "lineage_summary_site_aggregates.csv", optional: true, emit: sites                // only with the site-aggregate inputs
-    path "lineage_summary.xlsx", optional: true, emit: xlsx                                // formatted workbook; only when ext.args carries `--xlsx-out lineage_summary.xlsx`
+    tuple val(meta), path("lineage_summary.csv"), emit: summary                                              // one row per sample; one column per group
+    tuple val(meta), path("lineage_groups_resolved.tsv"), emit: resolved                                     // audit: what each group matched in the dataset
+    tuple val(meta), path("lineage_groups_used.csv"), emit: used                                             // byte-identical copy of the groups file used: a starting point for the next edit
+    tuple val(meta), path("lineage_ungrouped_summary.tsv"), emit: ungrouped                                  // lineages in no in_total group (`other`), biggest first, with a suggested pattern
+    tuple val(meta), path("lineage_summary_site_aggregates.csv"), optional: true, emit: sites                // only with the site-aggregate inputs
+    tuple val(meta), path("lineage_summary.xlsx"), optional: true, emit: xlsx                                // formatted workbook; only when ext.args carries `--xlsx-out lineage_summary.xlsx`
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

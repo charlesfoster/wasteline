@@ -1,4 +1,5 @@
 process LINEAGE_GROUPS_CHECK {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,11 +8,11 @@ process LINEAGE_GROUPS_CHECK {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path groups, stageAs: 'groups.csv' // the user's lineage groups CSV (--lineage_groups)
+    tuple val(meta), path(groups, stageAs: 'groups.csv') // meta = the target (tkey); its lineage groups CSV (--lineage_groups or the target's bundled one)
     path dataset, stageAs: 'dataset'   // Freyja dataset directory holding lineages.yml; [] when the dataset has no hierarchy (format check only)
 
     output:
-    path "lineage_groups_check.txt", emit: report // the check's warnings (one per line, may be empty) and its OK line
+    tuple val(meta), path("lineage_groups_check.txt"), emit: report // the check's warnings (one per line, may be empty) and its OK line
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     // No errorStrategy override: a format error in the user's file must stop the run within minutes (the default

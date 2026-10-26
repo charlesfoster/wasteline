@@ -1,4 +1,5 @@
 process FREYJA_RELGROWTHRATE {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,15 +8,15 @@ process FREYJA_RELGROWTHRATE {
         : 'quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0'}"
 
     input:
-    path aggregated                          // freyja_aggregated.tsv
+    tuple val(meta), path(aggregated)        // meta = the target (tkey); its freyja_aggregated.tsv
     path metadata, stageAs: 'metadata.csv'   // samplesheet-like CSV: sample, sample_type, collection_date, site and an optional numeric viral_load
     path dataset                             // Freyja dataset (lineages.yml is passed as --lineageyml if present)
     path plot_config, stageAs: 'plot_config.yml' // optional Freyja plot config (--config): lineage groups and colours ([] = none)
 
     output:
-    path "freyja_growth_rates.csv",        emit: growth_rates, optional: true // Freyja's rel_growth_rates.csv: Lineage, Estimated Advantage, Bootstrap 95% interval
-    path "freyja_growth_rates.failed.txt", emit: failed,       optional: true // why there is no growth-rate table (insufficient data, Freyja error)
-    path "freyja_growth_inputs.json",      emit: inputs                       // what went into the fit: n_samples, n_dates, n_dates_window, span, n_with_viral_load
+    tuple val(meta), path("freyja_growth_rates.csv"),        emit: growth_rates, optional: true // Freyja's rel_growth_rates.csv: Lineage, Estimated Advantage, Bootstrap 95% interval
+    tuple val(meta), path("freyja_growth_rates.failed.txt"), emit: failed,       optional: true // why there is no growth-rate table (insufficient data, Freyja error)
+    tuple val(meta), path("freyja_growth_inputs.json"),      emit: inputs                       // what went into the fit: n_samples, n_dates, n_dates_window, span, n_with_viral_load
     tuple val("${task.process}"), val('freyja'), eval('freyja --version | sed "s/.*version //"'), emit: versions_freyja, topic: versions
 
     when:
