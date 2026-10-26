@@ -29,6 +29,8 @@ SAMPLE_TYPES = ("sample", "negative")
 FASTQ_EXTS = (".fastq.gz", ".fq.gz")
 PROTOCOLS = ("amplicon", "capture")
 OPTIONAL_META = ["sample_type", "collection_date", "site", "viral_load"]
+# demix / aggregate sheets of panel results name the target of each row: one row per (sample, target)
+TARGET_COLUMN = "target"
 # per-sample library settings (PLAN D20); empty = the run's --protocol / --primer_scheme / --primer_bed
 LIBRARY_COLUMNS = ["protocol", "primer_scheme"]
 PIPELINE_DIR = Path(__file__).resolve().parent.parent
@@ -41,8 +43,8 @@ REQUIRED = {
 }
 OPTIONAL = {
     "full": [*OPTIONAL_META, *LIBRARY_COLUMNS],
-    "demix": ["fastp_json", *OPTIONAL_META, *LIBRARY_COLUMNS],
-    "aggregate": OPTIONAL_META,
+    "demix": ["fastp_json", *OPTIONAL_META, *LIBRARY_COLUMNS, TARGET_COLUMN],
+    "aggregate": [*OPTIONAL_META, TARGET_COLUMN],
 }
 # Columns holding file paths, per mode (required ones must be non-empty; optional may be empty).
 PATH_COLUMNS = {
@@ -181,6 +183,7 @@ def validate(
 
     base = sheet.resolve().parent
     seen: dict[str, int] = {}
+    seen_pairs: dict[tuple, int] = {}
     path_cols = [c for c in PATH_COLUMNS[mode] if c in header]
     for lineno, raw in enumerate(data, start=2):
         if len(raw) > len(header):
@@ -196,7 +199,18 @@ def validate(
             continue
         if not ID_RE.match(sample):
             errors.append(f"{tag}: sample ID must match ^[A-Za-z0-9._-]+$")
-        if sample in seen:
+        target = row.get(TARGET_COLUMN, "").strip()
+        if TARGET_COLUMN in header:
+            # with a target column the same sample may appear once per target
+            if (sample, target) in seen_pairs:
+                what = f"sample ID and target '{target}'" if target else "sample ID"
+                errors.append(
+                    f"{tag}: duplicate {what} (first seen on line {seen_pairs[(sample, target)]})"
+                )
+            else:
+                seen_pairs[(sample, target)] = lineno
+            seen.setdefault(sample, lineno)
+        elif sample in seen:
             errors.append(f"{tag}: duplicate sample ID (first seen on line {seen[sample]})")
         else:
             seen[sample] = lineno

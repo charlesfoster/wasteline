@@ -7,7 +7,9 @@ Two uses:
    make_samplesheet.py <fastq_dir> [--suffix S] [--metadata meta.csv] -o samplesheet.csv
 
 2. Existing results directory -> `demix` or `aggregate` mode samplesheet
-   make_samplesheet.py --from-results <dir> --mode demix|aggregate -o sheet.csv
+   make_samplesheet.py --from-results <dir> --mode demix|aggregate [--targets A,B] -o sheet.csv
+   Results of a panel run (summary/targets.tsv, samples/<id>/<target>/freyja/) give one row per (sample, target) and a
+   `target` column after `sample`; --targets keeps only those targets. Other layouts give no target column.
 
 Sample IDs are NEVER rewritten (no underscore-to-dash); the only transformation is the removal of
 the Illumina `_S<n>_L001_R1_001.fastq.gz` tail for the default suffix, or of the user suffix.
@@ -343,9 +345,11 @@ def find_fastp_json(directory: Path, sample: str) -> Path | None:
     return None
 
 
-def locate_new(results: Path, sample: str) -> dict[str, Path | None]:
+def locate_new(results: Path, sample: str, target: str | None = None) -> dict[str, Path | None]:
+    """Files of a sample in samples/<sample>/freyja/, or (panel layout, `target` given) of a
+    (sample, target) pair in samples/<sample>/<target>/freyja/; fastp stays per sample."""
     base = results / "samples" / sample
-    fj = base / "freyja"
+    fj = (base / target if target else base) / "freyja"
     return {
         "variants": first_existing(fj / f"{sample}.variants.tsv", fj / f"{sample}.variants.tsv.gz"),
         "depths": first_existing(fj / f"{sample}.depths", fj / f"{sample}.depths.gz"),
@@ -372,8 +376,15 @@ def locate_legacy(results: Path, sample: str) -> dict[str, Path | None]:
     }
 
 
-def load_results_sheet(results: Path) -> tuple[dict[str, dict[str, str]], str | None]:
-    for rel in ("samplesheet.csv", "summary/samplesheet.csv"):
+def load_results_sheet(
+    results: Path, target: str | None = None
+) -> tuple[dict[str, dict[str, str]], str | None]:
+    """The samplesheet the run kept. Panel layout (`target` given): summary/<target>/samplesheet.csv first,
+    and only the rows of that target (or without a target) of a sheet that has a target column."""
+    rels = ["samplesheet.csv", "summary/samplesheet.csv"]
+    if target:
+        rels = [f"summary/{target}/samplesheet.csv", "summary/samplesheet.csv", "samplesheet.csv"]
+    for rel in rels:
         p = results / rel
         if p.is_file():
             try:
@@ -386,7 +397,7 @@ def load_results_sheet(results: Path) -> tuple[dict[str, dict[str, str]], str | 
                 {
                     r["sample"]: {c: r.get(c, "") for c in META_INPUT_COLUMNS}
                     for r in rows
-                    if r["sample"]
+                    if r["sample"] and (not target or r.get("target", "") in ("", target))
                 },
                 str(p),
             )
@@ -419,17 +430,132 @@ def is_dataset_dir(path: Path) -> bool:
     return False
 
 
+def is_panel_layout(results: Path) -> bool:
+    """Results of a panel run: summary/targets.tsv, or a summary/<target>/ folder beside samples/<id>/<target>/freyja/."""
+    summary = results / "summary"
+    if (summary / "targets.tsv").is_file():
+        return True
+    samples = results / "samples"
+    if not (summary.is_dir() and samples.is_dir()):
+        return False
+    names = {d.name for d in summary.iterdir() if d.is_dir()}
+    return any(
+        (target / "freyja").is_dir()
+        for sample in samples.iterdir()
+        if sample.is_dir()
+        for target in sample.iterdir()
+        if target.is_dir() and target.name in names
+    )
+
+
+def discover_panel_results(
+    results: Path,
+    mode: str,
+    neg_re,
+    skipped: list[tuple[str, ...]] | None,
+    targets: set[str] | None,
+) -> tuple[list[dict[str, str]], list[str], list[str], list[str]]:
+    """Panel layout (samples/<sample>/<target>/freyja/): one record per (sample, target) with a `target` key.
+    Skipped entries are (sample, target, reason, sample_type, collection_date, site)."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    notes: list[str] = [
+        f"panel layout: one row per (sample, target) in {results}/samples/<sample>/<target>/"
+    ]
+    required = ("variants", "depths") if mode == "demix" else ("demix",)
+    pairs = []
+    for sample_dir in sorted(p for p in (results / "samples").iterdir() if p.is_dir()):
+        for target_dir in sorted(p for p in sample_dir.iterdir() if p.is_dir()):
+            if (target_dir / "freyja").is_dir():
+                pairs.append((sample_dir.name, target_dir.name))
+    found = {target for _, target in pairs}
+    if targets is not None:
+        missing_targets = sorted(targets - found)
+        if missing_targets:
+            warnings.append(
+                f"--targets {', '.join(missing_targets)}: no results for them in {results} "
+                f"(targets found: {', '.join(sorted(found)) or 'none'})"
+            )
+        pairs = [(sample, target) for sample, target in pairs if target in targets]
+    sheets: dict[str, dict[str, dict[str, str]]] = {}
+    for target in sorted({target for _, target in pairs}):
+        sheets[target], sheet_path = load_results_sheet(results, target)
+        if sheet_path:
+            notes.append(
+                f"target {target}: carrying over sample_type/collection_date/site/viral_load/protocol/primer_scheme "
+                f"from {sheet_path}"
+            )
+
+    records = []
+    for sample, target in pairs:
+        sheet_meta = sheets[target]
+        files = locate_new(results, sample, target)
+        if not ID_RE.match(sample):
+            reason = "sample ID does not match ^[A-Za-z0-9._-]+$"
+            notes.append(f"skipped '{sample}' ({target}): ID does not match ^[A-Za-z0-9._-]+$")
+            if skipped is not None:
+                skipped.append((sample, target, reason, *skipped_meta(sample, sheet_meta, neg_re)))
+            continue
+        missing = [k for k in required if files[k] is None]
+        if missing:
+            if mode == "aggregate" and files.get("demix_any") is not None:
+                reason = EMPTY_DEMIX_REASON
+                notes.append(
+                    f"skipped '{sample}' ({target}, panel layout): {reason}: {files['demix_any']}"
+                )
+            else:
+                reason = f"missing {', '.join(missing)} (panel layout)"
+                notes.append(
+                    f"skipped '{sample}' ({target}, panel layout): missing {', '.join(missing)}"
+                )
+            if skipped is not None:
+                skipped.append((sample, target, reason, *skipped_meta(sample, sheet_meta, neg_re)))
+            continue
+        for key in required:
+            f = files[key]
+            if f is not None and f.name.endswith(".gz"):
+                notes.append(
+                    f"'{sample}' ({target}): {key} is gzipped ({f}); make sure the pipeline can read .gz"
+                )
+        meta = sheet_meta.get(sample, {})
+        sample_type = meta.get("sample_type") or ("negative" if neg_re.search(sample) else "sample")
+        rec = {
+            "sample": sample,
+            "target": target,
+            "sample_type": sample_type,
+            "collection_date": meta.get("collection_date", ""),
+            "site": meta.get("site", ""),
+            VIRAL_LOAD: carried_viral_load(meta),
+            **{col: meta.get(col, "") for col in LIBRARY_COLUMNS},
+        }
+        for key in ("variants", "depths", "demix", "fastp_json"):
+            rec[key] = str(files[key]) if files[key] is not None else ""
+        records.append(rec)
+    if not records:
+        errors.append(
+            f"no usable samples found in {results} for mode '{mode}'"
+            + (f" and target(s) {', '.join(sorted(targets))}" if targets is not None else "")
+            + " (looked for samples/<s>/<target>/freyja/)"
+        )
+    return records, errors, warnings, notes
+
+
 def discover_results(
     results: Path,
     mode: str,
     negative_pattern: str = DEFAULT_NEGATIVE_PATTERN,
     skipped: list[tuple[str, ...]] | None = None,
+    targets: set[str] | None = None,
 ) -> tuple[list[dict[str, str]], list[str], list[str], list[str]]:
     """Return (records, errors, warnings, notes). `notes` are informational lines.
 
     Samples that are found but unusable are appended to `skipped` as (sample, reason, sample_type,
     collection_date, site) when a list is given (the type is inferred like for usable samples): missing required files, or (aggregate mode) a zero-byte .demix file, which the old
     pipeline left behind when `freyja demix` failed (`|| touch`). Such a file is never aggregated.
+
+    Results of a panel run (is_panel_layout) give one record per (sample, target), with a `target` key, and
+    skipped entries (sample, target, reason, sample_type, collection_date, site); `targets` (a set of names)
+    keeps only those targets. For every other layout `targets` is ignored.
     """
     errors: list[str] = []
     warnings: list[str] = []
@@ -440,6 +566,12 @@ def discover_results(
         neg_re = re.compile(negative_pattern)
     except re.error as exc:
         return [], [f"invalid regular expression: {exc}"], [], []
+    if is_panel_layout(results):
+        return discover_panel_results(results, mode, neg_re, skipped, targets)
+    if targets:
+        notes.append(
+            f"--targets {', '.join(sorted(targets))} ignored: {results} is not a panel run's results"
+        )
 
     new_dir = results / "samples"
     new_ids = (
@@ -565,6 +697,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("-o", "--output", default="-", help="output CSV (default: stdout)")
     p.add_argument(
+        "--targets",
+        metavar="A,B",
+        help="with --from-results on the results of a panel run: only these targets (comma-separated)",
+    )
+    p.add_argument(
         "--skipped-out",
         metavar="TSV",
         help="with --from-results: write (sample, reason) of every sample that was found but "
@@ -588,16 +725,27 @@ def run(args: argparse.Namespace) -> int:
         print("ERROR: --mode is only valid with --from-results", file=sys.stderr)
         return 2
 
+    if args.targets and not args.from_results:
+        print("ERROR: --targets is only valid with --from-results", file=sys.stderr)
+        return 2
+
     if args.from_results:
-        skipped: list[tuple[str, str]] = []
+        skipped: list[tuple[str, ...]] = []
+        wanted = {t.strip() for t in args.targets.split(",") if t.strip()} if args.targets else None
         records, errors, warnings, notes = discover_results(
-            Path(args.from_results), args.mode, args.negative_pattern, skipped
+            Path(args.from_results), args.mode, args.negative_pattern, skipped, wanted
         )
+        panel = is_panel_layout(Path(args.from_results))
         if args.skipped_out and not errors:
             with open(args.skipped_out, "w", newline="", encoding="utf-8") as fh:
-                fh.write("sample\treason\tsample_type\tcollection_date\tsite\n")
+                if panel:
+                    fh.write("sample\ttarget\treason\tsample_type\tcollection_date\tsite\n")
+                else:
+                    fh.write("sample\treason\tsample_type\tcollection_date\tsite\n")
                 fh.writelines("\t".join(row) + "\n" for row in sorted(skipped))
         columns = DEMIX_COLUMNS if args.mode == "demix" else AGGREGATE_COLUMNS
+        if panel:
+            columns = [columns[0], "target", *columns[1:]]
         path_cols = ("variants", "depths", "fastp_json") if args.mode == "demix" else ("demix",)
     else:
         records, errors, warnings = discover_fastqs(

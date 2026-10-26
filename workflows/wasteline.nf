@@ -73,8 +73,8 @@ include { previousRuns           } from '../subworkflows/local/utils_nfcore_wast
 include { splitPaths             } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { multiContig            } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { fastaRecords           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
-include { targetFromParams       } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
-include { targetsFromParams      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { targetsForMode         } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { resultsAreMultiTarget  } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { tkey                   } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
 /*
@@ -89,7 +89,7 @@ workflow WASTELINE {
     mode           // string: full | demix | aggregate | report | update_db
     ch_rows        // channel: full [ meta, [ fastq_1, fastq_2 ] ] | demix [ meta, variants, depths, fastp_json ] | aggregate [ meta, demix ]
     ch_samplesheet // channel: the samplesheet in effect (path; checksummed in run_info.json, copied to summary/)
-    ch_skipped     // channel: [ sample, reason, sample_type, collection_date, site ] of samples that were found in results directories but not usable
+    ch_skipped     // channel: [ sample, reason, sample_type, collection_date, site, target ] of samples (of a target, for panel results; '' otherwise) that were found in results directories but not usable
     outdir         // string: --outdir
 
     main:
@@ -135,54 +135,79 @@ workflow WASTELINE {
         // Rebuild report.html from a finished run (--results_dir); nothing else runs
         //
         def results = file(params.results_dir)
-        def existing_data = file("${results}/summary/report_data.json")
-        // (one target for now: the per-target report modes are U5)
-        def report_meta = tkey([ target: targetFromParams() ])
-        // report_data.json is rebuilt from the summary files when the report must be anonymised: the renderer has no
-        // anonymisation of its own, and an existing report_data.json holds the real IDs
-        if (existing_data.exists() && params.report_anonymize == 'none') {
-            // the run already wrote report_data.json: only the HTML is rendered again
-            RENDER_REPORT(channel.value([ report_meta, existing_data ]), file("${projectDir}/assets/templates/report.html.j2"))
+        def report_targets = targetsForMode(mode)
+        def report_template = file("${projectDir}/assets/templates/report.html.j2")
+        if (report_targets[0].panel) {
+            //
+            // Results of a panel run: one report per target, from summary/<target>/ and samples/*/<target>/ (the output goes to
+            // summary/<target>/ of --outdir). A target whose report_data.json exists is only rendered again, unless the report
+            // must be anonymised (as below).
+            //
+            def ready = report_targets.findAll { t -> file("${results}/summary${t.summary_sub}/report_data.json").exists() && params.report_anonymize == 'none' }
+            def to_build = report_targets.findAll { t -> !(t in ready) }.collect { t -> reportBuildInputs(results, t) }
+            def ch_to_build = channel.fromList(to_build).multiMap { item ->
+                data: item.data
+                extra: item.extra
+                analyses: item.analyses
+                groups: item.groups
+                contigs: item.contigs
+            }
+            BUILD_REPORT_DATA(ch_to_build.data, ch_to_build.extra, ch_to_build.analyses, ch_to_build.groups, ch_to_build.contigs)
+            RENDER_REPORT(
+                channel.fromList(ready.collect { t -> [ tkey([ target: t ]), file("${results}/summary${t.summary_sub}/report_data.json") ] }).mix(BUILD_REPORT_DATA.out.json),
+                report_template,
+            )
         }
         else {
-            // rebuild report_data.json from the files the run left behind
-            def depths = (file("${results}/samples/*/freyja/*.depths") + file("${results}/*/freyja/*.depths")).sort { a, b -> a.name <=> b.name }
-            BUILD_REPORT_DATA(channel.value([
-                report_meta,
-                file("${results}/pipeline_info/run_info.json"),
-                optionalFile(results, 'qc_summary.tsv'),
-                optionalFile(results, 'amplicon_coverage.tsv'),
-                optionalFile(results, 'freyja_aggregated.tsv'),
-                optionalFile(results, 'demix_status.tsv'),
-                optionalFile(results, 'consensus_stats.tsv'),
-                optionalFile(results, 'mutations_of_interest.tsv'),
-                optionalFile(results, 'barcode_compare.tsv'),
-                depths,
-            ]), channel.value([
-                optionalFile(results, 'freyja_aggregated_controls.tsv'),
-                optionalFile(results, 'samplesheet.csv'),
-                optionalFile(results, 'freyja_boot_summary.tsv'),
-                optionalFile(results, 'barcode_compare_status.tsv'),
-            ]), channel.value([
-                optionalFile(results, 'dropout_impact.tsv'),
-                optionalFile(results, 'dropout_impact_summary.tsv'),
-                optionalFile(results, 'unexplained_mutations.tsv'),
-                optionalFile(results, 'freyja_timeseries.tsv'),
-                optionalFile(results, 'freyja_timeseries_lineages.tsv'),
-                optionalFile(results, 'freyja_growth_rates.csv'),
-                optionalFile(results, 'freyja_growth_rates.failed.txt'),
-                optionalFile(results, 'freyja_growth_inputs.json'),
-                file("${results}/summary/freyja_dashboard.html").exists() ? 'freyja_dashboard.html' : '',
-            ]), channel.value([
-                optionalFile(results, 'lineage_summary.csv'),
-                optionalFile(results, 'lineage_groups_resolved.tsv'),
-                optionalFile(results, 'site_aggregates_freyja.tsv'),
-                optionalFile(results, 'site_aggregates_meta.tsv'),
-            ]), channel.value([
-                optionalFile(results, 'contig_coverage.tsv'),
-                optionalFile(results, 'consensus_stats_contigs.tsv'),
-            ]))
-            RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
+            def existing_data = file("${results}/summary/report_data.json")
+            // (a single-target run: one report, from summary/)
+            def report_meta = tkey([ target: report_targets[0] ])
+            // report_data.json is rebuilt from the summary files when the report must be anonymised: the renderer has no
+            // anonymisation of its own, and an existing report_data.json holds the real IDs
+            if (existing_data.exists() && params.report_anonymize == 'none') {
+                // the run already wrote report_data.json: only the HTML is rendered again
+                RENDER_REPORT(channel.value([ report_meta, existing_data ]), report_template)
+            }
+            else {
+                // rebuild report_data.json from the files the run left behind
+                def depths = (file("${results}/samples/*/freyja/*.depths") + file("${results}/*/freyja/*.depths")).sort { a, b -> a.name <=> b.name }
+                BUILD_REPORT_DATA(channel.value([
+                    report_meta,
+                    file("${results}/pipeline_info/run_info.json"),
+                    optionalFile(results, 'qc_summary.tsv'),
+                    optionalFile(results, 'amplicon_coverage.tsv'),
+                    optionalFile(results, 'freyja_aggregated.tsv'),
+                    optionalFile(results, 'demix_status.tsv'),
+                    optionalFile(results, 'consensus_stats.tsv'),
+                    optionalFile(results, 'mutations_of_interest.tsv'),
+                    optionalFile(results, 'barcode_compare.tsv'),
+                    depths,
+                ]), channel.value([
+                    optionalFile(results, 'freyja_aggregated_controls.tsv'),
+                    optionalFile(results, 'samplesheet.csv'),
+                    optionalFile(results, 'freyja_boot_summary.tsv'),
+                    optionalFile(results, 'barcode_compare_status.tsv'),
+                ]), channel.value([
+                    optionalFile(results, 'dropout_impact.tsv'),
+                    optionalFile(results, 'dropout_impact_summary.tsv'),
+                    optionalFile(results, 'unexplained_mutations.tsv'),
+                    optionalFile(results, 'freyja_timeseries.tsv'),
+                    optionalFile(results, 'freyja_timeseries_lineages.tsv'),
+                    optionalFile(results, 'freyja_growth_rates.csv'),
+                    optionalFile(results, 'freyja_growth_rates.failed.txt'),
+                    optionalFile(results, 'freyja_growth_inputs.json'),
+                    file("${results}/summary/freyja_dashboard.html").exists() ? 'freyja_dashboard.html' : '',
+                ]), channel.value([
+                    optionalFile(results, 'lineage_summary.csv'),
+                    optionalFile(results, 'lineage_groups_resolved.tsv'),
+                    optionalFile(results, 'site_aggregates_freyja.tsv'),
+                    optionalFile(results, 'site_aggregates_meta.tsv'),
+                ]), channel.value([
+                    optionalFile(results, 'contig_coverage.tsv'),
+                    optionalFile(results, 'consensus_stats_contigs.tsv'),
+                ]))
+                RENDER_REPORT(BUILD_REPORT_DATA.out.json, report_template)
+            }
         }
     }
     else {
@@ -191,8 +216,12 @@ workflow WASTELINE {
     //
     // One dataset per target (a single-target run has one): the *_by_target outputs are [ target name, item ], joined onto the
     // samples and the run-level steps of a target with combine(..., by: 0) on the target name.
-    def targets = targetsFromParams()
-    def is_panel = params.panel ? true : false
+    // The targets of the run: --panel, or the targets of the panel results / samplesheet a mode reads, or the one target of a normal run
+    // (targetsForMode); --targets selects among them. A target's layout follows the input: panel results give panel-layout outputs
+    // (samples/<id>/<target>/, summary/<target>/) even when only one target is selected.
+    // update_db fetches the latest dataset of every target: a panel row's own barcodes (an offline file) must not stand in for it.
+    def targets = targetsForMode(mode).collect { t -> mode == 'update_db' ? t + [ barcodes: null ] : t }
+    def is_panel = targets[0].panel
     FREYJA_DATA(mode == 'update_db' ? 'latest' : params.barcodes, targets, '--barcodes')
 
     if (mode == 'update_db') {
@@ -487,12 +516,13 @@ workflow WASTELINE {
         // --compare_barcodes: one spec for every target (validated per target at start-up)
         def run_compare = params.compare_barcodes && (mode == 'full' || mode == 'demix')
         // aggregate mode with --previous_results: samples that were low_confidence in the earlier run keep that status (PLAN D18)
-        def carried_low = mode == 'aggregate' ? carriedLowConfidence() : [:]
+        // (keyed like meta.key: the sample ID, or ID__target for the targets of a panel)
+        def carried_low = mode == 'aggregate' ? carriedLowConfidence(targets) : [:]
         // demix_status.tsv lines of each target: [ tkey, line ] with line = sample, status, reason, genome_coverage_pct, barcode_version, barcode_version_iso
-        // (a sample found in old results but not usable has no target of its own: its row goes to every target of the run, which is one in the modes that read results)
-        def ch_status_lines = ch_skipped.flatMap { sample, reason, _type, _date, _site ->
+        // (a sample found in old results but not usable: its row goes to its target when the results name one, else to every target of the run, which is one in single-target results)
+        def ch_status_lines = ch_skipped.flatMap { sample, reason, _type, _date, _site, target_name ->
             def line = [ sample, 'missing', reason, '', '', '' ].collect { value -> value.toString().replaceAll('[\t\r\n]+', ' ') }.join('\t')
-            targets.collect { t -> [ tkey([ target: t ]), line ] }
+            targets.findAll { t -> !target_name || t.name == target_name }.collect { t -> [ tkey([ target: t ]), line ] }
         }
 
         if (mode == 'full' || mode == 'demix') {
@@ -590,9 +620,9 @@ workflow WASTELINE {
         else {
             ch_demixed = ch_rows
             ch_status_lines = ch_status_lines.mix(ch_demixed
-                .filter { meta, _demix -> carried_low.containsKey(meta.id) }
+                .filter { meta, _demix -> carried_low.containsKey(meta.key) }
                 .map { meta, _demix ->
-                    [ tkey(meta), [ meta.id, 'low_confidence', carried_low[meta.id].reason, carried_low[meta.id].coverage, '', '' ].join('\t') ]
+                    [ tkey(meta), [ meta.id, 'low_confidence', carried_low[meta.key].reason, carried_low[meta.key].coverage, '', '' ].join('\t') ]
                 })
         }
 
@@ -953,14 +983,18 @@ workflow WASTELINE {
             // carried over from the earlier run, which are already in ch_status_lines), but the published
             // demix_status.tsv lists only the unusable ones, so the summaries get their own, complete copy
             def ch_given_ok = mode == 'aggregate'
-                ? ch_demixed.filter { meta, _demix -> !carried_low.containsKey(meta.id) }.map { meta, _demix -> [ tkey(meta), [ meta.id, 'ok', '', '', '', '' ].join('\t') ] }
+                ? ch_demixed.filter { meta, _demix -> !carried_low.containsKey(meta.key) }.map { meta, _demix -> [ tkey(meta), [ meta.id, 'ok', '', '', '', '' ].join('\t') ] }
                 : channel.empty()
             // the samplesheet in effect plus the metadata of the samples discovery had to skip (a skipped negative control is
             // only known from there), as one CSV
-            def ch_summary_sheet = ch_samplesheet
+            // (one row per sample: the sheet of panel results has a row per sample and target; a row of the sheet beats one of the skipped samples)
+            def ch_summary_sheet_rows = ch_samplesheet
                 .splitCsv(header: true)
-                .map { row -> [ row.sample, row.sample_type ?: 'sample', row.collection_date, row.site, row.viral_load ].collect { v -> csvCell(v) }.join(',') }
-                .mix(ch_skipped.map { sample, _reason, sample_type, date, site -> [ sample, sample_type, date, site, '' ].collect { v -> csvCell(v) }.join(',') })
+                .map { row -> [ row.sample, [ row.sample, row.sample_type ?: 'sample', row.collection_date, row.site, row.viral_load ].collect { v -> csvCell(v) }.join(',') ] }
+                .unique { row -> row[0] }
+            def ch_summary_sheet = ch_summary_sheet_rows
+                .join(ch_skipped.map { sample, _reason, sample_type, date, site, _target_name -> [ sample, [ sample, sample_type, date, site, '' ].collect { v -> csvCell(v) }.join(',') ] }.unique { row -> row[0] }, remainder: true)
+                .map { _sample, sheet_line, skipped_line -> sheet_line ?: skipped_line }
                 .collectFile(name: 'summary_samplesheet.csv', seed: 'sample,sample_type,collection_date,site,viral_load', sort: true, newLine: true)
                 .first()
             // [ tkey, aggregate, complete demix_status.tsv ] of each target
@@ -1046,7 +1080,7 @@ workflow WASTELINE {
                 .map { meta, demix, _status_json -> [ meta, demix ] }
         }
         else if (filter_low_confidence) {
-            ch_ts_samples = ch_aggregate_in.filter { meta, _demix -> !carried_low.containsKey(meta.id) }
+            ch_ts_samples = ch_aggregate_in.filter { meta, _demix -> !carried_low.containsKey(meta.key) }
         }
 
         // Time series: needs at least two distinct collection dates among the non-negative aggregated samples of the target
@@ -1124,7 +1158,8 @@ workflow WASTELINE {
         // The sheet of the usable samples, plus the metadata of samples that discovery had to skip (a skipped
         // negative control is only known from there)
         def ch_skipped_sheet = ch_skipped
-            .map { sample, _reason, sample_type, date, site -> "${sample},${sample_type},${date},${site}" }
+            .map { sample, _reason, sample_type, date, site, _target_name -> "${sample},${sample_type},${date},${site}" }
+            .unique()
             .collectFile(name: 'skipped_samplesheet.csv', seed: 'sample,sample_type,collection_date,site', sort: true, newLine: true)
         def ch_report_sheets = ch_samplesheet.mix(ch_skipped_sheet).collect()
         def ch_to_report = ch_report_parts
@@ -1152,11 +1187,61 @@ workflow WASTELINE {
 */
 
 //
-// A file of <results>/summary/, or [] when the run did not write it
+// A file of <results>/summary<sub>/ (sub: '' or '/<target>' for panel results), or [] when the run did not write it
 //
-def optionalFile(results, name) {
-    def candidate = file("${results}/summary/${name}")
+def optionalFile(results, name, sub = '') {
+    def candidate = file("${results}/summary${sub}/${name}")
     return candidate.exists() ? candidate : []
+}
+
+//
+// --mode report on panel results: the inputs of BUILD_REPORT_DATA for one target, as the tables the run wrote to summary/<target>/ and its
+// depths files (samples/*/<target>/freyja/) as the same five tuples the single-target report takes, [ data, extra, analyses, groups, contigs ]
+//
+def reportBuildInputs(results, target) {
+    def sub = target.summary_sub
+    def depths = file("${results}/samples/*/${target.name}/freyja/*.depths").sort { a, b -> a.name <=> b.name }
+    return [
+        data: [
+            tkey([ target: target ]),
+            file("${results}/pipeline_info${sub}/run_info.json"),
+            optionalFile(results, 'qc_summary.tsv', sub),
+            optionalFile(results, 'amplicon_coverage.tsv', sub),
+            optionalFile(results, 'freyja_aggregated.tsv', sub),
+            optionalFile(results, 'demix_status.tsv', sub),
+            optionalFile(results, 'consensus_stats.tsv', sub),
+            optionalFile(results, 'mutations_of_interest.tsv', sub),
+            optionalFile(results, 'barcode_compare.tsv', sub),
+            depths,
+        ],
+        extra: [
+            optionalFile(results, 'freyja_aggregated_controls.tsv', sub),
+            optionalFile(results, 'samplesheet.csv', sub),
+            optionalFile(results, 'freyja_boot_summary.tsv', sub),
+            optionalFile(results, 'barcode_compare_status.tsv', sub),
+        ],
+        analyses: [
+            optionalFile(results, 'dropout_impact.tsv', sub),
+            optionalFile(results, 'dropout_impact_summary.tsv', sub),
+            optionalFile(results, 'unexplained_mutations.tsv', sub),
+            optionalFile(results, 'freyja_timeseries.tsv', sub),
+            optionalFile(results, 'freyja_timeseries_lineages.tsv', sub),
+            optionalFile(results, 'freyja_growth_rates.csv', sub),
+            optionalFile(results, 'freyja_growth_rates.failed.txt', sub),
+            optionalFile(results, 'freyja_growth_inputs.json', sub),
+            file("${results}/summary${sub}/freyja_dashboard.html").exists() ? 'freyja_dashboard.html' : '',
+        ],
+        groups: [
+            optionalFile(results, 'lineage_summary.csv', sub),
+            optionalFile(results, 'lineage_groups_resolved.tsv', sub),
+            optionalFile(results, 'site_aggregates_freyja.tsv', sub),
+            optionalFile(results, 'site_aggregates_meta.tsv', sub),
+        ],
+        contigs: [
+            optionalFile(results, 'contig_coverage.tsv', sub),
+            optionalFile(results, 'consensus_stats_contigs.tsv', sub),
+        ],
+    ]
 }
 
 //
@@ -1179,23 +1264,28 @@ def lowConfidenceBand() {
 }
 
 //
-// Aggregate mode, --previous_results: [ sample: [ reason, coverage ] ] of the samples that summary/demix_status.tsv of
-// an earlier run lists as low_confidence (PLAN D18). Other statuses, other inputs (--input, --demix_dir) and
-// directories without that file give nothing: their .demix files count as ok.
+// Aggregate mode, --previous_results: [ key: [ reason, coverage ] ] of the samples that summary/demix_status.tsv of an earlier run lists
+// as low_confidence (PLAN D18); the key is meta.key (the sample ID, or ID__target for the targets of panel results, whose status
+// files are summary/<target>/demix_status.tsv). Other statuses, other inputs (--input, --demix_dir) and directories without that
+// file give nothing: their .demix files count as ok.
 //
-def carriedLowConfidence() {
+def carriedLowConfidence(targets) {
     def carried = [:]
     splitPaths(params.previous_results).each { dir ->
-        def status_file = file("${dir}/summary/demix_status.tsv")
-        if (status_file.exists()) {
-            def lines = status_file.readLines().findAll { line -> line.trim() }
-            def header = lines ? lines[0].split('\t', -1).collect { column -> column.trim() } : []
-            lines.drop(1).each { line ->
-                def cells = line.split('\t', -1)
-                def row = [:]
-                header.eachWithIndex { column, i -> row[column] = i < cells.size() ? cells[i].trim() : '' }
-                if (row.sample && row.status == 'low_confidence') {
-                    carried[row.sample] = [ reason: row.reason ?: '', coverage: row.genome_coverage_pct ?: '' ]
+        def status_files = resultsAreMultiTarget(dir)
+            ? targets.collect { t -> [ "__${t.name}", file("${dir}/summary${t.summary_sub}/demix_status.tsv") ] }
+            : [ [ '', file("${dir}/summary/demix_status.tsv") ] ]
+        status_files.each { key_suffix, status_file ->
+            if (status_file.exists()) {
+                def lines = status_file.readLines().findAll { line -> line.trim() }
+                def header = lines ? lines[0].split('\t', -1).collect { column -> column.trim() } : []
+                lines.drop(1).each { line ->
+                    def cells = line.split('\t', -1)
+                    def row = [:]
+                    header.eachWithIndex { column, i -> row[column] = i < cells.size() ? cells[i].trim() : '' }
+                    if (row.sample && row.status == 'low_confidence') {
+                        carried["${row.sample}${key_suffix}".toString()] = [ reason: row.reason ?: '', coverage: row.genome_coverage_pct ?: '' ]
+                    }
                 }
             }
         }
@@ -1263,10 +1353,10 @@ def runInfoBase(mode, metas, target) {
         params: plain_params,
         // earlier runs whose results this run builds on (demix/aggregate); barcode_version 'unknown'
         // for legacy Snakemake results, which recorded none
-        previous_runs: previousRuns(mode),
+        previous_runs: previousRuns(mode, target),
     ] + libraryInfo(mode, metas) + groups_info
     if (target.panel) {
-        info.panel = params.panel.toString()
+        info.panel = params.panel ? params.panel.toString() : 'from results'   // not given with --panel: the targets are those of the panel results / sheet read
     }
     // several reference contigs (PLAN D25): the contigs in FASTA order, and the one Freyja demixes
     if (mode in ['full', 'demix'] && multiContig(target)) {

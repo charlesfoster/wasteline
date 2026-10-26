@@ -420,7 +420,8 @@ method are in [qc_scripts.md](qc_scripts.md#primer_scheme_checkpy).
 
 A panel is several targets (pathogens) analysed in one run: `--panel rsv` (RSVa, RSVb) or `--panel flu` (H1N1, H3N2, H5Nx,
 FLU-B-VIC), or `--panel my_panel.csv`. The panel files and the panel parameters ([parameters.md](parameters.md#panel-options))
-are validated at start-up. Panel runs are available in `--mode full` only (demix, aggregate and report stop with a message).
+are validated at start-up. `--mode full` runs a panel; `--mode demix`, `aggregate`, `report` and `update_db` work on the results of a panel
+run, per target (below).
 
 **Panel runs (S2a status).** Works now: every sample is trimmed with fastp, mapped once to all the panel's references, typed
 (which targets are present: `summary/targets.tsv`, and `samples/<id>/<id>.targets.tsv` with the numbers behind it in
@@ -436,6 +437,17 @@ its plots, the control aggregate, `qc_summary.tsv`, `consensus_stats.tsv`, `cons
 `demix_status.tsv` (each sample's status is in its `samples/<id>/<target>/freyja/<id>.demix_status.json`), `barcode_version.json`,
 the dropout-impact and unexplained-mutation summaries, time series, growth rates, the dashboard, site aggregation, the lineage-group
 summary, `--compare_barcodes`, `pipeline_info/run_info.json` and the report.
+
+**Modes on panel results.** `--mode demix` and `--mode aggregate` take the results of a panel run with `--previous_results <out>` (or a
+samplesheet with a `target` column: `bin/make_samplesheet.py --from-results <out> --mode demix` writes one, one row per sample and
+target, with the metadata of `summary/<target>/samplesheet.csv`); `--mode report` takes `--results_dir <out>`. The targets are those the
+results contain; `--panel <csv>` names them with the panel's own overrides (for example a `barcodes` column, which re-demixing needs when
+the original run used one), and `--targets RSVb,RSVa` keeps only some. Everything is then done per target and written to
+`samples/<id>/<target>/` and `summary/<target>/` of `--outdir` (also with one target selected), re-using the stored variants and depths, so
+no re-mapping is needed. `--mode report` rebuilds `report_data.json` and `report.html` of each target (`--report_anonymize` as
+usual); `--mode update_db --panel <csv>` updates the Freyja dataset of every target of the panel (`--targets` selects). `--panel` with
+single-target results is an error (drop `--panel` and use `--pathogen`); results of both kinds in one `--previous_results` are refused.
+Results of single-target runs and of the Snakemake pipeline are unchanged in every mode.
 
 - `assets/panels/registry.csv` has one row per target wasteline can analyse (the Freyja pathogens that have barcodes), with
   the columns `target, fasta, gff, freyja_pathogen, freyja_contig, marker_contig, family, primer_scheme_default,

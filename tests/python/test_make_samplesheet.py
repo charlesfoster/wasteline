@@ -116,3 +116,50 @@ def test_results_demix_carries_per_sample_protocol_and_scheme(tmp_path, capsys):
         "midnight",
     )
     assert (rows["NEG_ntc"]["protocol"], rows["NEG_ntc"]["primer_scheme"]) == ("capture", "")
+
+
+def test_results_of_a_panel_run_give_one_row_per_sample_and_target(tmp_path, capsys):
+    """Panel layout (summary/targets.tsv, samples/<id>/<target>/freyja): (sample, target) rows with a target column,
+    metadata from summary/<target>/samplesheet.csv, a skipped TSV with a target column, --targets filters, and the
+    sheet passes check_samplesheet (duplicates are on sample AND target)."""
+    import check_samplesheet as cs
+
+    root = tmp_path / "panel"
+    (root / "summary").mkdir(parents=True)
+    (root / "summary" / "targets.tsv").write_text(
+        "sample\ttarget\tanalysed\nS1\tA\ttrue\nS1\tB\ttrue\n"
+    )
+    for sample, target, with_demix in (("S1", "A", True), ("S1", "B", True), ("S2", "B", False)):
+        d = root / "samples" / sample / target / "freyja"
+        d.mkdir(parents=True)
+        (d / f"{sample}.variants.tsv").write_text("REGION\tPOS\n")
+        (d / f"{sample}.depths").write_text("ref\t1\tA\t5\n")
+        if with_demix:
+            (d / f"{sample}.demix").write_text("x\n")
+    (root / "samples" / "S1" / "fastp").mkdir()
+    (root / "samples" / "S1" / "fastp" / "S1.fastp.json").write_text("{}")
+    (root / "summary" / "B").mkdir()
+    (root / "summary" / "B" / "samplesheet.csv").write_text(
+        "sample,sample_type,collection_date,site\nS1,sample,2026-01-05,SiteA\nS2,negative,2026-01-06,SiteB\n"
+    )
+    out, skipped = tmp_path / "sheet.csv", tmp_path / "skipped.tsv"
+    rc, _, err = run(
+        ["--from-results", root, "--mode", "aggregate", "-o", out, "--skipped-out", skipped], capsys
+    )
+    assert rc == 0, err
+    rows = read(out)
+    assert list(rows[0])[:3] == ["sample", "target", "demix"]
+    assert [(r["sample"], r["target"]) for r in rows] == [("S1", "A"), ("S1", "B")]
+    assert rows[1]["collection_date"] == "2026-01-05" and rows[1]["site"] == "SiteA"
+    assert skipped.read_text().splitlines() == [
+        "sample\ttarget\treason\tsample_type\tcollection_date\tsite",
+        "S2\tB\tmissing demix (panel layout)\tnegative\t2026-01-06\tSiteB",
+    ]
+    assert cs.validate(out, "aggregate")["ok"]
+    rc, _, err = run(
+        ["--from-results", root, "--mode", "demix", "--targets", "A", "-o", out], capsys
+    )
+    assert rc == 0, err
+    rows = read(out)
+    assert [(r["sample"], r["target"]) for r in rows] == [("S1", "A")]
+    assert rows[0]["fastp_json"].endswith("samples/S1/fastp/S1.fastp.json")

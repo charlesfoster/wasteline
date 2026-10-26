@@ -113,17 +113,28 @@ workflow PIPELINE_INITIALISATION {
         rows = samplesheetToList(input, "${projectDir}/assets/schema_input.json")
             .collect { meta, fastq_1, fastq_2 -> [ sampleMeta(meta, mode), [ fastq_1, fastq_2 ] ] }
     }
-    else if (input && mode == 'demix') {
-        rows = samplesheetToList(input, "${projectDir}/assets/schema_input_demix.json")
-            .collect { meta, variants, depths, fastp_json -> [ sampleMeta(meta, mode), variants, depths, fastp_json ?: [] ] }
-    }
-    else if (input && mode == 'aggregate') {
-        rows = samplesheetToList(input, "${projectDir}/assets/schema_input_aggregate.json")
-            .collect { meta, demix -> [ sampleMeta(meta, mode), demix ] }
+    else if (input && mode in ['demix', 'aggregate']) {
+        // rows of panel targets carry the sheet's target column (one row per sample and target); rows of targets that --targets
+        // leaves out are dropped
+        def selected = targetsForMode(mode)
+        def everything = targetsForModeAll(mode)
+        if (mode == 'demix') {
+            rows = samplesheetToList(input, "${projectDir}/assets/schema_input_demix.json")
+                .collect { meta, variants, depths, fastp_json -> [ sheetRowTarget(meta, selected, everything), meta, variants, depths, fastp_json ?: [] ] }
+                .findAll { row -> row[0] }
+                .collect { target, meta, variants, depths, fastp_json -> [ sampleMeta(meta, mode, target), variants, depths, fastp_json ] }
+        }
+        else {
+            rows = samplesheetToList(input, "${projectDir}/assets/schema_input_aggregate.json")
+                .collect { meta, demix -> [ sheetRowTarget(meta, selected, everything), meta, demix ] }
+                .findAll { row -> row[0] }
+                .collect { target, meta, demix -> [ sampleMeta(meta, mode, target), demix ] }
+        }
     }
     if (rows) {
         if (!(mode == 'full' && params.panel)) {
-            checkSampleBeds(rows.collect { row -> row[0] })
+            // the primer BEDs of each target must be on its reference
+            rows.groupBy { row -> row[0].target.name }.each { _name, group -> checkSampleBeds(group.collect { row -> row[0] }, group[0][0].target) }
         }
         ch_samplesheet = channel.fromList(rows)
     }
@@ -223,8 +234,14 @@ def runContainers(outdir) {
 // outcome) to pipeline_info/run_info.json, which PROVENANCE wrote during the run
 //
 def finaliseRunInfo(outdir) {
-    // a panel run has one run_info.json per target (pipeline_info/<target>/), a single-target run one in pipeline_info/
-    def subs = params.panel ? targetsFromParams().collect { t -> t.summary_sub } : ['']
+    // a run of panel targets has one run_info.json per target (pipeline_info/<target>/), a single-target run one in pipeline_info/
+    def subs = ['']
+    try {
+        subs = targetsForMode(params.mode).collect { t -> t.summary_sub }
+    }
+    catch (Exception _e) {
+        subs = ['']   // the targets could not be resolved (the run failed at start-up): there is no run_info.json to complete
+    }
     subs.each { sub ->
         def run_info = file("${outdir}/pipeline_info${sub}/run_info.json")
         if (run_info.exists()) {
@@ -310,10 +327,48 @@ def panelTarget() {
 }
 
 //
-// Does a results directory come from a panel run (several targets)? Panel runs write summary/targets.tsv.
+// The targets of a results directory that comes from a panel run (a run with --panel writes summary/targets.tsv, samples/<id>/<target>/ and
+// summary/<target>/): the targets that were analysed (analysed=true in targets.tsv; else the summary/<target>/ folders that sit beside
+// samples/<id>/<target>/freyja/). null for every other layout (single-target runs and the old Snakemake layout).
+//
+def resultsTargetNames(dir) {
+    def tsv = file("${dir}/summary/targets.tsv")
+    if (tsv.exists()) {
+        def lines = tsv.readLines().findAll { line -> line.trim() }
+        def header = lines ? lines[0].split('\t', -1).collect { column -> column.trim() } : []
+        def name_column = header.indexOf('target')
+        def analysed_column = header.indexOf('analysed')
+        if (name_column < 0) {
+            error("${tsv} has no 'target' column (columns: ${header.join(', ')})")
+        }
+        return lines.drop(1)
+            .collect { line -> line.split('\t', -1).collect { cell -> cell.trim() } }
+            .findAll { cells -> cells.size() > name_column && cells[name_column] && (analysed_column < 0 || (cells.size() > analysed_column && cells[analysed_column] == 'true')) }
+            .collect { cells -> cells[name_column] }
+            .unique()
+    }
+    def summary = file("${dir}/summary")
+    def samples = file("${dir}/samples")
+    if (!summary.isDirectory() || !samples.isDirectory()) {
+        return null
+    }
+    def sample_dirs = samples.listFiles().findAll { d -> d.isDirectory() }
+    def names = summary.listFiles().findAll { d -> d.isDirectory() && sample_dirs.any { sample_dir -> file("${sample_dir}/${d.name}/freyja").isDirectory() } }.collect { d -> d.name }.sort()
+    return names ?: null
+}
+
+//
+// Does a results directory come from a panel run (several targets)?
 //
 def resultsAreMultiTarget(dir) {
-    return file("${dir}/summary/targets.tsv").exists()
+    return resultsTargetNames(dir) != null
+}
+
+//
+// The target names in the `target` column of a samplesheet (demix / aggregate mode): [] when it has none
+//
+def sheetTargetNames(sheet) {
+    return readCsvRows(sheet).collect { row -> row.target }.findAll { name -> name }.unique()
 }
 
 //
@@ -443,6 +498,86 @@ def targetsFromParams() {
 }
 
 //
+// A target named in panel results (or in a samplesheet's target column) as a target map: a row of assets/panels/registry.csv
+//
+def resultTarget(name) {
+    if (!registryRows().any { r -> r.target == name }) {
+        error("The results name the target '${name}', which is not in assets/panels/registry.csv (${registryRows().collect { r -> r.target }.join(', ')}). Give --panel <panel CSV> that defines it, or leave it out with --targets.")
+    }
+    return targetByName(name)
+}
+
+//
+// The target names named by the results / samplesheet a mode reads, when those come from a panel run; null when they do not (the
+// single-target layouts, --demix_dir, no input): modes demix and aggregate read --previous_results (or the target column of --input),
+// mode report reads --results_dir. Results of both kinds in one run are refused.
+//
+def resultTargetNames(mode) {
+    def dirs = []
+    if (mode == 'report') {
+        dirs = params.results_dir ? [ params.results_dir.toString() ] : []
+    }
+    else if (mode in ['demix', 'aggregate']) {
+        dirs = splitPaths(params.previous_results)
+        if (!dirs && params.input) {
+            def names = sheetTargetNames(params.input)
+            return names ? names : null
+        }
+    }
+    def per_dir = dirs.collect { dir -> [ dir, resultsTargetNames(dir) ] }
+    def panel_dirs = per_dir.findAll { entry -> entry[1] != null }
+    if (panel_dirs && panel_dirs.size() < per_dir.size()) {
+        error("--previous_results mixes the results of a panel run (${panel_dirs.collect { entry -> entry[0] }.join(', ')}) with single-target results (${per_dir.findAll { entry -> entry[1] == null }.collect { entry -> entry[0] }.join(', ')}); run them separately.")
+    }
+    return panel_dirs ? panel_dirs.collect { entry -> entry[1] }.flatten().unique() : null
+}
+
+//
+// Every target a mode has to know about, before --targets selects: --panel (its rows, restricted for the modes that read results to
+// the targets found in them), else the targets of the panel results / samplesheet the mode reads, else [ targetFromParams() ].
+// A layout flag follows the INPUT: results of a panel run give panel targets (samples/<id>/<target>/, summary/<target>/), even when
+// only one target is selected.
+//
+def targetsForModeAll(mode) {
+    def found = mode in ['demix', 'aggregate', 'report'] ? resultTargetNames(mode) : null
+    if (params.panel) {
+        def panel_targets = targetsFromParams()
+        if (found == null) {
+            return panel_targets
+        }
+        def present = panel_targets.findAll { t -> t.name in found }
+        if (!present) {
+            error("--mode ${mode}: none of the targets of --panel ${params.panel} (${panel_targets.collect { t -> t.name }.join(', ')}) is in the results (targets found: ${found.join(', ') ?: 'none'})")
+        }
+        return present
+    }
+    if (found == null) {
+        return [ targetFromParams() ]
+    }
+    if (!found) {
+        error("The results given to --mode ${mode} come from a panel run but no target was analysed in them (summary/targets.tsv has no analysed=true row)")
+    }
+    return found.collect { name -> resultTarget(name) }
+}
+
+//
+// The targets of the run for a mode: targetsForModeAll() restricted by --targets (a comma-separated list of target names; for the modes
+// that read results and for update_db; not for mode full, where the typing decides). Always at least one target.
+//
+def targetsForMode(mode) {
+    def all = targetsForModeAll(mode)
+    if (!params.targets || !all[0].panel || mode == 'full') {
+        return all
+    }
+    def wanted = params.targets.toString().split(',').collect { name -> name.trim() }.findAll { name -> name }
+    def unknown = wanted.findAll { name -> !all.any { t -> t.name == name } }
+    if (unknown) {
+        error("--targets ${unknown.join(', ')}: not among the targets of this run (${all.collect { t -> t.name }.join(', ')})")
+    }
+    return all.findAll { t -> t.name in wanted }
+}
+
+//
 // A panel is mapped as one concatenated reference, so contig names must be unique across it. Two targets may share a FASTA
 // only when they are the same family with the same marker contig (H5Nx and H5Nx-cattle: one reference, two sets of barcodes).
 //
@@ -517,6 +652,28 @@ def panelSampleMeta(meta) {
         target: panelTarget(),
         key: meta.id,
     ]
+}
+
+//
+// The target of a row of a demix / aggregate samplesheet: the one target of a single-target run, else the row's `target` cell matched to
+// the targets of the run (null = a target that --targets or the panel left out: the row is dropped)
+//
+def sheetRowTarget(meta, selected, everything) {
+    if (!selected[0].panel) {
+        return selected[0]
+    }
+    def name = meta.target
+    if (!name) {
+        error("Sample '${meta.id}' has no target: with a target column every row needs one (${everything.collect { t -> t.name }.join(', ')})")
+    }
+    def hit = selected.find { t -> t.name == name }
+    if (hit) {
+        return hit
+    }
+    if (everything.any { t -> t.name == name }) {
+        return null
+    }
+    error("Sample '${meta.id}': target '${name}' is not one of the targets of this run (${everything.collect { t -> t.name }.join(', ')})" + (params.panel ? " (--panel ${params.panel})" : ''))
 }
 
 //
@@ -833,36 +990,49 @@ def requireDirectory(option, value) {
 }
 
 //
-// --panel (several targets in one run): the panel replaces --pathogen and the reference options, which are therefore refused
-// together with it, and its file is validated here (targetsFromParams) so a mistake stops the run before any work is done.
-// --targets selects targets of the results that modes demix, aggregate and report read.
+// Panels (several targets): --panel (a panel run in mode full; in the other modes it names the targets and may override their facts, such as
+// a barcodes file) or the panel results / samplesheet a mode reads. The panel replaces --pathogen and the reference options, which are
+// therefore refused together with it, and its file is validated here (targetsFromParams) so a mistake stops the run before any work is
+// done. --targets selects targets of the results that modes demix, aggregate and report read (and of update_db).
+// Returns nothing; errors for combinations that cannot work.
 //
 def validatePanelParameters(mode) {
-    if (!params.panel) {
+    def all_targets = targetsForModeAll(mode)
+    if (!all_targets[0].panel) {
         if (params.targets) {
-            log.warn("--targets selects targets of panel results: it is only used together with results of a --panel run and is ignored here")
+            log.warn("--targets selects targets of panel results: it is only used together with results of a --panel run (or --panel) and is ignored here")
         }
         return
     }
-    def clashes = [
-        '--pathogen': params.pathogen,
-        '--fasta': params.fasta,
-        '--gff': params.gff,
-        '--freyja_contig': params.freyja_contig,
-        '--whole_genome': params.whole_genome,
-    ].findAll { _name, value -> value }.keySet()
-    if (params.pathogen) {
-        // --fasta, --gff and --freyja_contig are then (also) set by the pathogen's profile: name the cause
-        clashes = clashes.findAll { name -> name in ['--pathogen', '--whole_genome'] }
+    if (params.panel) {
+        def clashes = [
+            '--pathogen': params.pathogen,
+            '--fasta': params.fasta,
+            '--gff': params.gff,
+            '--freyja_contig': params.freyja_contig,
+            '--whole_genome': params.whole_genome,
+        ].findAll { _name, value -> value }.keySet()
+        if (params.pathogen) {
+            // --fasta, --gff and --freyja_contig are then (also) set by the pathogen's profile: name the cause
+            clashes = clashes.findAll { name -> name in ['--pathogen', '--whole_genome'] }
+        }
+        if (clashes) {
+            error("--panel cannot be combined with ${clashes.join(', ')}: a panel names its targets (assets/panels/registry.csv gives each its reference and Freyja pathogen), so --pathogen, --fasta, --gff, --freyja_contig and --whole_genome are not used with it. Give a panel CSV with the targets you want instead (see docs/usage.md, Panels).")
+        }
     }
-    if (clashes) {
-        error("--panel cannot be combined with ${clashes.join(', ')}: a panel names its targets (assets/panels/registry.csv gives each its reference and Freyja pathogen), so --pathogen, --fasta, --gff, --freyja_contig and --whole_genome are not used with it. Give a panel CSV with the targets you want instead (see docs/usage.md, Panels).")
+    if (params.panel && mode in ['demix', 'aggregate', 'report']) {
+        checkPanelResultsInput(mode)
+        def panel_names = targetsFromParams().collect { t -> t.name }
+        def absent = panel_names.findAll { name -> !all_targets.any { t -> t.name == name } }
+        if (absent) {
+            log.warn("--panel ${params.panel}: no results for target(s) ${absent.join(', ')} in the input of --mode ${mode}; they are left out")
+        }
     }
-    def targets = targetsFromParams()
-    if (mode in ['demix', 'aggregate', 'report']) {
-        error("--panel ${params.panel} (${targets.collect { t -> t.name }.join(', ')}) is valid, but panel results cannot be re-demixed/aggregated/reported yet (--mode ${mode}). Panel runs are available in --mode full; to redo a single target use --mode ${mode} on that target's results with --pathogen <target>.")
+    def targets = targetsForMode(mode)
+    if (mode == 'full' && params.targets) {
+        log.warn("--targets is not used by --mode full (the typing decides which targets each sample is analysed for) and is ignored")
     }
-    if (mode == 'full') {
+    if (mode in ['full', 'demix', 'aggregate']) {
         // the Freyja dataset of every target is resolved before any work is done (a registry row's own barcodes beat --barcodes)
         targets.each { t ->
             def spec = t.barcodes ?: params.barcodes
@@ -871,6 +1041,8 @@ def validatePanelParameters(mode) {
             }
             resolveBarcodes(spec, dbDir(), '--barcodes', t)
         }
+    }
+    if (mode in ['full', 'demix']) {
         if (params.compare_barcodes) {
             // --compare_barcodes is one spec for every target: it must be valid for each (version stamps resolve per target pathogen)
             def compare = params.compare_barcodes.toString().trim()
@@ -889,6 +1061,31 @@ def validatePanelParameters(mode) {
                 error("--annotate_variants needs the reference annotation: panel target(s) ${without_gff.join(', ')} have no GFF3 (give one in the panel CSV, column gff)")
             }
         }
+    }
+}
+
+//
+// --panel with a mode that reads results: the results (or the samplesheet's target column) must be those of a panel run, since the
+// targets of each sample come from them. The single-target layout has no target to match the panel's rows to.
+//
+def checkPanelResultsInput(mode) {
+    def how = "Drop --panel (and use --pathogen for the target) to ${mode == 'report' ? 'report' : 're-' + mode} single-target results."
+    if (mode == 'report') {
+        if (params.results_dir && !resultsAreMultiTarget(params.results_dir)) {
+            error("--panel with --mode report needs the results of a panel run (summary/targets.tsv, summary/<target>/), but --results_dir '${params.results_dir}' has the single-target layout. ${how}")
+        }
+        return
+    }
+    if (params.demix_dir) {
+        error("--panel cannot be combined with --demix_dir, which carries no target information. Use --previous_results <panel results> or --input <samplesheet with a target column>.")
+    }
+    splitPaths(params.previous_results).each { dir ->
+        if (!resultsAreMultiTarget(dir)) {
+            error("--panel with --mode ${mode} needs the results of a panel run (summary/targets.tsv, samples/<id>/<target>/), but --previous_results '${dir}' has the single-target layout. ${how}")
+        }
+    }
+    if (params.input && !sheetTargetNames(params.input)) {
+        error("--panel with --mode ${mode} needs a samplesheet with a target column (one row per sample and target; bin/make_samplesheet.py --from-results makes it from panel results), but '${params.input}' has none. ${how}")
     }
 }
 
@@ -939,6 +1136,8 @@ def validateInputParameters(mode) {
     }
 
     validatePanelParameters(mode)
+    // the layout follows the targets: --panel, or the panel results / samplesheet the mode reads (then the reference options are not used)
+    def panel_run = targetsForModeAll(mode)[0].panel
 
     // The pathogen (PLAN D22): the Freyja pathogens that need more than a reference are refused before any work is done
     if (mode in ['full', 'demix', 'aggregate', 'update_db']) {
@@ -946,7 +1145,7 @@ def validateInputParameters(mode) {
         if (unsupported) {
             error("--pathogen ${params.pathogen} is not supported: ${unsupported} See docs/other_pathogens.md.")
         }
-        if (mode in ['full', 'demix'] && !params.panel) {
+        if (mode in ['full', 'demix'] && !panel_run) {
             if (!params.fasta) {
                 error("--fasta is required with --pathogen ${params.pathogen}: wasteline bundles a reference only for the pathogens that have a file in conf/pathogens/. Pass the reference.fasta that the Freyja barcodes of ${params.pathogen} were built on (the pathogen's folder in https://github.com/andersen-lab/Freyja-barcodes): barcodes are tied to their reference and a different one gives silently wrong results. --gff (annotation) is optional. See docs/other_pathogens.md.")
             }
@@ -982,7 +1181,7 @@ def validateInputParameters(mode) {
             log.warn("--primer_scheme_dir is not used by --mode ${mode} and is ignored")
         }
     }
-    if (settings.primer_trimming && !params.panel && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed))) && primerBed()) {
+    if (settings.primer_trimming && !panel_run && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed))) && primerBed()) {
         // The default BED must be on the same contig(s) as the reference or ivar trim silently trims nothing
         // (BEDs named in the samplesheet are checked when it is read)
         // (PLAN D24: lines of contigs that are not in the reference are dropped; only a BED with no line on it is refused)
@@ -1024,7 +1223,15 @@ def validateInputParameters(mode) {
         if (params.outdir && file(params.outdir).toAbsolutePath().normalize() == dir.toAbsolutePath().normalize()) {
             error("--outdir must differ from --results_dir ('${params.results_dir}'): report mode never writes into the results it reads")
         }
-        if (!file("${dir}/pipeline_info/run_info.json").exists()) {
+        if (panel_run) {
+            // panel results: one run_info.json per target (pipeline_info/<target>/)
+            targetsForMode(mode).each { t ->
+                if (!file("${dir}/pipeline_info${t.summary_sub}/run_info.json").exists()) {
+                    error("--results_dir '${params.results_dir}' has no pipeline_info${t.summary_sub}/run_info.json for target ${t.name}: report mode needs the provenance record of the run (it never invents one). Leave the target out with --targets.")
+                }
+            }
+        }
+        else if (!file("${dir}/pipeline_info/run_info.json").exists()) {
             error("--results_dir '${params.results_dir}' has no pipeline_info/run_info.json: report mode needs the provenance record of the run (it never invents one)")
         }
     }
@@ -1032,13 +1239,13 @@ def validateInputParameters(mode) {
         error("--results_dir is only used by --mode report (this is --mode ${mode}). ${hint}")
     }
     // Resolve the Freyja dataset specification early so a typo fails before any work is done
-    // (a panel run resolves it per target in validatePanelParameters)
-    if (mode in ['full', 'demix', 'aggregate'] && !params.panel) {
+    // (a run of panel targets resolves it per target in validatePanelParameters)
+    if (mode in ['full', 'demix', 'aggregate'] && !panel_run) {
         resolveBarcodes(params.barcodes, dbDir(), '--barcodes')
     }
     if (params.compare_barcodes) {
         if (mode in ['full', 'demix']) {
-            if (!params.panel) {
+            if (!panel_run) {
                 resolveBarcodes(params.compare_barcodes, dbDir(), '--compare_barcodes') // a panel's targets are checked in validatePanelParameters
             }
         }
@@ -1056,7 +1263,7 @@ def validateInputParameters(mode) {
         else if (params.skip_consensus) {
             error("--annotate_variants annotates the variants the consensus is built from: it cannot be combined with --skip_consensus")
         }
-        else if (!params.gff && !params.panel) {
+        else if (!params.gff && !panel_run) {
             error("--annotate_variants needs the reference annotation: --pathogen ${params.pathogen} has no bundled GFF3, pass --gff")
         }
     }
@@ -1074,7 +1281,7 @@ def findRunRootFrom(dir, levels) {
     if (dir == null || levels == 0) {
         return null
     }
-    if (new File(dir, 'pipeline_info/run_info.json').isFile()) {
+    if (new File(dir, 'pipeline_info/run_info.json').isFile() || new File(dir, 'summary/targets.tsv').isFile()) {
         return dir
     }
     return findRunRootFrom(dir.parentFile, levels - 1)
@@ -1085,8 +1292,9 @@ def findRunRootFrom(dir, levels) {
 // run_info_sha256 is null and barcode_version 'unknown' when there is no run_info.json (legacy
 // Snakemake results record neither).
 //
-def previousRunRecord(dir) {
-    def run_info = new File(dir.toString(), 'pipeline_info/run_info.json')
+def previousRunRecord(dir, target = null) {
+    // results of a panel run keep one run_info.json per target
+    def run_info = new File(dir.toString(), "pipeline_info${target?.summary_sub ?: ''}/run_info.json")
     def record = [ path: dir.toString(), run_info_sha256: null, barcode_version: 'unknown' ]
     if (run_info.isFile()) {
         def digest = java.security.MessageDigest.getInstance('SHA-256').digest(run_info.bytes)
@@ -1110,7 +1318,7 @@ def previousRunRecord(dir) {
 // directories; --input and --demix_dir list the previous runs that can be discovered from the
 // locations of the files they point to.
 //
-def previousRuns(mode) {
+def previousRuns(mode, target = null) {
     if (!(mode in ['demix', 'aggregate'])) {
         return []
     }
@@ -1139,7 +1347,7 @@ def previousRuns(mode) {
         }
         dirs = locations.collect { location -> findRunRoot(location)?.toString() }.findAll { root -> root }.unique().sort()
     }
-    return dirs.collect { dir -> previousRunRecord(dir) }
+    return dirs.collect { dir -> previousRunRecord(dir, target) }
 }
 
 //
