@@ -32,8 +32,16 @@ process PANEL_PREPARE {
     """
 
     stub:
+    // the targets of the table (T1 and T2 when it is not a panel table, as in the module test), one contig c1 each
     """
-    printf '>T1|c1\\nACGTACGT\\n>T2|c1\\nTTTTACGT\\n' > panel.fasta
-    printf 'panel_contig\\ttarget\\tcontig\\tis_marker\\tfamily\\nT1|c1\\tT1\\tc1\\ttrue\\tF\\nT2|c1\\tT2\\tc1\\ttrue\\tF\\n' > contig_map.tsv
+    targets=\$(awk -F, 'NR > 1 && \$1 != "" { print \$1 }' ${panel_resolved} | head -n 20)
+    case "\$(head -n 1 ${panel_resolved})" in target,*) ;; *) targets="T1 T2" ;; esac
+    [ -n "\$targets" ] || targets="T1 T2"
+    : > panel.fasta
+    printf 'panel_contig\\ttarget\\tcontig\\tis_marker\\tfamily\\n' > contig_map.tsv
+    for t in \$targets; do
+        printf '>%s|c1\\nACGTACGT\\n' "\$t" >> panel.fasta
+        printf '%s|c1\\t%s\\tc1\\ttrue\\tF\\n' "\$t" "\$t" >> contig_map.tsv
+    done
     """
 }

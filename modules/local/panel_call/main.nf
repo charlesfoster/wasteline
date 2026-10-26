@@ -43,8 +43,20 @@ process PANEL_CALL {
 
     stub:
     prefix = task.ext.prefix ?: "${meta.id}"
+    // the first target of the contig table is detected, any other is not (T1 when the table is not a contig map, as in the module test)
     """
     printf 'sample\\tsample_type\\ttarget\\tfamily\\tstatus\\treason\\tsample_status\\tmixed\\tsecondary_targets\\tfragments\\tambiguous_fragments\\tfraction_of_family\\tbreadth_pct\\tmean_depth\\tmean_mapq\\tsecond_target\\tmargin\\trescue\\tanalysed\\n' > ${prefix}.targets.tsv
-    printf '${meta.id}\\t${meta.sample_type ?: 'sample'}\\tT1\\tF\\tdetected\\t\\tok\\tfalse\\t\\t500\\t0\\t1.0000\\t100.00\\t50.00\\t60.0\\t\\t\\t\\ttrue\\n' >> ${prefix}.targets.tsv
+    targets=\$(awk -F'\\t' 'NR > 1 && !(\$2 in seen) { seen[\$2] = 1; print \$2 }' ${contig_map})
+    case "\$(head -n 1 ${contig_map})" in panel_contig*) ;; *) targets="T1" ;; esac
+    [ -n "\$targets" ] || targets="T1"
+    first=1
+    for t in \$targets; do
+        if [ \$first = 1 ]; then
+            printf '${meta.id}\\t${meta.sample_type ?: 'sample'}\\t%s\\tF\\tdetected\\t\\tok\\tfalse\\t\\t500\\t0\\t1.0000\\t100.00\\t50.00\\t60.0\\t\\t\\t\\ttrue\\n' "\$t" >> ${prefix}.targets.tsv
+        else
+            printf '${meta.id}\\t${meta.sample_type ?: 'sample'}\\t%s\\tF\\tnot_detected\\tno_fragments\\tok\\tfalse\\t\\t0\\t0\\t0.0000\\t0.00\\t0.00\\tNA\\t\\t\\t\\tfalse\\n' "\$t" >> ${prefix}.targets.tsv
+        fi
+        first=0
+    done
     """
 }

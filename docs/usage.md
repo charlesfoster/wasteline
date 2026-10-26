@@ -419,8 +419,23 @@ method are in [qc_scripts.md](qc_scripts.md#primer_scheme_checkpy).
 ## Panels (in development)
 
 A panel is several targets (pathogens) analysed in one run: `--panel rsv` (RSVa, RSVb) or `--panel flu` (H1N1, H3N2, H5Nx,
-FLU-B-VIC), or `--panel my_panel.csv`. **Panel runs are not implemented yet in this build**: the panel files and the panel
-parameters ([parameters.md](parameters.md#panel-options)) are validated and the run then stops with a message saying so.
+FLU-B-VIC), or `--panel my_panel.csv`. The panel files and the panel parameters ([parameters.md](parameters.md#panel-options))
+are validated at start-up. Panel runs are available in `--mode full` only (demix, aggregate and report stop with a message).
+
+**Panel runs (S2a status).** Works now: every sample is trimmed with fastp, mapped once to all the panel's references, typed
+(which targets are present: `summary/targets.tsv`, and `samples/<id>/<id>.targets.tsv` with the numbers behind it in
+`<id>.panel_stats.tsv`), and the reads of every detected (sample, target) pair go through the usual per-sample chain with that
+target's reference, primer scheme and Freyja dataset: primer trimming, duplicate marking, `freyja variants` and `demix`, QC
+row, amplicon coverage, consensus, mutation tables, bootstraps. Their files are under `samples/<id>/<target>/` (`bam/`,
+`freyja/`, `coverage/`, `consensus/`, `variants/`); `trace` and `not_detected` targets are listed in `targets.tsv` but not
+analysed; a negative control is analysed for every target detected in some other sample. Each target needs its own Freyja
+barcodes: `--barcodes latest` (all targets), or a `barcodes` column in the panel CSV. A primer scheme comes from the panel CSV
+`primer_scheme` column (a samplesheet `primer_scheme` cell is refused for a panel of several targets), or use `--protocol capture`.
+**Not yet** (planned, per target): the run-level outputs. For a panel run these are skipped, with one warning: the aggregate and
+its plots, the control aggregate, `qc_summary.tsv`, `consensus_stats.tsv`, `consensus.fasta`, `mutations_of_interest.tsv`,
+`demix_status.tsv` (each sample's status is in its `samples/<id>/<target>/freyja/<id>.demix_status.json`), `barcode_version.json`,
+the dropout-impact and unexplained-mutation summaries, time series, growth rates, the dashboard, site aggregation, the lineage-group
+summary, `--compare_barcodes`, `pipeline_info/run_info.json` and the report.
 
 - `assets/panels/registry.csv` has one row per target wasteline can analyse (the Freyja pathogens that have barcodes), with
   the columns `target, fasta, gff, freyja_pathogen, freyja_contig, marker_contig, family, primer_scheme_default,

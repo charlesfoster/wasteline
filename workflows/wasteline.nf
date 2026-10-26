@@ -55,6 +55,7 @@ include { BUILD_REPORT_DATA      } from '../modules/local/build_report_data/main
 include { RENDER_REPORT          } from '../modules/local/render_report/main'
 include { PROVENANCE             } from '../modules/local/provenance/main'
 include { FREYJA_DATA            } from '../subworkflows/local/freyja_data/main'
+include { PANEL_FRONT            } from '../subworkflows/local/panel_front/main'
 include { FREYJA_DATA as FREYJA_DATA_COMPARE } from '../subworkflows/local/freyja_data/main'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { primerBedFor           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
@@ -73,6 +74,7 @@ include { splitPaths             } from '../subworkflows/local/utils_nfcore_wast
 include { multiContig            } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { fastaRecords           } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 include { targetFromParams       } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
+include { targetsFromParams      } from '../subworkflows/local/utils_nfcore_wasteline_pipeline'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -183,25 +185,31 @@ workflow WASTELINE {
     //
     // Freyja dataset: resolved once, shared by every sample. update_db always fetches the latest.
     //
-    def target = targetFromParams()
-    // (one dataset per target: a list of one target here; the unkeyed outputs serve the run-level steps, the *_by_target ones the per-sample chain)
-    FREYJA_DATA(mode == 'update_db' ? 'latest' : params.barcodes, [ target ], '--barcodes')
+    // One dataset per target: a single-target run has one (the unkeyed outputs serve its run-level steps), a panel run (--panel) one per
+    // target (only the *_by_target outputs exist; the unkeyed ones are empty channels, so nothing run-level may read them).
+    def targets = targetsFromParams()
+    def is_panel = params.panel ? true : false
+    FREYJA_DATA(mode == 'update_db' ? 'latest' : params.barcodes, targets, '--barcodes')
 
     if (mode == 'update_db') {
         // Nothing else to do: the dataset is now in --db_dir/freyja/<barcode-version>/
-        FREYJA_DATA.out.freyja_data.subscribe { freyja_data ->
+        FREYJA_DATA.out.freyja_data_by_target.subscribe { name, freyja_data ->
             def info = new groovy.json.JsonSlurper().parse(freyja_data)
-            log.info "\nFreyja data updated: barcode version ${info.barcode_version} (${info.barcode_version_iso}), stored in ${info.dataset_path}\nUse it with: --barcodes ${info.barcode_version_iso.take(10)}   (or --barcodes ${info.barcode_version_iso} for this exact update)"
+            log.info "\nFreyja data${is_panel ? " for ${name}" : ''} updated: barcode version ${info.barcode_version} (${info.barcode_version_iso}), stored in ${info.dataset_path}\nUse it with: --barcodes ${info.barcode_version_iso.take(10)}   (or --barcodes ${info.barcode_version_iso} for this exact update)"
         }
     }
     else {
+        // The run-level steps (aggregate, plot, time series, growth, dashboard, site aggregation, lineage summary, the *_CONCAT tables,
+        // demix_status.tsv, provenance, report) exist for ONE target only: `target` is that target and is null for a panel run, which
+        // skips them (S2a; U4 makes them per target).
+        def target = is_panel ? null : targets[0]
         // --fasta is required by modes full and demix (validateInputParameters); --gff is optional for pathogens without a bundled annotation.
         // ch_fasta serves the read mapping (BWA_INDEX / BWA_MEM, until the panel front end replaces it) and the run provenance; the per-sample
         // steps get their reference from meta.target (referenceFasta / referenceGff), in lockstep with the sample through a multiMap.
-        def ch_fasta = channel.value(target.fasta ? file(target.fasta, checkIfExists: true) : [])
+        def ch_fasta = channel.value(!is_panel && target.fasta ? file(target.fasta, checkIfExists: true) : [])
         // A reference with several contigs (PLAN D25; validated at start-up: --freyja_contig names the one Freyja demixes). Every
         // branch for it is guarded by this; a single-contig run does not change.
-        def multi_contig = (mode == 'full' || mode == 'demix') && multiContig(target)
+        def multi_contig = !is_panel && (mode == 'full' || mode == 'demix') && multiContig(target)
 
         //
         // The lineage groups file (bundled default or --lineage_groups) and the sites CSV are checked FIRST, in parallel with fastp and the mapping, so that a
@@ -210,9 +218,9 @@ workflow WASTELINE {
         // resolve the groups: the file format is still checked, the summary itself is skipped with one warning.
         //
         // A pathogen without bundled lineage groups (conf/pathogens/*.config) has the summary off unless --lineage_groups is given (PLAN D22).
-        def run_lineage_groups = params.lineage_summary && lineageGroupsFile(target) ? true : false
-        def run_site_aggregation = params.site_aggregation as boolean
-        if (params.lineage_summary && !run_lineage_groups) {
+        def run_lineage_groups = !is_panel && params.lineage_summary && lineageGroupsFile(target) ? true : false
+        def run_site_aggregation = !is_panel && (params.site_aggregation as boolean)
+        if (!is_panel && params.lineage_summary && !run_lineage_groups) {
             log.info "Lineage-group summary off: no lineage groups are bundled for --pathogen ${target.name}. Give --lineage_groups <CSV> (and a Freyja dataset with a lineage hierarchy) to get summary/lineage_summary.csv."
         }
         def lineage_reason = run_lineage_groups ? lineageHierarchyUnsupportedReason() : null
@@ -275,29 +283,45 @@ workflow WASTELINE {
 
             //
             // Alignment: bwa mem or minibwa (sorted) -> mapped reads only (+ index) -> primer trimming -> sorted + indexed BAM
+            // A panel run (--panel) maps every sample once to ALL the panel's references instead, types it, and cuts one BAM per
+            // analysed (sample, target) out of it (PANEL_FRONT): from there on the chain is the same, once per (sample, target) with
+            // the target in meta.target. fastp's JSON (QC) belongs to the sample: it is handed to each of its (sample, target) metas.
             //
-            def ch_aligned = channel.empty()
-            if (params.aligner == 'minibwa') {
-                // experimental, docs/aligner_evaluation.md: the index is built inside the task
-                MINIBWA_MEM(FASTP.out.reads, ch_fasta_meta, true)
-                ch_aligned = MINIBWA_MEM.out.bam
+            def ch_counted = channel.empty()   // [ meta, bam, bai, mapped_reads.txt ] of the mapped reads, one per analysed sample (or sample and target)
+            if (is_panel) {
+                PANEL_FRONT(FASTP.out.reads, targets, mode)
+                ch_counted = PANEL_FRONT.out.mapped
+                def ch_fastp_by_id = FASTP.out.json.map { meta, json -> [ meta.id, json ] }
+                ch_fastp = ch_counted
+                    .map { meta, _bam, _bai, _count -> [ meta.id, meta ] }
+                    .combine(ch_fastp_by_id, by: 0)
+                    .map { _id, meta, json -> [ meta, json ] }
             }
             else {
-                BWA_INDEX(ch_fasta_meta)
-                BWA_MEM(FASTP.out.reads, BWA_INDEX.out.index, ch_fasta_meta, true)
-                ch_aligned = BWA_MEM.out.bam
+                def ch_aligned = channel.empty()
+                if (params.aligner == 'minibwa') {
+                    // experimental, docs/aligner_evaluation.md: the index is built inside the task
+                    MINIBWA_MEM(FASTP.out.reads, ch_fasta_meta, true)
+                    ch_aligned = MINIBWA_MEM.out.bam
+                }
+                else {
+                    BWA_INDEX(ch_fasta_meta)
+                    BWA_MEM(FASTP.out.reads, BWA_INDEX.out.index, ch_fasta_meta, true)
+                    ch_aligned = BWA_MEM.out.bam
+                }
+
+                SAMTOOLS_VIEW(
+                    ch_aligned.map { meta, bam -> [ meta, bam, [] ] },
+                    [ [:], [], [] ],
+                    [ [:], [] ],
+                    [ [:], [] ],
+                    'bai',
+                )
+
+                BAM_MAPPED_READS(SAMTOOLS_VIEW.out.bam.join(SAMTOOLS_VIEW.out.bai))
+                ch_counted = BAM_MAPPED_READS.out.counted
             }
-
-            SAMTOOLS_VIEW(
-                ch_aligned.map { meta, bam -> [ meta, bam, [] ] },
-                [ [:], [], [] ],
-                [ [:], [] ],
-                [ [:], [] ],
-                'bai',
-            )
-
-            BAM_MAPPED_READS(SAMTOOLS_VIEW.out.bam.join(SAMTOOLS_VIEW.out.bai))
-            def ch_mapped = BAM_MAPPED_READS.out.counted
+            def ch_mapped = ch_counted
                 .map { meta, bam, bai, count_file -> [ meta, bam, bai, count_file.text.trim() as long ] }
                 .branch { _meta, _bam, _bai, count ->
                     mapped: count > 0
@@ -321,9 +345,10 @@ workflow WASTELINE {
 
             // Does the primer scheme match the reads? Needs the mapped BAM BEFORE trimming (trimming moves
             // the 5' ends). Declared scheme = the sample's own (meta.primer_scheme; 'custom' = its BED).
-            if (params.primer_scheme_check && bundledSchemesApply()) {
+            // (decided per target: a panel can mix targets with and without bundled schemes)
+            if (params.primer_scheme_check && targets.any { t -> bundledSchemesApply(t) }) {
                 READ_STARTS(ch_mapped.mapped
-                    .filter { meta, _bam, _bai, _count -> meta.primer_trimming }
+                    .filter { meta, _bam, _bai, _count -> meta.primer_trimming && bundledSchemesApply(meta.target) }
                     .map { meta, bam, _bai, _count -> [ meta, bam ] })
                 def ch_to_check = READ_STARTS.out.tsv.multiMap { meta, tsv ->
                     starts: [ meta, tsv ]
@@ -456,8 +481,10 @@ workflow WASTELINE {
                         .join('\t')
                 })
 
-            // summary/barcode_version.json: sidecar of freyja_aggregated.tsv (PLAN 5.13)
-            FREYJA_DATA.out.barcode_version.collectFile(name: 'barcode_version.json', storeDir: "${outdir}/summary")
+            // summary/barcode_version.json: sidecar of freyja_aggregated.tsv (PLAN 5.13); one dataset only (run-level, not for panels yet)
+            if (!is_panel) {
+                FREYJA_DATA.out.barcode_version.collectFile(name: 'barcode_version.json', storeDir: "${outdir}/summary")
+            }
 
             ch_demixed = FREYJA_DEMIX.out.demix
 
@@ -465,7 +492,7 @@ workflow WASTELINE {
             // --compare_barcodes: the same variants/depths demixed with a SECOND dataset (resolved
             // independently, recorded as freyja_data_compare); abundances of both side by side
             //
-            if (params.compare_barcodes) {
+            if (params.compare_barcodes && !is_panel) {
                 FREYJA_DATA_COMPARE(params.compare_barcodes, [ target ], '--compare_barcodes')
                 def ch_compare_data = FREYJA_DATA_COMPARE.out.dataset_by_target.join(FREYJA_DATA_COMPARE.out.barcode_version_by_target)
                 def ch_to_compare = ch_freyja_view
@@ -511,11 +538,14 @@ workflow WASTELINE {
                     }
                 FREYJA_BOOT(ch_to_boot.sample, ch_to_boot.dataset)
                 ch_boot_raw = FREYJA_BOOT.out.raw.map { _meta, raw -> raw }
-                ch_boot_summary = FREYJA_BOOT.out.summary
-                    .map { _meta, summary -> summary }
-                    .toSortedList { a, b -> a.name <=> b.name }
-                    .flatMap { files -> files }
-                    .collectFile(name: 'freyja_boot_summary.tsv', storeDir: "${outdir}/summary", sort: { file -> file.name }, seed: 'sample\tlineage\tabundance\tlo\thi\n', newLine: false)
+                if (!is_panel) {
+                    // (one table of all samples: run-level, not for panels yet; the per-sample intervals are published under samples/)
+                    ch_boot_summary = FREYJA_BOOT.out.summary
+                        .map { _meta, summary -> summary }
+                        .toSortedList { a, b -> a.name <=> b.name }
+                        .flatMap { files -> files }
+                        .collectFile(name: 'freyja_boot_summary.tsv', storeDir: "${outdir}/summary", sort: { file -> file.name }, seed: 'sample\tlineage\tabundance\tlo\thi\n', newLine: false)
+                }
             }
         }
         else {
@@ -525,58 +555,6 @@ workflow WASTELINE {
                 .map { meta, _demix ->
                     [ meta.id, 'low_confidence', carried_low[meta.id].reason, carried_low[meta.id].coverage, '', '' ].join('\t')
                 })
-        }
-
-        // summary/demix_status.tsv: one row per sample, whatever its status; samples that were found in
-        // old results but could not be used (missing files, empty legacy .demix) are listed as `missing`
-        def status_header = ['sample', 'status', 'reason', 'genome_coverage_pct', 'barcode_version', 'barcode_version_iso'].join('\t')
-        def ch_demix_status = ch_status_lines
-            .collectFile(name: 'demix_status.tsv', storeDir: "${outdir}/summary", seed: status_header, sort: true, newLine: true)
-
-        //
-        // Aggregate + plot. Only samples with status ok have a .demix file (the rest are listed in
-        // demix_status.tsv). Negative controls are demixed but kept out of the aggregate and the
-        // plot unless --include_negatives_in_aggregate (PLAN D8).
-        //
-        def ch_aggregate_in = ch_demixed.filter { meta, _demix ->
-            params.include_negatives_in_aggregate || meta.sample_type != 'negative'
-        }
-
-        if (!params.include_negatives_in_aggregate) {
-            ch_demixed
-                .filter { meta, _demix -> meta.sample_type == 'negative' }
-                .subscribe { meta, _demix ->
-                    log.info "Negative control ${meta.id} is not included in the aggregate and plot (use --include_negatives_in_aggregate to include it)"
-                }
-        }
-
-        def ch_aggregate_files = ch_aggregate_in
-            .toSortedList { a, b -> a[0].id <=> b[0].id }
-            .filter { entries -> entries }
-            .map { entries -> [ entries.collect { entry -> entry[0].id }, entries.collect { entry -> entry[1] } ] }
-
-        // Collection dates for `freyja plot --times` (format of Freyja's data/times_metadata.csv)
-        def ch_times = ch_aggregate_in
-            .filter { meta, _demix -> meta.collection_date }
-            .map { meta, _demix -> "${meta.id},${meta.collection_date}" }
-            .collectFile(name: 'times.csv', seed: 'Sample,sample_collection_datetime', sort: true, newLine: true)
-            .ifEmpty([])
-
-        // Optional Freyja plot config (--freyja_plot_config): colours and lineage groups for freyja plot / dash / relgrowthrate
-        def ch_plot_config = channel.value(plotConfigFile())
-
-        FREYJA_AGGREGATE_PLOT(ch_aggregate_files, FREYJA_DATA.out.dataset, ch_times, ch_plot_config)
-
-        // What the negative controls contain (they are not in the aggregate): same format, own table
-        def ch_controls_aggregated = channel.empty()
-        if (!params.include_negatives_in_aggregate) {
-            def ch_control_files = ch_demixed
-                .filter { meta, _demix -> meta.sample_type == 'negative' }
-                .toSortedList { a, b -> a[0].id <=> b[0].id }
-                .filter { entries -> entries }
-                .map { entries -> [ entries.collect { entry -> entry[0].id }, entries.collect { entry -> entry[1] } ] }
-            FREYJA_AGGREGATE_CONTROLS(ch_control_files)
-            ch_controls_aggregated = FREYJA_AGGREGATE_CONTROLS.out.aggregated
         }
 
         //
@@ -613,21 +591,24 @@ workflow WASTELINE {
                 }
             QC_SAMPLE(ch_qc_in)
 
-            QC_CONCAT(
-                QC_SAMPLE.out.tsv.map { _meta, tsv -> tsv }.collect(),
-                ch_amplicons.map { _meta, tsv -> tsv }.collect().ifEmpty([]),
-            )
-            ch_qc_summary = QC_CONCAT.out.qc_summary.ifEmpty([])
-            // several reference contigs: one row per sample and contig (summary/contig_coverage.tsv, for the segments table of the report)
-            if (multi_contig) {
-                ch_contig_coverage = QC_SAMPLE.out.contig_tsv
-                    .map { _meta, tsv -> tsv }
-                    .toSortedList { a, b -> a.name <=> b.name }
-                    .flatMap { files -> files }
-                    .collectFile(name: 'contig_coverage.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
+            // the run-level tables of all samples (one target only; per target for panels is U4)
+            if (!is_panel) {
+                QC_CONCAT(
+                    QC_SAMPLE.out.tsv.map { _meta, tsv -> tsv }.collect(),
+                    ch_amplicons.map { _meta, tsv -> tsv }.collect().ifEmpty([]),
+                )
+                ch_qc_summary = QC_CONCAT.out.qc_summary.ifEmpty([])
+                // several reference contigs: one row per sample and contig (summary/contig_coverage.tsv, for the segments table of the report)
+                if (multi_contig) {
+                    ch_contig_coverage = QC_SAMPLE.out.contig_tsv
+                        .map { _meta, tsv -> tsv }
+                        .toSortedList { a, b -> a.name <=> b.name }
+                        .flatMap { files -> files }
+                        .collectFile(name: 'contig_coverage.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
+                }
+                ch_amplicon_coverage = QC_CONCAT.out.amplicon_coverage.ifEmpty([])
+                ch_depth_files = ch_depths.map { _meta, depths -> depths }.collect()
             }
-            ch_amplicon_coverage = QC_CONCAT.out.amplicon_coverage.ifEmpty([])
-            ch_depth_files = ch_depths.map { _meta, depths -> depths }.collect()
 
             //
             // Consensus genomes from the Freyja variants + depths (negative controls get none).
@@ -657,26 +638,29 @@ workflow WASTELINE {
                 }
                 CONSENSUS_STATS(ch_to_stats.sample, ch_to_stats.reference)
 
-                def ch_stats = ch_consensus_samples
-                    .join(CONSENSUS_STATS.out.tsv, remainder: true)
-                    .branch { _meta, _variants, stats ->
-                        built: stats
-                        failed: true
+                // the run-level tables of all samples (one target only; per target for panels is U4)
+                if (!is_panel) {
+                    def ch_stats = ch_consensus_samples
+                        .join(CONSENSUS_STATS.out.tsv, remainder: true)
+                        .branch { _meta, _variants, stats ->
+                            built: stats
+                            failed: true
+                        }
+                    def ch_failed_stats = ch_stats.failed
+                        .collectFile { meta, _variants, _stats ->
+                            [ "${meta.id}.consensus_stats.tsv", "sample\tlength\tn_count\tconsensus_coverage_pct\tambiguous_count\tstatus\treason\n${meta.id}\tNA\tNA\tNA\tNA\tfailed\tconsensus steps did not complete\n" ]
+                        }
+                    CONSENSUS_STATS_CONCAT(ch_stats.built.map { _meta, _variants, stats -> stats }.mix(ch_failed_stats).collect())
+                    CONSENSUS_CONCAT(CONSENSUS_BCFTOOLS.out.fasta.map { _meta, fasta -> fasta }.collect())
+                    ch_consensus_stats = CONSENSUS_STATS_CONCAT.out.tsv.ifEmpty([])
+                    // several reference contigs: one row per sample and contig (summary/consensus_stats_contigs.tsv)
+                    if (multi_contig) {
+                        ch_consensus_contigs = CONSENSUS_STATS.out.contig_tsv
+                            .map { _meta, tsv -> tsv }
+                            .toSortedList { a, b -> a.name <=> b.name }
+                            .flatMap { files -> files }
+                            .collectFile(name: 'consensus_stats_contigs.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
                     }
-                def ch_failed_stats = ch_stats.failed
-                    .collectFile { meta, _variants, _stats ->
-                        [ "${meta.id}.consensus_stats.tsv", "sample\tlength\tn_count\tconsensus_coverage_pct\tambiguous_count\tstatus\treason\n${meta.id}\tNA\tNA\tNA\tNA\tfailed\tconsensus steps did not complete\n" ]
-                    }
-                CONSENSUS_STATS_CONCAT(ch_stats.built.map { _meta, _variants, stats -> stats }.mix(ch_failed_stats).collect())
-                CONSENSUS_CONCAT(CONSENSUS_BCFTOOLS.out.fasta.map { _meta, fasta -> fasta }.collect())
-                ch_consensus_stats = CONSENSUS_STATS_CONCAT.out.tsv.ifEmpty([])
-                // several reference contigs: one row per sample and contig (summary/consensus_stats_contigs.tsv)
-                if (multi_contig) {
-                    ch_consensus_contigs = CONSENSUS_STATS.out.contig_tsv
-                        .map { _meta, tsv -> tsv }
-                        .toSortedList { a, b -> a.name <=> b.name }
-                        .flatMap { files -> files }
-                        .collectFile(name: 'consensus_stats_contigs.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
                 }
 
                 // --annotate_variants: amino-acid consequences of the variants applied to the consensus
@@ -687,11 +671,13 @@ workflow WASTELINE {
                         gff: referenceGff(meta)
                     }
                     ANNOTATE_VARIANTS(ch_to_annotate.sample, ch_to_annotate.fasta, ch_to_annotate.gff)
-                    ANNOTATE_VARIANTS.out.tsv
-                        .map { _meta, tsv -> tsv }
-                        .toSortedList { a, b -> a.name <=> b.name }
-                        .flatMap { files -> files }
-                        .collectFile(name: 'annotated_variants.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
+                    if (!is_panel) {
+                        ANNOTATE_VARIANTS.out.tsv
+                            .map { _meta, tsv -> tsv }
+                            .toSortedList { a, b -> a.name <=> b.name }
+                            .flatMap { files -> files }
+                            .collectFile(name: 'annotated_variants.tsv', storeDir: "${outdir}/summary", keepHeader: true, skip: 1, sort: { file -> file.name })
+                    }
                 }
             }
 
@@ -705,181 +691,47 @@ workflow WASTELINE {
                     fasta: referenceFasta(meta)
                 }
                 MUTATIONS_OF_INTEREST(ch_to_moi.sample, file(params.mutations_of_interest, checkIfExists: true), ch_to_moi.gff, ch_to_moi.fasta)
-                MUTATIONS_OF_INTEREST_CONCAT(MUTATIONS_OF_INTEREST.out.tsv.map { _meta, tsv -> tsv }.collect())
-                ch_moi = MUTATIONS_OF_INTEREST_CONCAT.out.tsv.ifEmpty([])
-            }
-        }
-
-        //
-        // Analyses on top of the demix (all optional; an error in one never fails the run)
-        //
-        def ch_dropout_impact = channel.empty()
-        def ch_dropout_summary = channel.empty()
-        def ch_unexplained = channel.empty()
-        def ch_timeseries = channel.empty()
-        def ch_timeseries_lineages = channel.empty()
-        def ch_growth_rates = channel.empty()
-        def ch_growth_failed = channel.empty()
-        def ch_growth_inputs = channel.empty()
-        def ch_dashboard = channel.empty()
-
-        if ((mode == 'full' || mode == 'demix') && (params.dropout_impact || params.unexplained_mutations)) {
-            // both need the lineage -> mutation lists of the dataset: warn once and skip when it has none
-            def mutation_reason = mutationTablesUnsupportedReason()
-            if (mutation_reason) {
-                log.warn "Skipping the dropout-impact and unexplained-mutation tables: ${mutation_reason}. Use a Freyja dataset directory (with lineage_mutations.json) or a barcodes .csv to get them."
-            }
-            else {
-                // which dropped amplicons would have mattered for the lineages detected?
-                // (amplicon_coverage.tsv exists only when some sample has a primer scheme; capture samples are not in it)
-                if (params.dropout_impact) {
-                    DROPOUT_IMPACT(
-                        ch_amplicon_coverage.filter { coverage -> coverage },
-                        FREYJA_AGGREGATE_PLOT.out.aggregated,
-                        FREYJA_DATA.out.dataset,
-                    )
-                    ch_dropout_impact = DROPOUT_IMPACT.out.impact
-                    ch_dropout_summary = DROPOUT_IMPACT.out.summary
-                }
-
-                // variants that no detected lineage explains (non-negative samples)
-                if (params.unexplained_mutations) {
-                    def ch_unexplained_in = ch_view_variants
-                        .filter { meta, _variants -> meta.sample_type != 'negative' }
-                        .join(ch_demixed, remainder: true)
-                        .filter { meta, variants, _demix -> meta && variants }
-                        .map { meta, variants, demix -> [ meta, variants, demix ?: [] ] }
-                    def ch_to_unexplained = ch_unexplained_in
-                        .map { meta, variants, demix -> [ meta.target.name, meta, variants, demix ] }
-                        .combine(FREYJA_DATA.out.dataset_by_target, by: 0)
-                        .multiMap { _name, meta, variants, demix, dataset ->
-                            sample: [ meta, variants, demix ]
-                            dataset: dataset
-                            gff: referenceGff(meta)
-                            fasta: referenceFasta(meta)
-                        }
-                    UNEXPLAINED_MUTATIONS(ch_to_unexplained.sample, ch_to_unexplained.dataset, ch_to_unexplained.gff, ch_to_unexplained.fasta)
-                    UNEXPLAINED_MUTATIONS_CONCAT(UNEXPLAINED_MUTATIONS.out.tsv.map { _meta, tsv -> tsv }.collect())
-                    ch_unexplained = UNEXPLAINED_MUTATIONS_CONCAT.out.tsv
+                if (!is_panel) {
+                    MUTATIONS_OF_INTEREST_CONCAT(MUTATIONS_OF_INTEREST.out.tsv.map { _meta, tsv -> tsv }.collect())
+                    ch_moi = MUTATIONS_OF_INTEREST_CONCAT.out.tsv.ifEmpty([])
                 }
             }
         }
 
         //
-        // Site aggregation (weighted average of the per-site RESULTS, never pooled reads) and the lineage-group summary.
-        // demix_status.tsv always exists for them (header only when every sample is ok, e.g. aggregate mode).
+        // Mutation-level tables per sample: the variants that no detected lineage explains (non-negative samples). They, like the
+        // dropout-impact table of the run, need the lineage -> mutation lists of the dataset: warn once and skip when it has none.
+        // mutation_reasons: target name -> why that target's dataset has none (a single-target run has one entry at most).
         //
-        def ch_site_freyja = channel.value([])
-        def ch_site_meta = channel.value([])
-        def ch_lineage_summary = channel.empty()
-        def ch_lineage_resolved = channel.empty()
-        def ch_site_aggregates = channel.empty()
-        def ch_site_aggregates_meta = channel.empty()
-        if (run_site_aggregation || (run_lineage_groups && !lineage_reason)) {
-            // aggregate mode: the given .demix files are the usable samples (status ok, except the low_confidence ones
-            // carried over from the earlier run, which are already in ch_status_lines), but the published
-            // demix_status.tsv lists only the unusable ones, so the summaries get their own, complete copy
-            def ch_given_ok = mode == 'aggregate'
-                ? ch_demixed.filter { meta, _demix -> !carried_low.containsKey(meta.id) }.map { meta, _demix -> [ meta.id, 'ok', '', '', '', '' ].join('\t') }
-                : channel.empty()
-            // the samplesheet in effect plus the metadata of the samples discovery had to skip (a skipped negative control is
-            // only known from there), as one CSV
-            def ch_summary_sheet = ch_samplesheet
-                .splitCsv(header: true)
-                .map { row -> [ row.sample, row.sample_type ?: 'sample', row.collection_date, row.site, row.viral_load ].collect { v -> csvCell(v) }.join(',') }
-                .mix(ch_skipped.map { sample, _reason, sample_type, date, site -> [ sample, sample_type, date, site, '' ].collect { v -> csvCell(v) }.join(',') })
-                .collectFile(name: 'summary_samplesheet.csv', seed: 'sample,sample_type,collection_date,site,viral_load', sort: true, newLine: true)
-                .first()
-            def ch_status_for_summaries = ch_status_lines
-                .mix(ch_given_ok)
-                .ifEmpty('')
-                .collectFile(name: 'demix_status.tsv', seed: status_header, sort: true, newLine: true)
-                .first()
-            if (run_site_aggregation) {
-                SITE_AGGREGATE(
-                    FREYJA_AGGREGATE_PLOT.out.aggregated,
-                    ch_status_for_summaries,
-                    ch_summary_sheet,
-                    channel.value(file(params.site_aggregation, checkIfExists: true)),
-                )
-                ch_site_freyja = SITE_AGGREGATE.out.aggregated
-                ch_site_meta = SITE_AGGREGATE.out.meta
-                ch_site_aggregates = SITE_AGGREGATE.out.aggregated
-                ch_site_aggregates_meta = SITE_AGGREGATE.out.meta
+        def mutation_reasons = (mode == 'full' || mode == 'demix') && (params.dropout_impact || params.unexplained_mutations)
+            ? targets.collectEntries { t -> [ (t.name): mutationTablesUnsupportedReason(is_panel ? (t.barcodes ?: params.barcodes) : params.barcodes, t) ] }.findAll { _name, reason -> reason }
+            : [:]
+        if (mutation_reasons && is_panel) {
+            if (params.unexplained_mutations) {
+                log.warn "Skipping the unexplained-mutation tables of panel target(s) " + mutation_reasons.collect { name, reason -> "${name} (${reason})" }.join('; ') + ". Use a Freyja dataset directory (with lineage_mutations.json) or a barcodes .csv to get them."
             }
-            if (run_lineage_groups && !lineage_reason) {
-                LINEAGE_SUMMARY(
-                    FREYJA_AGGREGATE_PLOT.out.aggregated,
-                    ch_status_for_summaries,
-                    ch_summary_sheet,
-                    channel.value(lineageGroupsFile(target)),
-                    ch_hierarchy_dataset,
-                    ch_site_freyja,
-                    ch_site_meta,
-                )
-                ch_lineage_summary = LINEAGE_SUMMARY.out.summary
-                ch_lineage_resolved = LINEAGE_SUMMARY.out.resolved
-                // --freyja_boot: 95 % intervals of the groups from the raw bootstrap draws (summary/lineage_group_intervals.tsv)
-                if (params.freyja_boot) {
-                    BOOT_GROUP_INTERVALS(
-                        FREYJA_AGGREGATE_PLOT.out.aggregated,
-                        ch_boot_raw.toSortedList { a, b -> a.name <=> b.name }.filter { files -> files }, // nothing when no sample was bootstrapped
-                        channel.value(lineageGroupsFile(target)),
-                        ch_hierarchy_dataset,
-                        ch_summary_sheet,
-                    )
+        }
+        else if (mutation_reasons) {
+            log.warn "Skipping the dropout-impact and unexplained-mutation tables: ${mutation_reasons.values()[0]}. Use a Freyja dataset directory (with lineage_mutations.json) or a barcodes .csv to get them."
+        }
+        def skip_unexplained = mutation_reasons.keySet().toList()
+        def run_unexplained = (mode == 'full' || mode == 'demix') && params.unexplained_mutations && targets.any { t -> !(t.name in skip_unexplained) }
+        if (run_unexplained) {
+            def ch_unexplained_in = ch_view_variants
+                .filter { meta, _variants -> meta.sample_type != 'negative' && !(meta.target.name in skip_unexplained) }
+                .join(ch_demixed, remainder: true)
+                .filter { meta, variants, _demix -> meta && variants }
+                .map { meta, variants, demix -> [ meta, variants, demix ?: [] ] }
+            def ch_to_unexplained = ch_unexplained_in
+                .map { meta, variants, demix -> [ meta.target.name, meta, variants, demix ] }
+                .combine(FREYJA_DATA.out.dataset_by_target, by: 0)
+                .multiMap { _name, meta, variants, demix, dataset ->
+                    sample: [ meta, variants, demix ]
+                    dataset: dataset
+                    gff: referenceGff(meta)
+                    fasta: referenceFasta(meta)
                 }
-            }
-        }
-
-        // Time-based analyses (time series, growth rates, dashboard) leave out low_confidence samples (PLAN D18)
-        // unless --include_low_confidence: they get a copy of the aggregate without those rows, and the
-        // two-dates test below does not count them. freyja_aggregated.tsv itself stays complete. In aggregate mode
-        // only the samples carried over as low_confidence from --previous_results are affected (given .demix files
-        // have no coverage information of their own).
-        def ch_ts_samples = ch_aggregate_in
-        def ch_analysis_agg = FREYJA_AGGREGATE_PLOT.out.aggregated
-        if ((mode == 'full' || mode == 'demix') && !params.include_low_confidence && lowConfidenceBand()) {
-            ch_ts_samples = ch_aggregate_in
-                .join(FREYJA_DEMIX.out.status)
-                .filter { _meta, _demix, status_json -> new groovy.json.JsonSlurper().parse(status_json).status != 'low_confidence' }
-                .map { meta, demix, _status_json -> [ meta, demix ] }
-            FILTER_AGGREGATED(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_demix_status)
-            ch_analysis_agg = FILTER_AGGREGATED.out.aggregated
-        }
-        else if (mode == 'aggregate' && !params.include_low_confidence && carried_low) {
-            ch_ts_samples = ch_aggregate_in.filter { meta, _demix -> !carried_low.containsKey(meta.id) }
-            FILTER_AGGREGATED(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_demix_status)
-            ch_analysis_agg = FILTER_AGGREGATED.out.aggregated
-        }
-
-        // Time series: needs at least two distinct collection dates among the non-negative aggregated samples
-        // (growth rates and the dashboard check their own, stricter minimum and write a failure note instead)
-        def ch_ts_go = ch_ts_samples
-            .filter { meta, _demix -> meta.collection_date && meta.sample_type != 'negative' }
-            .map { meta, _demix -> meta.collection_date }
-            .unique()
-            .count()
-            .filter { n -> n >= 2 }
-        def ch_ts_agg = ch_analysis_agg.combine(ch_ts_go).map { agg, _n -> agg }
-        def ch_metadata = ch_samplesheet.first()
-
-        if (params.timeseries) {
-            TIMESERIES_TABLE(ch_ts_agg, ch_metadata)
-            ch_timeseries = TIMESERIES_TABLE.out.table
-            // second, lineage-level table (every Freyja lineage instead of the summarized groups)
-            TIMESERIES_TABLE_LINEAGES(ch_ts_agg, ch_metadata)
-            ch_timeseries_lineages = TIMESERIES_TABLE_LINEAGES.out.table
-        }
-        if (params.freyja_growth) {
-            FREYJA_RELGROWTHRATE(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset, ch_plot_config)
-            ch_growth_rates = FREYJA_RELGROWTHRATE.out.growth_rates
-            ch_growth_failed = FREYJA_RELGROWTHRATE.out.failed
-            ch_growth_inputs = FREYJA_RELGROWTHRATE.out.inputs
-        }
-        if (params.freyja_dash) {
-            FREYJA_DASH(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset, params.freyja_dash_title, params.freyja_dash_intro, ch_plot_config)
-            ch_dashboard = FREYJA_DASH.out.dashboard
+            UNEXPLAINED_MUTATIONS(ch_to_unexplained.sample, ch_to_unexplained.dataset, ch_to_unexplained.gff, ch_to_unexplained.fasta)
         }
 
         // The samplesheet in effect (also for results-directory inputs) travels with the results, so a
@@ -887,80 +739,289 @@ workflow WASTELINE {
         ch_samplesheet.collectFile(name: 'samplesheet.csv', storeDir: "${outdir}/summary")
 
         //
-        // Provenance: run_info.json
+        // Run-level steps: they summarise ALL the samples of ONE target, so they run for single-target runs only. A panel run
+        // (--panel) has several targets: its per-sample outputs and summary/targets.tsv are complete, and the steps below are
+        // skipped until they are made per target (S2b): aggregate and plot, the control aggregate, QC_CONCAT, the consensus and
+        // mutation concatenations, demix_status.tsv, barcode_version.json, the second-barcode comparison, bootstrap summary,
+        // dropout impact, the unexplained-mutation concatenation, site aggregation, lineage summary, time series, growth, dashboard,
+        // run_info.json and the report.
         //
-        // (the per-sample library settings come from the metas of the rows, so the base info is made after they are known)
-        def ch_base_info = ch_rows
-            .map { row -> row[0] }
-            .toList()
-            .map { metas ->
-                def names = metas.collect { meta -> meta.target.name }.unique()
-                if (names.size() > 1) {
-                    error("The samples belong to several targets (${names.join(', ')}): a run analyses one target")
-                }
-                runInfoBase(mode, metas)
-            }
-            .collectFile(name: 'run_info_base.json')
-        // every distinct primer BED the samples use
-        def ch_beds = ch_rows
-            .map { row -> row[0] }
-            .filter { meta -> meta.primer_scheme }
-            .map { meta -> primerBedFor(meta, meta.target) }
-            .unique()
-            .toSortedList { a, b -> a.name <=> b.name }
-        PROVENANCE(
-            ch_base_info,
-            ch_samplesheet,
-            ch_beds,
-            mode == 'aggregate' ? channel.value([]) : ch_fasta,
-            FREYJA_DATA.out.freyja_data,
-            ch_collated_versions,
-            params.compare_barcodes && (mode == 'full' || mode == 'demix') ? FREYJA_DATA_COMPARE.out.freyja_data : channel.value([]),
-        )
-        ch_run_info = PROVENANCE.out.run_info
+        if (is_panel) {
+            log.warn "per-target summaries and the report are not available for --panel runs in this build yet; per-sample outputs and summary/targets.tsv are written"
+        }
+        else {
+            // summary/demix_status.tsv: one row per sample, whatever its status; samples that were found in
+            // old results but could not be used (missing files, empty legacy .demix) are listed as `missing`
+            def status_header = ['sample', 'status', 'reason', 'genome_coverage_pct', 'barcode_version', 'barcode_version_iso'].join('\t')
+            def ch_demix_status = ch_status_lines
+                .collectFile(name: 'demix_status.tsv', storeDir: "${outdir}/summary", seed: status_header, sort: true, newLine: true)
 
-        //
-        // Report: report_data.json (everything the run produced) -> report.html
-        // Every run-level input is exactly one item (a file, or [] when absent).
-        //
-        def ch_report_in = PROVENANCE.out.run_info
-            .combine(wrapItem(ch_qc_summary))
-            .combine(wrapItem(ch_amplicon_coverage))
-            .combine(wrapItem(FREYJA_AGGREGATE_PLOT.out.aggregated.ifEmpty([])))
-            .combine(wrapItem(ch_demix_status.ifEmpty([])))
-            .combine(wrapItem(ch_consensus_stats))
-            .combine(wrapItem(ch_moi))
-            .combine(wrapItem(ch_compare_tsv.ifEmpty([])))
-            .combine(wrapItem(ch_depth_files))
-        // optional extras: negative-control aggregate, the samplesheet in effect (metadata for modes
-        // without a QC table), bootstrap intervals, status of the second-barcode demix
-        // The sheet of the usable samples, plus the metadata of samples that discovery had to skip (a skipped
-        // negative control is only known from there)
-        def ch_skipped_sheet = ch_skipped
-            .map { sample, _reason, sample_type, date, site -> "${sample},${sample_type},${date},${site}" }
-            .collectFile(name: 'skipped_samplesheet.csv', seed: 'sample,sample_type,collection_date,site', sort: true, newLine: true)
-        def ch_report_sheets = ch_samplesheet.mix(ch_skipped_sheet).collect()
-        def ch_report_extra = wrapItem(ch_controls_aggregated.ifEmpty([]))
-            .combine(wrapItem(ch_report_sheets))
-            .combine(wrapItem(ch_boot_summary.ifEmpty([])))
-            .combine(wrapItem(ch_compare_status.ifEmpty([])))
-        def ch_report_analyses = wrapItem(ch_dropout_impact.ifEmpty([]))
-            .combine(wrapItem(ch_dropout_summary.ifEmpty([])))
-            .combine(wrapItem(ch_unexplained.ifEmpty([])))
-            .combine(wrapItem(ch_timeseries.ifEmpty([])))
-            .combine(wrapItem(ch_timeseries_lineages.ifEmpty([])))
-            .combine(wrapItem(ch_growth_rates.ifEmpty([])))
-            .combine(wrapItem(ch_growth_failed.ifEmpty([])))
-            .combine(wrapItem(ch_growth_inputs.ifEmpty([])))
-            .combine(ch_dashboard.map { dashboard -> dashboard.name }.ifEmpty(''))
-        def ch_report_groups = wrapItem(ch_lineage_summary.ifEmpty([]))
-            .combine(wrapItem(ch_lineage_resolved.ifEmpty([])))
-            .combine(wrapItem(ch_site_aggregates.ifEmpty([])))
-            .combine(wrapItem(ch_site_aggregates_meta.ifEmpty([])))
-        def ch_report_contigs = wrapItem(ch_contig_coverage.ifEmpty([]))
-            .combine(wrapItem(ch_consensus_contigs.ifEmpty([])))
-        BUILD_REPORT_DATA(ch_report_in, ch_report_extra, ch_report_analyses, ch_report_groups, ch_report_contigs)
-        RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
+            //
+            // Aggregate + plot. Only samples with status ok have a .demix file (the rest are listed in
+            // demix_status.tsv). Negative controls are demixed but kept out of the aggregate and the
+            // plot unless --include_negatives_in_aggregate (PLAN D8).
+            //
+            def ch_aggregate_in = ch_demixed.filter { meta, _demix ->
+                params.include_negatives_in_aggregate || meta.sample_type != 'negative'
+            }
+
+            if (!params.include_negatives_in_aggregate) {
+                ch_demixed
+                    .filter { meta, _demix -> meta.sample_type == 'negative' }
+                    .subscribe { meta, _demix ->
+                        log.info "Negative control ${meta.id} is not included in the aggregate and plot (use --include_negatives_in_aggregate to include it)"
+                    }
+            }
+
+            def ch_aggregate_files = ch_aggregate_in
+                .toSortedList { a, b -> a[0].id <=> b[0].id }
+                .filter { entries -> entries }
+                .map { entries -> [ entries.collect { entry -> entry[0].id }, entries.collect { entry -> entry[1] } ] }
+
+            // Collection dates for `freyja plot --times` (format of Freyja's data/times_metadata.csv)
+            def ch_times = ch_aggregate_in
+                .filter { meta, _demix -> meta.collection_date }
+                .map { meta, _demix -> "${meta.id},${meta.collection_date}" }
+                .collectFile(name: 'times.csv', seed: 'Sample,sample_collection_datetime', sort: true, newLine: true)
+                .ifEmpty([])
+
+            // Optional Freyja plot config (--freyja_plot_config): colours and lineage groups for freyja plot / dash / relgrowthrate
+            def ch_plot_config = channel.value(plotConfigFile())
+
+            FREYJA_AGGREGATE_PLOT(ch_aggregate_files, FREYJA_DATA.out.dataset, ch_times, ch_plot_config)
+
+            // What the negative controls contain (they are not in the aggregate): same format, own table
+            def ch_controls_aggregated = channel.empty()
+            if (!params.include_negatives_in_aggregate) {
+                def ch_control_files = ch_demixed
+                    .filter { meta, _demix -> meta.sample_type == 'negative' }
+                    .toSortedList { a, b -> a[0].id <=> b[0].id }
+                    .filter { entries -> entries }
+                    .map { entries -> [ entries.collect { entry -> entry[0].id }, entries.collect { entry -> entry[1] } ] }
+                FREYJA_AGGREGATE_CONTROLS(ch_control_files)
+                ch_controls_aggregated = FREYJA_AGGREGATE_CONTROLS.out.aggregated
+            }
+
+            def ch_dropout_impact = channel.empty()
+            def ch_dropout_summary = channel.empty()
+            def ch_unexplained = channel.empty()
+            def ch_timeseries = channel.empty()
+            def ch_timeseries_lineages = channel.empty()
+            def ch_growth_rates = channel.empty()
+            def ch_growth_failed = channel.empty()
+            def ch_growth_inputs = channel.empty()
+            def ch_dashboard = channel.empty()
+
+            // which dropped amplicons would have mattered for the lineages detected?
+            // (amplicon_coverage.tsv exists only when some sample has a primer scheme; capture samples are not in it)
+            if ((mode == 'full' || mode == 'demix') && params.dropout_impact && !mutation_reasons) {
+                DROPOUT_IMPACT(
+                    ch_amplicon_coverage.filter { coverage -> coverage },
+                    FREYJA_AGGREGATE_PLOT.out.aggregated,
+                    FREYJA_DATA.out.dataset,
+                )
+                ch_dropout_impact = DROPOUT_IMPACT.out.impact
+                ch_dropout_summary = DROPOUT_IMPACT.out.summary
+            }
+            if (run_unexplained) {
+                UNEXPLAINED_MUTATIONS_CONCAT(UNEXPLAINED_MUTATIONS.out.tsv.map { _meta, tsv -> tsv }.collect())
+                ch_unexplained = UNEXPLAINED_MUTATIONS_CONCAT.out.tsv
+            }
+
+            //
+            // Site aggregation (weighted average of the per-site RESULTS, never pooled reads) and the lineage-group summary.
+            // demix_status.tsv always exists for them (header only when every sample is ok, e.g. aggregate mode).
+            //
+            def ch_site_freyja = channel.value([])
+            def ch_site_meta = channel.value([])
+            def ch_lineage_summary = channel.empty()
+            def ch_lineage_resolved = channel.empty()
+            def ch_site_aggregates = channel.empty()
+            def ch_site_aggregates_meta = channel.empty()
+            if (run_site_aggregation || (run_lineage_groups && !lineage_reason)) {
+                // aggregate mode: the given .demix files are the usable samples (status ok, except the low_confidence ones
+                // carried over from the earlier run, which are already in ch_status_lines), but the published
+                // demix_status.tsv lists only the unusable ones, so the summaries get their own, complete copy
+                def ch_given_ok = mode == 'aggregate'
+                    ? ch_demixed.filter { meta, _demix -> !carried_low.containsKey(meta.id) }.map { meta, _demix -> [ meta.id, 'ok', '', '', '', '' ].join('\t') }
+                    : channel.empty()
+                // the samplesheet in effect plus the metadata of the samples discovery had to skip (a skipped negative control is
+                // only known from there), as one CSV
+                def ch_summary_sheet = ch_samplesheet
+                    .splitCsv(header: true)
+                    .map { row -> [ row.sample, row.sample_type ?: 'sample', row.collection_date, row.site, row.viral_load ].collect { v -> csvCell(v) }.join(',') }
+                    .mix(ch_skipped.map { sample, _reason, sample_type, date, site -> [ sample, sample_type, date, site, '' ].collect { v -> csvCell(v) }.join(',') })
+                    .collectFile(name: 'summary_samplesheet.csv', seed: 'sample,sample_type,collection_date,site,viral_load', sort: true, newLine: true)
+                    .first()
+                def ch_status_for_summaries = ch_status_lines
+                    .mix(ch_given_ok)
+                    .ifEmpty('')
+                    .collectFile(name: 'demix_status.tsv', seed: status_header, sort: true, newLine: true)
+                    .first()
+                if (run_site_aggregation) {
+                    SITE_AGGREGATE(
+                        FREYJA_AGGREGATE_PLOT.out.aggregated,
+                        ch_status_for_summaries,
+                        ch_summary_sheet,
+                        channel.value(file(params.site_aggregation, checkIfExists: true)),
+                    )
+                    ch_site_freyja = SITE_AGGREGATE.out.aggregated
+                    ch_site_meta = SITE_AGGREGATE.out.meta
+                    ch_site_aggregates = SITE_AGGREGATE.out.aggregated
+                    ch_site_aggregates_meta = SITE_AGGREGATE.out.meta
+                }
+                if (run_lineage_groups && !lineage_reason) {
+                    LINEAGE_SUMMARY(
+                        FREYJA_AGGREGATE_PLOT.out.aggregated,
+                        ch_status_for_summaries,
+                        ch_summary_sheet,
+                        channel.value(lineageGroupsFile(target)),
+                        ch_hierarchy_dataset,
+                        ch_site_freyja,
+                        ch_site_meta,
+                    )
+                    ch_lineage_summary = LINEAGE_SUMMARY.out.summary
+                    ch_lineage_resolved = LINEAGE_SUMMARY.out.resolved
+                    // --freyja_boot: 95 % intervals of the groups from the raw bootstrap draws (summary/lineage_group_intervals.tsv)
+                    if (params.freyja_boot) {
+                        BOOT_GROUP_INTERVALS(
+                            FREYJA_AGGREGATE_PLOT.out.aggregated,
+                            ch_boot_raw.toSortedList { a, b -> a.name <=> b.name }.filter { files -> files }, // nothing when no sample was bootstrapped
+                            channel.value(lineageGroupsFile(target)),
+                            ch_hierarchy_dataset,
+                            ch_summary_sheet,
+                        )
+                    }
+                }
+            }
+
+            // Time-based analyses (time series, growth rates, dashboard) leave out low_confidence samples (PLAN D18)
+            // unless --include_low_confidence: they get a copy of the aggregate without those rows, and the
+            // two-dates test below does not count them. freyja_aggregated.tsv itself stays complete. In aggregate mode
+            // only the samples carried over as low_confidence from --previous_results are affected (given .demix files
+            // have no coverage information of their own).
+            def ch_ts_samples = ch_aggregate_in
+            def ch_analysis_agg = FREYJA_AGGREGATE_PLOT.out.aggregated
+            if ((mode == 'full' || mode == 'demix') && !params.include_low_confidence && lowConfidenceBand()) {
+                ch_ts_samples = ch_aggregate_in
+                    .join(FREYJA_DEMIX.out.status)
+                    .filter { _meta, _demix, status_json -> new groovy.json.JsonSlurper().parse(status_json).status != 'low_confidence' }
+                    .map { meta, demix, _status_json -> [ meta, demix ] }
+                FILTER_AGGREGATED(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_demix_status)
+                ch_analysis_agg = FILTER_AGGREGATED.out.aggregated
+            }
+            else if (mode == 'aggregate' && !params.include_low_confidence && carried_low) {
+                ch_ts_samples = ch_aggregate_in.filter { meta, _demix -> !carried_low.containsKey(meta.id) }
+                FILTER_AGGREGATED(FREYJA_AGGREGATE_PLOT.out.aggregated, ch_demix_status)
+                ch_analysis_agg = FILTER_AGGREGATED.out.aggregated
+            }
+
+            // Time series: needs at least two distinct collection dates among the non-negative aggregated samples
+            // (growth rates and the dashboard check their own, stricter minimum and write a failure note instead)
+            def ch_ts_go = ch_ts_samples
+                .filter { meta, _demix -> meta.collection_date && meta.sample_type != 'negative' }
+                .map { meta, _demix -> meta.collection_date }
+                .unique()
+                .count()
+                .filter { n -> n >= 2 }
+            def ch_ts_agg = ch_analysis_agg.combine(ch_ts_go).map { agg, _n -> agg }
+            def ch_metadata = ch_samplesheet.first()
+
+            if (params.timeseries) {
+                TIMESERIES_TABLE(ch_ts_agg, ch_metadata)
+                ch_timeseries = TIMESERIES_TABLE.out.table
+                // second, lineage-level table (every Freyja lineage instead of the summarized groups)
+                TIMESERIES_TABLE_LINEAGES(ch_ts_agg, ch_metadata)
+                ch_timeseries_lineages = TIMESERIES_TABLE_LINEAGES.out.table
+            }
+            if (params.freyja_growth) {
+                FREYJA_RELGROWTHRATE(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset, ch_plot_config)
+                ch_growth_rates = FREYJA_RELGROWTHRATE.out.growth_rates
+                ch_growth_failed = FREYJA_RELGROWTHRATE.out.failed
+                ch_growth_inputs = FREYJA_RELGROWTHRATE.out.inputs
+            }
+            if (params.freyja_dash) {
+                FREYJA_DASH(ch_analysis_agg, ch_metadata, FREYJA_DATA.out.dataset, params.freyja_dash_title, params.freyja_dash_intro, ch_plot_config)
+                ch_dashboard = FREYJA_DASH.out.dashboard
+            }
+
+
+            //
+            // Provenance: run_info.json
+            //
+            // (the per-sample library settings come from the metas of the rows, so the base info is made after they are known)
+            def ch_base_info = ch_rows
+                .map { row -> row[0] }
+                .toList()
+                .map { metas ->
+                    def names = metas.collect { meta -> meta.target.name }.unique()
+                    if (names.size() > 1) {
+                        error("The samples belong to several targets (${names.join(', ')}): a run analyses one target")
+                    }
+                    runInfoBase(mode, metas)
+                }
+                .collectFile(name: 'run_info_base.json')
+            // every distinct primer BED the samples use
+            def ch_beds = ch_rows
+                .map { row -> row[0] }
+                .filter { meta -> meta.primer_scheme }
+                .map { meta -> primerBedFor(meta, meta.target) }
+                .unique()
+                .toSortedList { a, b -> a.name <=> b.name }
+            PROVENANCE(
+                ch_base_info,
+                ch_samplesheet,
+                ch_beds,
+                mode == 'aggregate' ? channel.value([]) : ch_fasta,
+                FREYJA_DATA.out.freyja_data,
+                ch_collated_versions,
+                params.compare_barcodes && (mode == 'full' || mode == 'demix') ? FREYJA_DATA_COMPARE.out.freyja_data : channel.value([]),
+            )
+            ch_run_info = PROVENANCE.out.run_info
+
+            //
+            // Report: report_data.json (everything the run produced) -> report.html
+            // Every run-level input is exactly one item (a file, or [] when absent).
+            //
+            def ch_report_in = PROVENANCE.out.run_info
+                .combine(wrapItem(ch_qc_summary))
+                .combine(wrapItem(ch_amplicon_coverage))
+                .combine(wrapItem(FREYJA_AGGREGATE_PLOT.out.aggregated.ifEmpty([])))
+                .combine(wrapItem(ch_demix_status.ifEmpty([])))
+                .combine(wrapItem(ch_consensus_stats))
+                .combine(wrapItem(ch_moi))
+                .combine(wrapItem(ch_compare_tsv.ifEmpty([])))
+                .combine(wrapItem(ch_depth_files))
+            // optional extras: negative-control aggregate, the samplesheet in effect (metadata for modes
+            // without a QC table), bootstrap intervals, status of the second-barcode demix
+            // The sheet of the usable samples, plus the metadata of samples that discovery had to skip (a skipped
+            // negative control is only known from there)
+            def ch_skipped_sheet = ch_skipped
+                .map { sample, _reason, sample_type, date, site -> "${sample},${sample_type},${date},${site}" }
+                .collectFile(name: 'skipped_samplesheet.csv', seed: 'sample,sample_type,collection_date,site', sort: true, newLine: true)
+            def ch_report_sheets = ch_samplesheet.mix(ch_skipped_sheet).collect()
+            def ch_report_extra = wrapItem(ch_controls_aggregated.ifEmpty([]))
+                .combine(wrapItem(ch_report_sheets))
+                .combine(wrapItem(ch_boot_summary.ifEmpty([])))
+                .combine(wrapItem(ch_compare_status.ifEmpty([])))
+            def ch_report_analyses = wrapItem(ch_dropout_impact.ifEmpty([]))
+                .combine(wrapItem(ch_dropout_summary.ifEmpty([])))
+                .combine(wrapItem(ch_unexplained.ifEmpty([])))
+                .combine(wrapItem(ch_timeseries.ifEmpty([])))
+                .combine(wrapItem(ch_timeseries_lineages.ifEmpty([])))
+                .combine(wrapItem(ch_growth_rates.ifEmpty([])))
+                .combine(wrapItem(ch_growth_failed.ifEmpty([])))
+                .combine(wrapItem(ch_growth_inputs.ifEmpty([])))
+                .combine(ch_dashboard.map { dashboard -> dashboard.name }.ifEmpty(''))
+            def ch_report_groups = wrapItem(ch_lineage_summary.ifEmpty([]))
+                .combine(wrapItem(ch_lineage_resolved.ifEmpty([])))
+                .combine(wrapItem(ch_site_aggregates.ifEmpty([])))
+                .combine(wrapItem(ch_site_aggregates_meta.ifEmpty([])))
+            def ch_report_contigs = wrapItem(ch_contig_coverage.ifEmpty([]))
+                .combine(wrapItem(ch_consensus_contigs.ifEmpty([])))
+            BUILD_REPORT_DATA(ch_report_in, ch_report_extra, ch_report_analyses, ch_report_groups, ch_report_contigs)
+            RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
+        }
     }
     }
 

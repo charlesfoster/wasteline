@@ -97,7 +97,16 @@ workflow PIPELINE_INITIALISATION {
     // The rows are built eagerly, so a bad `protocol` / `primer_scheme` cell stops the run here, naming the sample.
     def ch_samplesheet = channel.empty()
     def rows = []
-    if (input && mode == 'full') {
+    if (input && mode == 'full' && params.panel) {
+        // A panel run (--panel): which targets a sample carries is only known after the typing, so the samples carry the pseudo
+        // target 'panel' and the raw library cells; the per-target metas are made by PANEL_FRONT (sampleMeta with the target).
+        // Everything that does not depend on the typing is checked here.
+        def panel_samples = samplesheetToList(input, "${projectDir}/assets/schema_input.json")
+            .collect { meta, fastq_1, fastq_2 -> [ meta, [ fastq_1, fastq_2 ] ] }
+        checkPanelSamples(panel_samples.collect { sample -> sample[0] }, targetsFromParams())
+        rows = panel_samples.collect { sample -> [ panelSampleMeta(sample[0]), sample[1] ] }
+    }
+    else if (input && mode == 'full') {
         rows = samplesheetToList(input, "${projectDir}/assets/schema_input.json")
             .collect { meta, fastq_1, fastq_2 -> [ sampleMeta(meta, mode), [ fastq_1, fastq_2 ] ] }
     }
@@ -110,7 +119,9 @@ workflow PIPELINE_INITIALISATION {
             .collect { meta, demix -> [ sampleMeta(meta, mode), demix ] }
     }
     if (rows) {
-        checkSampleBeds(rows.collect { row -> row[0] })
+        if (!(mode == 'full' && params.panel)) {
+            checkSampleBeds(rows.collect { row -> row[0] })
+        }
         ch_samplesheet = channel.fromList(rows)
     }
 
@@ -263,6 +274,32 @@ def targetKey(meta) {
 //
 def tkey(meta) {
     return [ id: meta.target.name, target: meta.target ]
+}
+
+//
+// The pseudo target of a sample before the typing of a panel run (mode full, --panel): the sample is not yet assigned to a
+// target, so fastp, the mapping to the panel and the typing carry this one. Its outputs are published directly under
+// samples/<id>/ (sample_sub is empty). PANEL_FRONT replaces it by the real target of each (sample, target) pair.
+//
+def panelTarget() {
+    return [
+        name: 'panel',
+        freyja_pathogen: null,
+        fasta: null,
+        gff: null,
+        freyja_contig: null,
+        marker_contig: null,
+        family: null,
+        primer_scheme: null,
+        primer_scheme_default: null,
+        primer_schemes_bundled: null,
+        lineage_groups_bundled: null,
+        freyja_container_pathogen: null,
+        barcodes: null,
+        panel: true,
+        sample_sub: '',
+        summary_sub: '',
+    ]
 }
 
 //
@@ -458,6 +495,44 @@ def sampleMeta(meta, mode, target = targetFromParams()) {
 }
 
 //
+// The meta of a sample before the typing of a panel run: no target-specific library settings (they depend on the target and are
+// resolved per (sample, target) by PANEL_FRONT from the raw cells kept here). key = id: one item per sample at this stage.
+//
+def panelSampleMeta(meta) {
+    return [
+        id: meta.id,
+        sample_type: meta.sample_type ?: 'sample',
+        collection_date: meta.collection_date ?: null,
+        site: meta.site ?: null,
+        viral_load: meta.viral_load ?: null,
+        protocol_cell: meta.protocol ?: null,
+        primer_scheme_cell: meta.primer_scheme ?: null,
+        target: panelTarget(),
+        key: meta.id,
+    ]
+}
+
+//
+// Start-up checks of the samples of a panel run (mode full): the library cells (protocol, primer scheme) must resolve for EVERY
+// target of the panel, because the typing decides later which targets a sample is analysed for, and the primer BEDs a target
+// will use must be on its reference (checkSampleBeds, once per target). A samplesheet primer_scheme cell names one scheme,
+// which belongs to one target: with several targets it is refused (give each target's scheme in the panel CSV primer_scheme column).
+//
+def checkPanelSamples(samples, panel_targets) {
+    samples.each { sample ->
+        if (sample.primer_scheme && panel_targets.size() > 1) {
+            error("Sample '${sample.id}': the samplesheet primer_scheme '${sample.primer_scheme}' cannot be used with a panel of ${panel_targets.size()} targets (${panel_targets.collect { t -> t.name }.join(', ')}): a primer scheme belongs to one reference. Leave the cell empty and give each target its scheme in the panel CSV (column primer_scheme), or run the targets one by one with --pathogen.")
+        }
+        if (sample.target) {
+            log.warn("Sample '${sample.id}': the samplesheet target column is not used by --mode full with --panel (the typing decides which targets a sample is analysed for) and is ignored")
+        }
+    }
+    panel_targets.each { t ->
+        checkSampleBeds(samples.collect { sample -> sampleMeta(sample, 'full', t) }, t)
+    }
+}
+
+//
 // THE effective library settings of one sample, computed here and nowhere else (conf/modules.config spells
 // out the naming conditions it needs, because a config file cannot call a function). `protocol` and
 // `primer_scheme` are the optional samplesheet cells; empty = the run defaults (--protocol, --primer_bed /
@@ -478,17 +553,20 @@ def libraryMeta(sample, protocol_cell, scheme_cell, mode, target = targetFromPar
     def scheme = null
     def bed = null
     if (settings.primer_trimming) {
-        if (scheme_cell) {
-            def spec = scheme_cell.toString().trim()
+        // order: the sample's own cell, the primer_scheme of the target in the panel CSV, --primer_bed, --primer_scheme, the target's default
+        def cell = scheme_cell ?: target.primer_scheme
+        def who = scheme_cell ? "Sample '${sample}': primer_scheme" : "Panel target '${target.name}': primer_scheme"
+        if (cell) {
+            def spec = cell.toString().trim()
             if (spec.contains('/') || spec.endsWith('.bed')) {
                 bed = file(spec).toAbsolutePath().toString()
                 if (!file(bed).exists()) {
-                    error("Sample '${sample}': primer_scheme BED file '${spec}' does not exist (a relative path is relative to the directory you launch Nextflow from)")
+                    error("${who} BED file '${spec}' does not exist (a relative path is relative to the directory you launch Nextflow from)")
                 }
                 scheme = 'custom'
             }
             else {
-                def chosen = chooseScheme(spec, "Sample '${sample}': primer_scheme '${spec}'", target)
+                def chosen = chooseScheme(spec, "${who} '${spec}'", target)
                 scheme = chosen.scheme
                 bed = chosen.bed
             }
@@ -554,7 +632,7 @@ def chooseScheme(name, who, target = targetFromParams()) {
     }
     def others = schemesOfOtherPathogens(name)
     def hint = others ? " ('${name}' is a scheme bundled for another pathogen, in assets/primer_schemes/${others.join(', ')}/; it belongs with that pathogen's reference)" : ''
-    error("${who} is not a primer scheme available for --pathogen ${target.name} and not a path to a BED file${hint}. Bundled: ${bundledPrimerSchemes(target).join(', ') ?: 'none'}" +
+    error("${who} is not a primer scheme available for ${target.panel ? 'panel target' : '--pathogen'} ${target.name} and not a path to a BED file${hint}. Bundled: ${bundledPrimerSchemes(target).join(', ') ?: 'none'}" +
         (params.primer_scheme_dir ? "; in --primer_scheme_dir '${params.primer_scheme_dir}': ${userPrimerSchemes().join(', ') ?: 'no .bed files'}" : "; give your own with --primer_bed <file> or --primer_scheme_dir <dir of <name>.bed files>"))
 }
 
@@ -563,6 +641,10 @@ def chooseScheme(name, who, target = targetFromParams()) {
 //
 def noDefaultSchemeMessage(target = targetFromParams()) {
     def bundled = bundledPrimerSchemes(target)
+    if (target.panel) {
+        return "panel target ${target.name} has no default primer scheme. Give it one in the panel CSV (column primer_scheme: a bundled scheme" +
+            (bundled ? " of ${bundled.join(', ')}" : " (none is bundled for ${target.name})") + " or a BED path), or pass --primer_bed <BED whose first column is the reference sequence name>, or say that the reads are not primer-trimmed with --protocol capture / --skip_primer_trimming. See docs/other_pathogens.md."
+    }
     return "--pathogen ${target.name} has no default primer scheme (only the pipeline's default pathogen has one). Name one with --primer_scheme (or the samplesheet primer_scheme column)" +
         (bundled ? " (bundled for ${target.name}: ${bundled.join(', ')}; " : " (none is bundled for ${target.name}; ") +
         "your own: --primer_scheme_dir <dir of <name>.bed files>), pass --primer_bed <BED whose first column is the reference sequence name>, or say that the reads are not primer-trimmed with --protocol capture / --skip_primer_trimming. See docs/other_pathogens.md."
@@ -648,15 +730,15 @@ def reconcileBed(bed, target = targetFromParams()) {
 //
 // The one warning about primer BED lines dropped because their contig is not in the reference (PLAN D24)
 //
-def warnDroppedBedLines(reports) {
+def warnDroppedBedLines(reports, fasta = params.fasta) {
     def lines = reports.sum { report -> report.dropped_lines } ?: 0
     if (lines) {
         def contigs = reports.collectMany { report -> report.dropped_contigs }.unique()
-        def reference_contigs = fastaContigs(file(params.fasta))
+        def reference_contigs = fastaContigs(file(fasta))
         def expected = reference_contigs.size() > 1
             ? "The reference has ${reference_contigs.size()} sequences (${reference_contigs.take(10).join(', ')}${reference_contigs.size() > 10 ? ', ...' : ''}); lines on any other contig cannot be matched to it."
             : "Expected for a whole-genome panel run against one segment (for example influenza HA)."
-        log.warn("Primer BED: ${lines} line(s) on ${contigs.size()} contig(s) that are not in the reference FASTA '${file(params.fasta).name}' (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}) were dropped; the reference's own lines are used for trimming and amplicon coverage. ${expected}")
+        log.warn("Primer BED: ${lines} line(s) on ${contigs.size()} contig(s) that are not in the reference FASTA '${file(fasta).name}' (${contigs.take(10).join(', ')}${contigs.size() > 10 ? ', ...' : ''}) were dropped; the reference's own lines are used for trimming and amplicon coverage. ${expected}")
     }
 }
 
@@ -696,18 +778,19 @@ def libraryInfo(mode, metas) {
 //
 // Every distinct primer BED of the samples must be on a contig of the reference or ivar trim silently trims nothing
 //
-def checkSampleBeds(metas) {
-    def beds = metas.findAll { meta -> meta.primer_scheme }.collect { meta -> sourceBedFor(meta) }.unique()
+def checkSampleBeds(metas, target = targetFromParams()) {
+    def beds = metas.findAll { meta -> meta.primer_scheme }.collect { meta -> sourceBedFor(meta, target) }.unique()
     if (beds) {
-        def fasta_contigs = fastaContigs(file(params.fasta, checkIfExists: true))
+        def fasta_contigs = fastaContigs(file(target.fasta, checkIfExists: true))
         def reports = beds.collect { bed ->
-            def report = reconcileBed(bed)
+            def report = reconcileBed(bed, target)
             if (report.no_match) {
-                error("Primer BED '${bed}' refers to contig(s) ${bedContigs(bed)} that are not in the reference FASTA '${params.fasta}' (which has ${fasta_contigs}). Use a matching primer scheme or --fasta.")
+                error("Primer BED '${bed}' refers to contig(s) ${bedContigs(bed)} that are not in the reference FASTA '${target.fasta}' (which has ${fasta_contigs}). " +
+                    (target.panel ? "Panel target ${target.name}: give it a matching primer scheme in the panel CSV (column primer_scheme), not a run-wide --primer_bed/--primer_scheme meant for another reference." : "Use a matching primer scheme or --fasta."))
             }
             report
         }
-        warnDroppedBedLines(reports)
+        warnDroppedBedLines(reports, target.fasta)
     }
 }
 
@@ -769,8 +852,24 @@ def validatePanelParameters(mode) {
         error("--panel cannot be combined with ${clashes.join(', ')}: a panel names its targets (assets/panels/registry.csv gives each its reference and Freyja pathogen), so --pathogen, --fasta, --gff, --freyja_contig and --whole_genome are not used with it. Give a panel CSV with the targets you want instead (see docs/usage.md, Panels).")
     }
     def targets = targetsFromParams()
-    if (mode in ['full', 'demix', 'aggregate', 'report']) {
-        error("--panel ${params.panel} (${targets.collect { t -> t.name }.join(', ')}) is valid, but panel runs are not implemented yet in this build. Run each target on its own with --pathogen <target> (and --fasta/--primer_bed as that pathogen needs), or use a build with panel support.")
+    if (mode in ['demix', 'aggregate', 'report']) {
+        error("--panel ${params.panel} (${targets.collect { t -> t.name }.join(', ')}) is valid, but panel results cannot be re-demixed/aggregated/reported yet (--mode ${mode}). Panel runs are available in --mode full; to redo a single target use --mode ${mode} on that target's results with --pathogen <target>.")
+    }
+    if (mode == 'full') {
+        // the Freyja dataset of every target is resolved before any work is done (a registry row's own barcodes beat --barcodes)
+        targets.each { t ->
+            def spec = t.barcodes ?: params.barcodes
+            if (spec.toString().trim() == 'container' && t.freyja_pathogen != t.freyja_container_pathogen) {
+                error("Panel target ${t.name}: --barcodes container is only available for the pathogen whose barcodes the Freyja container bundles (SARS-CoV-2); the container has none for ${t.freyja_pathogen}. Use --barcodes latest, or give the target a barcodes file or dataset directory in the panel CSV (column barcodes).")
+            }
+            resolveBarcodes(spec, dbDir(), '--barcodes', t)
+        }
+        if (params.annotate_variants) {
+            def without_gff = targets.findAll { t -> !t.gff }.collect { t -> t.name }
+            if (without_gff) {
+                error("--annotate_variants needs the reference annotation: panel target(s) ${without_gff.join(', ')} have no GFF3 (give one in the panel CSV, column gff)")
+            }
+        }
     }
 }
 
@@ -828,7 +927,7 @@ def validateInputParameters(mode) {
         if (unsupported) {
             error("--pathogen ${params.pathogen} is not supported: ${unsupported} See docs/other_pathogens.md.")
         }
-        if (mode in ['full', 'demix']) {
+        if (mode in ['full', 'demix'] && !params.panel) {
             if (!params.fasta) {
                 error("--fasta is required with --pathogen ${params.pathogen}: wasteline bundles a reference only for the pathogens that have a file in conf/pathogens/. Pass the reference.fasta that the Freyja barcodes of ${params.pathogen} were built on (the pathogen's folder in https://github.com/andersen-lab/Freyja-barcodes): barcodes are tied to their reference and a different one gives silently wrong results. --gff (annotation) is optional. See docs/other_pathogens.md.")
             }
@@ -864,7 +963,7 @@ def validateInputParameters(mode) {
             log.warn("--primer_scheme_dir is not used by --mode ${mode} and is ignored")
         }
     }
-    if (settings.primer_trimming && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed))) && primerBed()) {
+    if (settings.primer_trimming && !params.panel && (mode == 'full' || (mode == 'demix' && (params.primer_scheme || params.primer_bed))) && primerBed()) {
         // The default BED must be on the same contig(s) as the reference or ivar trim silently trims nothing
         // (BEDs named in the samplesheet are checked when it is read)
         // (PLAN D24: lines of contigs that are not in the reference are dropped; only a BED with no line on it is refused)
@@ -914,11 +1013,15 @@ def validateInputParameters(mode) {
         error("--results_dir is only used by --mode report (this is --mode ${mode}). ${hint}")
     }
     // Resolve the Freyja dataset specification early so a typo fails before any work is done
-    if (mode in ['full', 'demix', 'aggregate']) {
+    // (a panel run resolves it per target in validatePanelParameters)
+    if (mode in ['full', 'demix', 'aggregate'] && !params.panel) {
         resolveBarcodes(params.barcodes, dbDir(), '--barcodes')
     }
     if (params.compare_barcodes) {
-        if (mode in ['full', 'demix']) {
+        if (params.panel && mode == 'full') {
+            log.warn("--compare_barcodes is not available for --panel runs in this build yet and is ignored")
+        }
+        else if (mode in ['full', 'demix']) {
             resolveBarcodes(params.compare_barcodes, dbDir(), '--compare_barcodes')
         }
         else {
@@ -935,7 +1038,7 @@ def validateInputParameters(mode) {
         else if (params.skip_consensus) {
             error("--annotate_variants annotates the variants the consensus is built from: it cannot be combined with --skip_consensus")
         }
-        else if (!params.gff) {
+        else if (!params.gff && !params.panel) {
             error("--annotate_variants needs the reference annotation: --pathogen ${params.pathogen} has no bundled GFF3, pass --gff")
         }
     }
@@ -1216,8 +1319,8 @@ def resolveBarcodes(barcodes, db_dir, option, target = targetFromParams()) {
 // barcodes .csv/.json. A .feather-only dataset (e.g. --barcodes custom.feather) has none we can read.
 // Returns null when supported, otherwise the reason.
 //
-def mutationTablesUnsupportedReason() {
-    def resolved = resolveBarcodes(params.barcodes, dbDir(), '--barcodes')
+def mutationTablesUnsupportedReason(barcodes = params.barcodes, target = targetFromParams()) {
+    def resolved = resolveBarcodes(barcodes, dbDir(), '--barcodes', target)
     if (resolved.kind == 'fetch') {
         return null // 'latest' / 'container': a Freyja dataset directory, which has lineage_mutations.json
     }
