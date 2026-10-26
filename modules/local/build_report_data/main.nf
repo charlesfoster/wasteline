@@ -1,5 +1,5 @@
 process BUILD_REPORT_DATA {
-    tag "report_data"
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -8,9 +8,9 @@ process BUILD_REPORT_DATA {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    // Every file except run_info is optional: pass an empty list [] when it does not exist (demix /
+    // meta = the target the report is about (tkey). Every file except run_info is optional: pass an empty list [] when it does not exist (demix /
     // aggregate modes have no QC, amplicon, consensus or MOI files). `depths` is a list of *.depths.
-    tuple path(run_info), path(qc_summary), path(amplicon_coverage), path(freyja_aggregated), path(demix_status), path(consensus_stats), path(mutations_of_interest), path(barcode_compare), path(depths)
+    tuple val(meta), path(run_info), path(qc_summary), path(amplicon_coverage), path(freyja_aggregated), path(demix_status), path(consensus_stats), path(mutations_of_interest), path(barcode_compare), path(depths)
     // optional extras, [] when absent (samplesheet: one file or a list): aggregate of the ok negative controls, the samplesheet in effect
     // (sample_type, collection_date, site for modes without a QC table), freyja boot intervals and the
     // status of the second-barcode demix
@@ -25,9 +25,9 @@ process BUILD_REPORT_DATA {
     tuple path(contig_coverage), path(consensus_stats_contigs)
 
     output:
-    path "report_data.json", emit: json
-    path "sample_id_map.csv", emit: id_map, optional: true // --report_anonymize full only: original -> pseudonym table (PRIVATE: never share it with the report)
-    path "qc_summary.merged.tsv", emit: qc_summary, optional: true // the QC table with demix/consensus/barcode columns filled in
+    tuple val(meta), path("report_data.json"), emit: json // meta = the target (tkey: [ id: target name, target ])
+    tuple val(meta), path("sample_id_map.csv"), emit: id_map, optional: true // --report_anonymize full only: original -> pseudonym table (PRIVATE: never share it with the report)
+    tuple val(meta), path("qc_summary.merged.tsv"), emit: qc_summary, optional: true // the QC table with demix/consensus/barcode columns filled in
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python // not topic: versions: PROVENANCE needs every topic entry before it writes run_info.json, and these run after it
 
     when:

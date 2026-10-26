@@ -20,7 +20,7 @@ nextflow_process {
                 input[2] = [ [], [], [], [], [], [], [], [], '' ]
                 input[3] = [ [], [], [], [] ]
                 input[4] = [ [], [] ]
-                input[0] = [ file("\$dir/run_info.json"), [], [], [], [], [], [], [], [] ]
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], file("\$dir/run_info.json"), [], [], [], [], [], [], [], [] ]
                 """
             }
         }
@@ -28,7 +28,7 @@ nextflow_process {
         then {
             assertAll(
                 { assert process.success },
-                { assert process.out.json[0].toString().endsWith('report_data.json') }
+                { assert process.out.json[0][1].toString().endsWith('report_data.json') }
             )
         }
     }

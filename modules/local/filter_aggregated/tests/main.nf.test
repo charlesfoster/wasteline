@@ -15,7 +15,7 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = file("\$projectDir/tests/data_timeseries/freyja_aggregated.tsv")
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], file("\$projectDir/tests/data_timeseries/freyja_aggregated.tsv") ]
                 input[1] = file("\$projectDir/tests/fixtures/site_aggregate/demix_status.tsv")
                 """
             }
@@ -24,7 +24,7 @@ nextflow_process {
         then {
             assertAll(
                 { assert process.success },
-                { assert snapshot(file(process.out.aggregated[0].toString()).readLines()).match() }
+                { assert snapshot(file(process.out.aggregated[0][1].toString()).readLines()).match() }
             )
         }
     }

@@ -15,7 +15,7 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = file("\$projectDir/tests/fixtures/modules_report/minimal/report_data.json")
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], file("\$projectDir/tests/fixtures/modules_report/minimal/report_data.json") ]
                 input[1] = file("\$projectDir/assets/templates/report.html.j2")
                 """
             }
@@ -24,7 +24,7 @@ nextflow_process {
         then {
             assertAll(
                 { assert process.success },
-                { assert process.out.html[0].toString().endsWith('report.html') }
+                { assert process.out.html[0][1].toString().endsWith('report.html') }
             )
         }
     }

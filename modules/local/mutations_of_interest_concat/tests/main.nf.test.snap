@@ -2,10 +2,18 @@
     "stub": {
         "content": [
             [
-                "mutations_of_interest.tsv:md5,d41d8cd98f00b204e9800998ecf8427e"
+                [
+                    {
+                        "id": "T",
+                        "target": {
+                            "name": "T"
+                        }
+                    },
+                    "mutations_of_interest.tsv:md5,d41d8cd98f00b204e9800998ecf8427e"
+                ]
             ]
         ],
-        "timestamp": "2026-10-15T21:02:55.581716",
+        "timestamp": "2026-10-26T12:10:55.281048",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

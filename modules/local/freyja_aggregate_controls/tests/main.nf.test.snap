@@ -2,10 +2,18 @@
     "stub": {
         "content": [
             [
-                "freyja_aggregated_controls.tsv:md5,9e06366de72d9f12ddcb756c82257349"
+                [
+                    {
+                        "id": "T",
+                        "target": {
+                            "name": "T"
+                        }
+                    },
+                    "freyja_aggregated_controls.tsv:md5,9e06366de72d9f12ddcb756c82257349"
+                ]
             ]
         ],
-        "timestamp": "2026-10-16T02:19:49.224281",
+        "timestamp": "2026-10-26T12:10:47.571088",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.10.0"

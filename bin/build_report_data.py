@@ -1309,6 +1309,8 @@ def build_header(run_info, mode):
         "barcode_source": freyja_data.get("source"),
         "barcode_sha256": freyja_data.get("barcodes_sha256"),
         "pathogen": freyja_data.get("pathogen"),
+        # the target of a --panel run (run_info.target; the pathogen name for a single-target run, null in old results)
+        "target": run_info.get("target") if isinstance(run_info.get("target"), str) else None,
         # library protocol (PLAN D13): older run_info files have none (= amplicon)
         "protocol": first_of(run_info, ("protocol", "params.protocol")),
         "primer_trimming": run_info.get("primer_trimming"),

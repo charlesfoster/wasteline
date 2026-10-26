@@ -1,4 +1,5 @@
 process QC_CONCAT {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,12 +8,11 @@ process QC_CONCAT {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path qc_rows, stageAs: 'qc/*'               // one <sample>.qc_row.tsv per sample (collected)
-    path amplicon_tables, stageAs: 'amplicons/*' // one <sample>.amplicon_coverage.tsv per sample (collected)
+    tuple val(meta), path(qc_rows, stageAs: 'qc/*'), path(amplicon_tables, stageAs: 'amplicons/*') // meta = the target (tkey); one <sample>.qc_row.tsv and one <sample>.amplicon_coverage.tsv ([] = none) per sample of the target
 
     output:
-    path "qc_summary.tsv",         emit: qc_summary
-    path "amplicon_coverage.tsv",  emit: amplicon_coverage, optional: true // absent when no amplicon tables were given (demix mode without a primer scheme)
+    tuple val(meta), path("qc_summary.tsv"),         emit: qc_summary
+    tuple val(meta), path("amplicon_coverage.tsv"),  emit: amplicon_coverage, optional: true // absent when no amplicon tables were given (demix mode without a primer scheme)
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

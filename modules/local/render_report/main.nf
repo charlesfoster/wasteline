@@ -1,5 +1,5 @@
 process RENDER_REPORT {
-    tag "report"
+    tag "${meta.id}"
     label 'process_single'
 
     // CONTAINER: no biocontainer ships python + jinja2 (jinja2 is conda-forge only), so these images were built
@@ -14,11 +14,11 @@ process RENDER_REPORT {
         : 'community.wave.seqera.io/library/python_jinja2:b2615084ab562e7a'}"
 
     input:
-    path report_data // report_data.json from BUILD_REPORT_DATA (or an existing results dir, --mode report)
+    tuple val(meta), path(report_data) // meta = the target (tkey); report_data.json from BUILD_REPORT_DATA (or an existing results dir, --mode report)
     path template    // ${projectDir}/assets/templates/report.html.j2, staged so it is checksummed
 
     output:
-    path "report.html", emit: html
+    tuple val(meta), path("report.html"), emit: html
     tuple val("${task.process}"), val('jinja2'), eval('python -c "import jinja2; print(jinja2.__version__)"'), emit: versions_jinja2 // not topic: versions: PROVENANCE needs every topic entry before it writes run_info.json, and these run after it
 
     when:

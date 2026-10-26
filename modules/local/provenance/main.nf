@@ -1,4 +1,5 @@
 process PROVENANCE {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,16 +8,16 @@ process PROVENANCE {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path base_info       // JSON assembled by Nextflow: versions, mode, params, containers, start time
+    tuple val(meta), path(base_info) // meta = the target (tkey); JSON assembled by Nextflow: versions, mode, params, containers, start time
     path samplesheet
     path primer_bed, stageAs: 'primer_beds/?/*' // every distinct primer BED of the samples; [] when none
-    path fasta           // [] in modes that do not map reads
+    path fasta           // the target's reference; [] in modes that do not map reads
     path freyja_data     // freyja_data.json from FREYJA_DATASET_INFO (mandatory)
     path versions_yml    // collated software versions
     path freyja_data_compare, stageAs: 'freyja_data_compare.json' // freyja_data.json of --compare_barcodes, [] when not used
 
     output:
-    path "run_info.json", emit: run_info
+    tuple val(meta), path("run_info.json"), emit: run_info
 
     when:
     task.ext.when == null || task.ext.when

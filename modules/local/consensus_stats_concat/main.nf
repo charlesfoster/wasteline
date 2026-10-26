@@ -1,4 +1,5 @@
 process CONSENSUS_STATS_CONCAT {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,10 +8,10 @@ process CONSENSUS_STATS_CONCAT {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path stats, stageAs: 'stats/*' // one <sample>.consensus_stats.tsv per sample (collected)
+    tuple val(meta), path(stats, stageAs: 'stats/*') // meta = the target (tkey); one <sample>.consensus_stats.tsv per sample of the target
 
     output:
-    path "consensus_stats.tsv", emit: tsv
+    tuple val(meta), path("consensus_stats.tsv"), emit: tsv
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

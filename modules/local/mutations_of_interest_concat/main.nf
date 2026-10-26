@@ -1,4 +1,5 @@
 process MUTATIONS_OF_INTEREST_CONCAT {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,10 +8,10 @@ process MUTATIONS_OF_INTEREST_CONCAT {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path tables, stageAs: 'moi/*' // one <sample>.mutations_of_interest.tsv per sample (collected)
+    tuple val(meta), path(tables, stageAs: 'moi/*') // meta = the target (tkey); one <sample>.mutations_of_interest.tsv per sample of the target
 
     output:
-    path "mutations_of_interest.tsv", emit: tsv
+    tuple val(meta), path("mutations_of_interest.tsv"), emit: tsv
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

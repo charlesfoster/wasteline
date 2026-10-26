@@ -1,4 +1,5 @@
 process FREYJA_AGGREGATE_PLOT {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,17 +8,17 @@ process FREYJA_AGGREGATE_PLOT {
         : 'quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0'}"
 
     input:
-    tuple val(ids), path(demix_files, stageAs: 'demix/?.demix') // sample IDs and their .demix files, same order
+    tuple val(meta), val(ids), path(demix_files, stageAs: 'demix/?.demix') // meta = the target (tkey: [ id: target name, target ]); sample IDs and their .demix files, same order
     path dataset                                                // Freyja dataset (lineages.yml is used for lineage grouping if present)
     path times                                                  // optional: CSV `Sample,sample_collection_datetime` for the time-aware plot ([] = none)
     path plot_config, stageAs: 'plot_config.yml'                // optional Freyja plot config (--config): colours of the plotted groups ([] = none)
 
     output:
-    path "freyja_aggregated.tsv",         emit: aggregated
-    path "freyja_plot.pdf",               emit: plot, optional: true
-    path "freyja_plot.failed.txt",        emit: plot_failed, optional: true
-    path "freyja_plot_times.pdf",         emit: plot_times, optional: true
-    path "freyja_plot_times.failed.txt",  emit: plot_times_failed, optional: true
+    tuple val(meta), path("freyja_aggregated.tsv"),         emit: aggregated
+    tuple val(meta), path("freyja_plot.pdf"),               emit: plot, optional: true
+    tuple val(meta), path("freyja_plot.failed.txt"),        emit: plot_failed, optional: true
+    tuple val(meta), path("freyja_plot_times.pdf"),         emit: plot_times, optional: true
+    tuple val(meta), path("freyja_plot_times.failed.txt"),  emit: plot_times_failed, optional: true
     tuple val("${task.process}"), val('freyja'), eval('freyja --version | sed "s/.*version //"'), emit: versions_freyja, topic: versions
 
     when:

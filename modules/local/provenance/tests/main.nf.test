@@ -23,7 +23,7 @@ nextflow_process {
                 fd.text = groovy.json.JsonOutput.toJson(keys.collectEntries { key -> [ (key): "v-" + key ] })
                 def versions = new File("\${launchDir}/versions.yml")
                 versions.text = 'FREYJA_DEMIX:\\n  freyja: 2.0.6\\n'
-                input[0] = file(base.toString())
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], file(base.toString()) ]
                 input[1] = file("\$projectDir/assets/samplesheet.csv")
                 input[2] = file("\$projectDir/assets/primer_schemes/midnight.bed")
                 input[3] = file("\$projectDir/assets/references/NC_045512.fasta")
@@ -35,7 +35,7 @@ nextflow_process {
         }
 
         then {
-            def info = new groovy.json.JsonSlurper().parse(new File(process.out.run_info[0].toString()))
+            def info = new groovy.json.JsonSlurper().parse(new File(process.out.run_info[0][1].toString()))
             assertAll(
                 { assert process.success },
                 { assert info.pipeline_version == '0.0.0' },

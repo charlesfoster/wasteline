@@ -1,4 +1,5 @@
 process CONSENSUS_CONCAT {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,10 +8,10 @@ process CONSENSUS_CONCAT {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path fastas, stageAs: 'fasta/*' // one <sample>.consensus.fa per sample (collected)
+    tuple val(meta), path(fastas, stageAs: 'fasta/*') // meta = the target (tkey); one <sample>.consensus.fa per sample of the target
 
     output:
-    path "consensus_genomes.fasta", emit: fasta
+    tuple val(meta), path("consensus_genomes.fasta"), emit: fasta
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

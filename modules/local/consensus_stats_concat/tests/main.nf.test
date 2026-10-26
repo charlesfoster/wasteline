@@ -15,7 +15,7 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.consensus_stats.tsv") ]
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], [ file("\$projectDir/tests/fixtures/modules_phase3/concat/S_A.consensus_stats.tsv") ] ]
                 """
             }
         }

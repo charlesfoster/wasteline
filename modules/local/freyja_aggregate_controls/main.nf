@@ -1,4 +1,5 @@
 process FREYJA_AGGREGATE_CONTROLS {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,10 +8,10 @@ process FREYJA_AGGREGATE_CONTROLS {
         : 'quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0'}"
 
     input:
-    tuple val(ids), path(demix_files, stageAs: 'demix/?.demix') // negative controls with status ok, and their .demix files, same order
+    tuple val(meta), val(ids), path(demix_files, stageAs: 'demix/?.demix') // meta = the target (tkey); negative controls with status ok, and their .demix files, same order
 
     output:
-    path "freyja_aggregated_controls.tsv", emit: aggregated
+    tuple val(meta), path("freyja_aggregated_controls.tsv"), emit: aggregated
     tuple val("${task.process}"), val('freyja'), eval('freyja --version | sed "s/.*version //"'), emit: versions_freyja, topic: versions
 
     when:

@@ -15,7 +15,7 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = [ ['NEG_B', 'NEG_A'], [ file("\$projectDir/assets/samplesheet.csv"), file("\$projectDir/assets/schema_input.json") ] ]
+                input[0] = [ [ id: 'T', target: [ name: 'T' ] ], ['NEG_B', 'NEG_A'], [ file("\$projectDir/assets/samplesheet.csv"), file("\$projectDir/assets/schema_input.json") ] ]
                 """
             }
         }

@@ -1,4 +1,5 @@
 process FILTER_AGGREGATED {
+    tag "${meta.id}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -7,11 +8,11 @@ process FILTER_AGGREGATED {
         : 'quay.io/biocontainers/python:3.12.12'}"
 
     input:
-    path aggregated                                 // freyja_aggregated.tsv
+    tuple val(meta), path(aggregated)               // meta = the target (tkey); freyja_aggregated.tsv
     path demix_status, stageAs: 'demix_status.tsv'  // summary/demix_status.tsv
 
     output:
-    path "freyja_aggregated.filtered.tsv", emit: aggregated // same format, without the samples of the excluded status (header only if none is left)
+    tuple val(meta), path("freyja_aggregated.filtered.tsv"), emit: aggregated // same format, without the samples of the excluded status (header only if none is left)
     tuple val("${task.process}"), val('python'), eval('python --version | sed "s/Python //"'), emit: versions_python, topic: versions
 
     when:

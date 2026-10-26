@@ -220,14 +220,18 @@ def runContainers(outdir) {
 // outcome) to pipeline_info/run_info.json, which PROVENANCE wrote during the run
 //
 def finaliseRunInfo(outdir) {
-    def run_info = file("${outdir}/pipeline_info/run_info.json")
-    if (run_info.exists()) {
-        def info = new groovy.json.JsonSlurper().parseText(run_info.text)
-        info.containers = runContainers(outdir)
-        info.run_completed = workflow.complete?.toString()
-        info.duration = workflow.duration?.toString()
-        info.success = workflow.success
-        run_info.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(info))
+    // a panel run has one run_info.json per target (pipeline_info/<target>/), a single-target run one in pipeline_info/
+    def subs = params.panel ? targetsFromParams().collect { t -> t.summary_sub } : ['']
+    subs.each { sub ->
+        def run_info = file("${outdir}/pipeline_info${sub}/run_info.json")
+        if (run_info.exists()) {
+            def info = new groovy.json.JsonSlurper().parseText(run_info.text)
+            info.containers = runContainers(outdir)
+            info.run_completed = workflow.complete?.toString()
+            info.duration = workflow.duration?.toString()
+            info.success = workflow.success
+            run_info.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(info))
+        }
     }
 }
 
