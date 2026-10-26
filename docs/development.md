@@ -132,6 +132,7 @@ of documentation text.
 
 Details worth knowing:
 
+- `tests/e2e.sh` step 10 is the multi-target panel (RSVa + RSVb with made-up barcodes in `tests/data/panel/`, reads simulated at run time): full, then demix / aggregate / report re-runs from its results. `E2E_ONLY=10 tests/e2e.sh <scratch dir>` runs it alone (about 5 minutes).
 - Pass **pipeline params through the CLI or `-params-file`**, not through custom `-c` files (nf-schema validates params).
 - Tests are tagged `stub` (every test run with `-stub`) and `docker` (every real test); CI selects by tag and fails if a
   tag selects nothing. Tag new tests accordingly.

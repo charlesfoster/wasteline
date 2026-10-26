@@ -14,8 +14,12 @@
 #   9. a reference with two contigs (SARS-CoV-2 + measles N, PLAN D25): Freyja demixes the SARS-CoV-2 contig, both get coverage QC and
 #      a consensus; a simulated sample covers both, a step 6 capture sample (reads of SARS-CoV-2 only) leaves the measles contig
 #      uncovered; its demix equals the single-contig run's byte for byte
+#  10. a two-target panel (made-up RSVa + RSVb barcodes, tests/data/panel; reads simulated at run time): --mode full --panel
+#      --protocol capture on five samples (pure RSVa, pure RSVb, a 70/30 mix, RSVa + trace RSVb, a negative control): targets.tsv statuses, the per-
+#      target folders and files, summary/overview.html; then demix, aggregate and report re-runs from its results, equal to the original per target
 #
 # usage: tests/e2e.sh <scratch dir> [nextflow args, default: -profile docker]
+#        E2E_ONLY=10 tests/e2e.sh <scratch dir> ...   runs step 10 alone (needs nothing from the other steps)
 # Runs every nextflow command from <scratch dir>/launch_<step> (own .nextflow), work dirs and outputs
 # under <scratch dir>. Needs Docker and the container images; no network (test barcodes).
 set -euo pipefail
@@ -53,6 +57,9 @@ same() { # <label> <file a> <file b>
 fail=0
 
 sed "s#tests/data/#$REPO/tests/data/#g" "$REPO/tests/data/samplesheet.csv" > "$SCRATCH/samplesheet.csv"
+
+# steps 1-9 (not re-indented, to keep the diff small); E2E_ONLY=10 skips them
+if [ -z "${E2E_ONLY:-}" ]; then
 
 # 1. full
 # sites for the site-aggregation checks: SiteA = MIX_A + MIX_B, SiteB = PURE_C (+ the skipped LOWCOV_D), Site_1 = Site_1_week_2
@@ -250,6 +257,135 @@ run multicontig --mode full --protocol capture --input "$SCRATCH/samplesheet_mul
     --pathogen SARS-CoV-2 --fasta "$SCRATCH/multi/multi.fa" --freyja_contig NC_045512.2
 check multicontig --mode full --multicontig || fail=1
 same "CAP_MIX.demix (two-contig reference vs the single-contig capture run)" "$SCRATCH/out_mixed/samples/CAP_MIX/freyja/CAP_MIX.demix" "$SCRATCH/out_multicontig/samples/CAP_MIX/freyja/CAP_MIX.demix"
+
+fi # end of steps 1-9
+
+# 10. a two-target panel (PLAN S2): RSVa + RSVb with made-up two-lineage barcodes (tests/data/panel), reads simulated here (about 300
+#     pairs per sample, depth ~6, hence --panel_min_fragments 50 and --freyja_covcut 1). S1 pure RSVa, S2 pure RSVb, S3 70/30 RSVa/RSVb
+#     (mixed), S4 RSVa + 40 RSVb pairs (RSVb trace, not analysed), NTC a handful of RSVa pairs. Then demix / aggregate / report re-runs
+#     from its results, whose per-target files must equal the original run's. The panel CSV is written here: its barcodes cells are
+#     absolute (relative cells would be relative to the launch directory).
+if [ -z "${E2E_ONLY:-}" ] || [ "${E2E_ONLY:-}" = 10 ]; then
+P="$SCRATCH/panel"
+mkdir -p "$P/parts" "$P/reads"
+sim() { # <reference> <target> <depth> <seed> <part>
+    "${PY[@]}" "$REPO/tests/simulate_pathogen_mixture.py" --reference "$REPO/assets/references/$1.fasta" \
+        --barcodes "$REPO/tests/data/panel/$2_barcodes.csv" --lineage "$2-L1" --proportion 1 --depth "$3" --seed "$4" --out "$P/parts/$5" > /dev/null
+}
+sim PP109421.1 RSVa 6 1 a300
+sim OP975389.1 RSVb 6 2 b300
+sim PP109421.1 RSVa 4.2 3 a210
+sim OP975389.1 RSVb 1.8 4 b90
+sim OP975389.1 RSVb 0.8 5 b40
+sim PP109421.1 RSVa 0.1 6 a5
+mkreads() { # <sample> <parts...>: the parts' reads concatenated, read names prefixed by the part so they stay unique
+    local id=$1 r p
+    shift
+    for r in 1 2; do
+        : > "$P/reads/${id}_R$r.fastq"
+        for p in "$@"; do gzip -dc "$P/parts/${p}_R$r.fastq.gz" | awk -v p="$p" 'NR % 4 == 1 { sub(/^@/, "@" p "_") } 1' >> "$P/reads/${id}_R$r.fastq"; done
+        gzip -f "$P/reads/${id}_R$r.fastq"
+    done
+}
+mkreads S1 a300
+mkreads S2 b300
+mkreads S3 a210 b90
+mkreads S4 a300 b40
+mkreads NTC a5
+{
+    echo "sample,fastq_1,fastq_2,sample_type,collection_date,site"
+    for row in S1:sample:2026-01-05:SiteA S2:sample:2026-01-05:SiteB S3:sample:2026-01-12:SiteA S4:sample:2026-01-19:SiteB NTC:negative:2026-01-05:SiteA; do
+        IFS=: read -r s type date site <<< "$row"
+        echo "$s,$P/reads/${s}_R1.fastq.gz,$P/reads/${s}_R2.fastq.gz,$type,$date,$site"
+    done
+} > "$P/samplesheet.csv"
+printf 'target,barcodes\nRSVa,%s/tests/data/panel/RSVa_barcodes.csv\nRSVb,%s/tests/data/panel/RSVb_barcodes.csv\n' "$REPO" "$REPO" > "$P/panel.csv"
+# typed params (and the small-data gates) through a params file, not the CLI (strict parser, CLAUDE.md)
+printf '{"input": "%s", "mode": "full", "panel": "%s", "protocol": "capture", "panel_min_fragments": 50, "freyja_boot": false, "freyja_covcut": 1}\n' \
+    "$P/samplesheet.csv" "$P/panel.csv" > "$P/params.json"
+run panel -params-file "$P/params.json"
+printf '{"mode": "demix", "previous_results": "%s", "panel": "%s", "freyja_covcut": 1}\n' "$SCRATCH/out_panel" "$P/panel.csv" > "$P/params_demix.json"
+run panel_demix -params-file "$P/params_demix.json"
+# no --barcodes here: the aggregate mode would otherwise fetch the default ("latest") dataset for each target; the panel's barcodes cells keep it offline
+printf '{"mode": "aggregate", "previous_results": "%s", "panel": "%s"}\n' "$SCRATCH/out_panel" "$P/panel.csv" > "$P/params_aggregate.json"
+run panel_aggregate -params-file "$P/params_aggregate.json"
+# --report_anonymize paths makes report mode rebuild report_data.json (an existing one is otherwise only rendered)
+printf '{"mode": "report", "results_dir": "%s", "report_anonymize": "paths"}\n' "$SCRATCH/out_panel" > "$P/params_report.json"
+run panel_report -params-file "$P/params_report.json"
+"${PY[@]}" - "$SCRATCH" << 'PYCHECK' || fail=1
+import csv, json, sys
+from pathlib import Path
+
+scratch = Path(sys.argv[1])
+out = scratch / "out_panel"
+failures = []
+
+
+def tsv(path):
+    return list(csv.DictReader(open(path), delimiter="\t"))
+
+
+def check(label, ok):
+    if not ok:
+        failures.append(label)
+
+
+rows = {(r["sample"], r["target"]): r for r in tsv(out / "summary" / "targets.tsv")}
+check("targets.tsv has 5 samples x 2 targets", len(rows) == 10 and {k[0] for k in rows} == {"S1", "S2", "S3", "S4", "NTC"})
+status = {k: r["status"] for k, r in rows.items()}
+check("S1 RSVa detected, RSVb not_detected", (status.get(("S1", "RSVa")), status.get(("S1", "RSVb"))) == ("detected", "not_detected"))
+check("S2 RSVb detected, RSVa not_detected", (status.get(("S2", "RSVb")), status.get(("S2", "RSVa"))) == ("detected", "not_detected"))
+s3a, s3b = rows[("S3", "RSVa")], rows[("S3", "RSVb")]
+check("S3 both detected and mixed", s3a["status"] == s3b["status"] == "detected" and s3a["mixed"] == s3b["mixed"] == "true")
+check("S3 fraction_of_family 0.70/0.30", abs(float(s3a["fraction_of_family"]) - 0.70) < 0.05 and abs(float(s3b["fraction_of_family"]) - 0.30) < 0.05)
+check("S4 RSVb trace and not analysed", rows[("S4", "RSVb")]["status"] == "trace" and rows[("S4", "RSVb")]["analysed"] == "false")
+check("S4 RSVa detected", rows[("S4", "RSVa")]["status"] == "detected")
+check("NTC rows present (negative control)", {r["sample_type"] for k, r in rows.items() if k[0] == "NTC"} == {"negative"})
+for sample in ("S1", "S4"):
+    check(f"no samples/{sample}/RSVb", not (out / "samples" / sample / "RSVb").exists())
+check("no samples/S2/RSVa", not (out / "samples" / "S2" / "RSVa").exists())
+expected = {"RSVa": {"S1", "S3", "S4"}, "RSVb": {"S2", "S3"}}
+for target, samples in expected.items():
+    d = out / "summary" / target
+    for name in ("freyja_aggregated.tsv", "qc_summary.tsv", "demix_status.tsv", "report.html"):
+        check(f"summary/{target}/{name} exists", (d / name).is_file())
+    if (d / "freyja_aggregated.tsv").is_file():
+        got = {line.split("\t")[0] for line in (d / "freyja_aggregated.tsv").read_text().splitlines()[1:]}
+        check(f"summary/{target}/freyja_aggregated.tsv samples {sorted(got)}", got == samples)
+    info = out / "pipeline_info" / target / "run_info.json"
+    check(f"pipeline_info/{target}/run_info.json target", info.is_file() and json.load(open(info)).get("target") == target)
+overview = out / "summary" / "overview.html"
+html = overview.read_text() if overview.is_file() else ""
+check("overview.html lists 5 sample rows, 10 cells and both targets", html.count("data-sample=") == 5 and html.count('<td class="cell') == 10 and "RSVa" in html and "RSVb" in html)
+
+# re-runs from the results: demix files, aggregate tables and report data equal per target (generation time, provenance and the anonymized marker aside)
+def volatile(d):
+    d = json.loads(json.dumps(d))
+    for key in ("generated", "provenance", "anonymized"):
+        d.pop(key, None)
+    return d
+
+
+for sample, targets in (("S1", ["RSVa"]), ("S2", ["RSVb"]), ("S3", ["RSVa", "RSVb"]), ("S4", ["RSVa"]), ("NTC", ["RSVa", "RSVb"])):
+    for target in targets:
+        a = out / "samples" / sample / target / "freyja" / f"{sample}.demix"
+        b = scratch / "out_panel_demix" / "samples" / sample / target / "freyja" / f"{sample}.demix"
+        if a.is_file() or b.is_file():
+            check(f"demix re-run {sample}/{target} .demix equal", a.is_file() and b.is_file() and a.read_bytes() == b.read_bytes())
+for target in expected:
+    a = out / "summary" / target / "freyja_aggregated.tsv"
+    b = scratch / "out_panel_aggregate" / "summary" / target / "freyja_aggregated.tsv"
+    check(f"aggregate re-run {target} freyja_aggregated.tsv equal", b.is_file() and a.read_bytes() == b.read_bytes())
+    a = out / "summary" / target / "report_data.json"
+    b = scratch / "out_panel_report" / "summary" / target / "report_data.json"
+    check(f"report re-run {target} report_data.json equal", b.is_file() and volatile(json.load(open(a))) == volatile(json.load(open(b))))
+check("report re-run overview.html", (scratch / "out_panel_report" / "summary" / "overview.html").is_file())
+
+print(("FAIL" if failures else "PASS") + "  panel run (RSVa + RSVb): targets.tsv statuses, mixed 70/30, trace not analysed, per-target folders and files, overview; "
+      "demix / aggregate / report re-runs equal" + (f"  FAILED: {failures}" if failures else ""))
+sys.exit(1 if failures else 0)
+PYCHECK
+fi # step 10
 
 [ "$fail" -eq 0 ] && echo "E2E OK" || echo "E2E FAILED"
 exit $fail

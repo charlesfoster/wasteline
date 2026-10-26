@@ -1198,7 +1198,7 @@ workflow WASTELINE {
         // Panel overview (summary/overview.html): the sample x target matrix, once the report of every target exists (it links to
         // them; a target with no analysed sample has none). One run of a single process for the whole panel.
         //
-        if (is_panel && !params.skip_report) {
+        if (is_panel && mode == 'full' && !params.skip_report) {
             def ch_overview_items = ch_report_parts
                 .join(RENDER_REPORT.out.html)
                 .map { key, parts, _html -> [ key.id, parts.aggregated ?: [], parts.qc_summary ?: [], parts.demix_status ?: [], parts.run_info ?: [] ] }
