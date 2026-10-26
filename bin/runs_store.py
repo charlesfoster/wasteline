@@ -7,7 +7,9 @@
                          [--out alerts.tsv] [--markdown alerts.md] [thresholds, see --help]
 
 `add` reads the `summary/` tables and `pipeline_info/run_info.json` of finished results directories (or of the
-results directories one level below a folder) into one SQLite file. Adding a directory again replaces its rows
+results directories one level below a folder) into one SQLite file. The results of a `--panel` run
+(`summary/<target>/`, `pipeline_info/<target>/run_info.json`) go in as one run per target; the alerts never
+mix targets. Adding a directory again replaces its rows
 (matched by run identity `run_name@start` or by path), so the command can be repeated safely. The same sample may
 be in several runs (for example a re-analysis with newer barcodes): all of them are kept, each with its barcode
 version, and queries use the latest run per sample (newest barcode version, then newest run start).
@@ -32,7 +34,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: a `target` column in runs and samples (empty for single-target results)
 COUNTED = ("ok", "low_confidence")
 NO_SITE = "(none)"
 CATCH_ALL = {"other"}  # the lineage summary's catch-all column: never alerted on
@@ -51,10 +53,12 @@ ALERT_COLUMNS = [
 SCHEMA = """
 CREATE TABLE runs (
     run_id TEXT PRIMARY KEY, name TEXT, path TEXT, mode TEXT, start TEXT, run_date TEXT, success TEXT,
-    pipeline_version TEXT, freyja_version TEXT, barcode_version TEXT, barcode_iso TEXT, added_at TEXT);
+    pipeline_version TEXT, freyja_version TEXT, barcode_version TEXT, barcode_iso TEXT, added_at TEXT,
+    target TEXT DEFAULT '');
 CREATE TABLE samples (
     run_id TEXT, sample TEXT, site TEXT, collection_date TEXT, sample_type TEXT, status TEXT, reason TEXT,
-    genome_coverage_pct REAL, qc_status TEXT, barcode_version TEXT, PRIMARY KEY (run_id, sample));
+    genome_coverage_pct REAL, qc_status TEXT, barcode_version TEXT, target TEXT DEFAULT '',
+    PRIMARY KEY (run_id, sample));
 CREATE TABLE lineage_abundance (
     run_id TEXT, sample TEXT, lineage TEXT, abundance REAL, lo REAL, hi REAL);
 CREATE TABLE group_abundance (
@@ -176,18 +180,22 @@ def parse_group_table(path):
 class RunData:
     """Everything of one results directory that goes into the store."""
 
-    def __init__(self, directory):
+    def __init__(self, directory, target=""):
         self.dir = Path(os.path.abspath(str(directory)))
         self.path = str(self.dir)
+        self.target = (
+            target  # panel results: one run per (directory, target), from summary/<target>/
+        )
         self.warnings = []
-        summary = self.dir / "summary"
+        summary = self.dir / "summary" / target
         status_file = summary / "demix_status.tsv"
         if not status_file.is_file():
             raise Problem(
-                f"{directory}: no summary/demix_status.tsv (not a finished results directory)"
+                f"{directory}: no summary/{target + '/' if target else ''}demix_status.tsv "
+                "(not a finished results directory)"
             )
         info = {}
-        info_path = self.dir / "pipeline_info" / "run_info.json"
+        info_path = self.dir / "pipeline_info" / target / "run_info.json"
         if info_path.is_file():
             try:
                 with open(str(info_path)) as handle:
@@ -198,7 +206,7 @@ class RunData:
                 )
         else:
             self.warnings.append(
-                f"{directory}: no pipeline_info/run_info.json; the run is identified by its path"
+                f"{directory}: no {info_path.relative_to(self.dir)}; the run is identified by its path"
             )
         self.name = self.dir.name
         start = str(info.get("start") or "")
@@ -206,6 +214,8 @@ class RunData:
             self.run_id = f"{info['run_name']}@{start}"
         else:
             self.run_id = "path:" + self.path
+        if target:  # the targets of one Nextflow run share its name and start
+            self.run_id += "#" + target
         self.start = start
         self.run_date = iso_date(start)
         block = info.get("freyja_data") or {}
@@ -322,6 +332,13 @@ def open_store(path, create):
             conn.executescript(SCHEMA)
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             conn.commit()
+        elif version == 1:  # before panel results: add the (empty) target columns
+            for table in ("runs", "samples"):
+                columns = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+                if "target" not in columns:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN target TEXT DEFAULT ''")
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            conn.commit()
         elif version != SCHEMA_VERSION:
             conn.close()
             raise Problem(f"{path}: not a runs store of this version (user_version {version})")
@@ -331,17 +348,29 @@ def open_store(path, create):
     return conn
 
 
+def result_targets(directory):
+    """[''] for results with summary/demix_status.tsv; the targets of panel results (the folders
+    summary/<target>/ that hold one); [] when neither."""
+    summary = Path(directory) / "summary"
+    if (summary / "demix_status.tsv").is_file():
+        return [""]
+    if not summary.is_dir():
+        return []
+    return sorted(p.name for p in summary.iterdir() if (p / "demix_status.tsv").is_file())
+
+
 def find_results(directory):
-    """The results directories at `directory` or one level below it."""
+    """[(results directory, target)] at `directory` or one level below it; target is '' unless panel results."""
     base = Path(directory)
     if not base.is_dir():
         raise Problem(f"not a directory: {directory}")
-    if (base / "summary" / "demix_status.tsv").is_file():
-        return [base]
-    kids = sorted(p for p in base.iterdir() if (p / "summary" / "demix_status.tsv").is_file())
-    if not kids:
+    here = result_targets(base)
+    if here:
+        return [(base, t) for t in here]
+    found = [(p, t) for p in sorted(base.iterdir()) if p.is_dir() for t in result_targets(p)]
+    if not found:
         raise Problem(f"{directory}: no summary/demix_status.tsv here or one level below")
-    return kids
+    return found
 
 
 def store_run(conn, run):
@@ -349,7 +378,8 @@ def store_run(conn, run):
     old = [
         r[0]
         for r in conn.execute(
-            "SELECT run_id FROM runs WHERE run_id = ? OR path = ?", (run.run_id, run.path)
+            "SELECT run_id FROM runs WHERE run_id = ? OR (path = ? AND target = ?)",
+            (run.run_id, run.path, run.target),
         )
     ]
     with conn:
@@ -360,7 +390,7 @@ def store_run(conn, run):
         rid = run.run_id
         added = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         conn.execute(
-            "INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 rid,
                 run.name,
@@ -374,10 +404,11 @@ def store_run(conn, run):
                 run.meta["barcode_version"],
                 run.meta["barcode_iso"],
                 added,
+                run.target,
             ),
         )
         conn.executemany(
-            "INSERT INTO samples VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO samples VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             [
                 (
                     rid,
@@ -390,6 +421,7 @@ def store_run(conn, run):
                     s["genome_coverage_pct"],
                     s["qc_status"],
                     s["barcode_version"],
+                    run.target,
                 )
                 for s in run.samples
             ],
@@ -450,9 +482,9 @@ def cmd_add(args):
     added = 0
     try:
         for given in args.results:
-            for directory in find_results(given):
+            for directory, target in find_results(given):
                 try:
-                    run = RunData(directory)
+                    run = RunData(directory, target)
                 except Problem as err:
                     print(f"WARNING: {err}", file=sys.stderr)
                     continue
@@ -460,7 +492,8 @@ def cmd_add(args):
                     print(f"WARNING: {warning}", file=sys.stderr)
                 if len(run.warnings) > 10:
                     print(
-                        f"WARNING: ... and {len(run.warnings) - 10} more for {run.name}",
+                        f"WARNING: ... and {len(run.warnings) - 10} more for {run.name}"
+                        + (f" [{run.target}]" if run.target else ""),
                         file=sys.stderr,
                     )
                 replaced = store_run(conn, run)
@@ -468,7 +501,7 @@ def cmd_add(args):
                 print(
                     "{} {}: {} samples, {} lineage rows, {} group rows, {} unexplained, {} moi{}".format(
                         "replaced" if replaced else "added",
-                        run.name,
+                        run.name + (f" [{run.target}]" if run.target else ""),
                         len(run.samples),
                         len(run.lineages),
                         len(run.groups),
@@ -493,11 +526,12 @@ def print_table(rows, header):
 def cmd_runs(args):
     conn = open_store(args.store, create=False)
     try:
-        runs = conn.execute("SELECT * FROM runs ORDER BY run_date, start, name").fetchall()
+        runs = conn.execute("SELECT * FROM runs ORDER BY run_date, start, name, target").fetchall()
         if not runs:
             print("The store holds no runs.")
             return 0
         rows = []
+        with_target = any(run["target"] for run in runs)
         for run in runs:
             counts = {"ok": 0, "low_confidence": 0, "other": 0, "dated": 0}
             for s in conn.execute(
@@ -508,6 +542,7 @@ def cmd_runs(args):
             rows.append(
                 [
                     run["name"],
+                    *([run["target"] or "-"] if with_target else []),
                     run["run_date"] or "?",
                     run["mode"] or "?",
                     run["barcode_iso"] or run["barcode_version"] or "unknown",
@@ -519,7 +554,9 @@ def cmd_runs(args):
                 ]
             )
         print_table(
-            rows, ["run", "date", "mode", "barcodes", "samples", "ok", "low_conf", "other", "dated"]
+            rows,
+            ["run", *(["target"] if with_target else [])]
+            + ["date", "mode", "barcodes", "samples", "ok", "low_conf", "other", "dated"],
         )
         total = conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
         distinct = len(current_samples(conn))
@@ -537,7 +574,7 @@ def cmd_runs(args):
 
 
 def current_samples(conn):
-    """The latest run's row per sample: {(sample, collection_date): row dict with run fields}. Latest = newest
+    """The latest run's row per sample: {(target, sample, collection_date): row dict with run fields}. Latest = newest
     barcode version, then newest run start, then run_id. The row is chosen first and filtered afterwards, so a
     newer run that failed a sample hides its older result."""
     chosen = {}
@@ -547,7 +584,7 @@ def current_samples(conn):
     )
     for row in conn.execute(query):
         row = dict(row)
-        key = (row["sample"], row["collection_date"])
+        key = (row["target"] or "", row["sample"], row["collection_date"])
         rank = (row["barcode_iso"] or "", row["start"] or "", row["run_id"])
         if key not in chosen or rank > chosen[key][0]:
             chosen[key] = (rank, row)
@@ -594,6 +631,9 @@ class Obs:
             )
         self.by_key = {(r["run_id"], r["sample"]): r for r in self.rows}
         self.include_low_confidence = include_low_confidence
+        self.has_target = bool(
+            conn.execute("SELECT 1 FROM runs WHERE target != '' LIMIT 1").fetchone()
+        )
         self.conn = conn
 
     def table(self, name, column):
@@ -618,6 +658,7 @@ def alert(rule, level, site, item, detail, rows):
     dates = sorted(r["date"] for r in rows)
     return {
         "rule": rule,
+        "target": rows[0].get("target") or "",  # the rows of one alert are of one target
         "level": level,
         "site": site,
         "group_or_mutation": item,
@@ -644,12 +685,12 @@ def rules_abundance(obs, args):
     alerts = []
     usable = [r for r in obs.rows if obs.include_low_confidence or r["status"] == "ok"]
     sites = {}
-    for r in usable:
-        sites.setdefault(r["site_label"], []).append(r)
+    for r in usable:  # targets are never mixed: the groups are (target, site)
+        sites.setdefault((r["target"] or "", r["site_label"]), []).append(r)
     for level, data in abundance_levels(obs, args.levels):
         # only samples that have rows at this level count: the others have no data (they are not zeros)
         have = {k for values in data.values() for k in values}
-        for site, rows in sorted(sites.items()):
+        for (_target, site), rows in sorted(sites.items()):
             rows = [r for r in rows if (r["run_id"], r["sample"]) in have]
             if not rows:
                 continue
@@ -732,17 +773,18 @@ def rule_unexplained(obs, args):
     window = [r for r in obs.rows if r["date"] > start]
     sites = {}
     for r in window:
-        sites.setdefault(r["site_label"], []).append(r)
+        sites.setdefault((r["target"] or "", r["site_label"]), []).append(r)
     wanted = {(r["run_id"], r["sample"]) for r in window}
     hits = {}
     for u in obs.conn.execute("SELECT * FROM unexplained"):
         key = (u["run_id"], u["sample"])
         if key in wanted:
-            hits.setdefault((obs.by_key[key]["site_label"], u["mutation"]), []).append(
-                (obs.by_key[key], dict(u))
+            row = obs.by_key[key]
+            hits.setdefault((row["target"] or "", row["site_label"], u["mutation"]), []).append(
+                (row, dict(u))
             )
     alerts = []
-    for (site, mutation), items in sorted(hits.items()):
+    for (target, site, mutation), items in sorted(hits.items()):
         rows = [r for r, _ in items]
         if len({r["sample"] for r in rows}) < args.unexplained_min_samples:
             continue
@@ -765,7 +807,7 @@ def rule_unexplained(obs, args):
                 name,
                 "in {} of {} samples on {} dates since {}; mean frequency {:.2f}; in_dataset={} ({}){}".format(
                     len({r["sample"] for r in rows}),
-                    len(sites[site]),
+                    len(sites[(target, site)]),
                     len({r["date"] for r in rows}),
                     start,
                     mean,
@@ -842,8 +884,9 @@ def rule_watchlist(obs, args, entries):
         sites = {}
         for key, freq in per_sample.items():
             if freq * 100 >= args.watchlist_min_pct:
-                sites.setdefault(obs.by_key[key]["site_label"], []).append((obs.by_key[key], freq))
-        for site, items in sorted(sites.items()):
+                row = obs.by_key[key]
+                sites.setdefault((row["target"] or "", row["site_label"]), []).append((row, freq))
+        for (_target, site), items in sorted(sites.items()):
             rows = [r for r, _ in items]
             top = max(items, key=lambda x: x[1])
             alerts.append(
@@ -888,7 +931,13 @@ def compute_alerts(conn, args):
     if args.since:
         alerts = [a for a in alerts if a["last_date"] >= args.since]
     alerts.sort(
-        key=lambda a: (RULES.index(a["rule"]), a["site"], a["level"], a["group_or_mutation"])
+        key=lambda a: (
+            RULES.index(a["rule"]),
+            a["target"],
+            a["site"],
+            a["level"],
+            a["group_or_mutation"],
+        )
     )
     return alerts, notes, obs
 
@@ -900,13 +949,20 @@ DISCLAIMER = (
 )
 
 
-def write_tsv(path, alerts):
+def alert_columns(obs):
+    """The TSV columns: a `target` column (after `rule`) only when some run of the store has a target."""
+    if not obs.has_target:
+        return ALERT_COLUMNS
+    return [ALERT_COLUMNS[0], "target", *ALERT_COLUMNS[1:]]
+
+
+def write_tsv(path, alerts, columns):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(str(path), "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-        writer.writerow(ALERT_COLUMNS)
+        writer.writerow(columns)
         for a in alerts:
-            writer.writerow([a[c] for c in ALERT_COLUMNS])
+            writer.writerow([a[c] for c in columns])
 
 
 def markdown(alerts, notes, obs, args):
@@ -938,11 +994,13 @@ def markdown(alerts, notes, obs, args):
             continue
         out += [f"## {rule.replace('_', ' ').capitalize()} ({len(chosen)})", ""]
         out += [
-            "| site | level | item | detail | first | last | samples |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            ("| target " if obs.has_target else "")
+            + "| site | level | item | detail | first | last | samples |",
+            ("| --- " if obs.has_target else "") + "| --- | --- | --- | --- | --- | --- | --- |",
         ]
         for a in chosen:
             cells = [
+                *([a["target"] or "-"] if obs.has_target else []),
                 a["site"],
                 a["level"],
                 a["group_or_mutation"],
@@ -961,7 +1019,7 @@ def cmd_alerts(args):
     try:
         alerts, notes, obs = compute_alerts(conn, args)
         if args.out:
-            write_tsv(args.out, alerts)
+            write_tsv(args.out, alerts, alert_columns(obs))
         if args.markdown:
             Path(args.markdown).parent.mkdir(parents=True, exist_ok=True)
             Path(args.markdown).write_text(markdown(alerts, notes, obs, args), encoding="utf-8")
@@ -974,8 +1032,9 @@ def cmd_alerts(args):
         print("no alerts")
     for a in alerts:
         print(
-            "  {:<22} {:<8} {:<12} {:<34} {}..{}  {}".format(
+            "  {:<22} {}{:<8} {:<12} {:<34} {}..{}  {}".format(
                 a["rule"],
+                "{:<10} ".format(a["target"] or "-") if obs.has_target else "",
                 a["level"],
                 a["site"],
                 a["group_or_mutation"][:34],

@@ -163,3 +163,96 @@ def test_results_of_a_panel_run_give_one_row_per_sample_and_target(tmp_path, cap
     rows = read(out)
     assert [(r["sample"], r["target"]) for r in rows] == [("S1", "A")]
     assert rows[0]["fastp_json"].endswith("samples/S1/fastp/S1.fastp.json")
+
+
+def _fake_run(root, rows):
+    """Results of a run in the new layout; rows = (id, date, site, demix status)."""
+    (root / "summary").mkdir(parents=True)
+    sheet = ["sample,fastq_1,fastq_2,sample_type,collection_date,site"]
+    status = ["sample\tstatus\treason"]
+    for sample, date, site, st in rows:
+        d = root / "samples" / sample / "freyja"
+        d.mkdir(parents=True)
+        (d / f"{sample}.demix").write_text("x\n")
+        sheet.append(f"{sample},a,b,sample,{date},{site}")
+        status.append(f"{sample}\t{st}\t")
+    (root / "summary" / "samplesheet.csv").write_text("\n".join(sheet) + "\n")
+    (root / "summary" / "demix_status.tsv").write_text("\n".join(status) + "\n")
+    return root
+
+
+def test_several_results_dirs_are_filtered_and_combined(tmp_path, capsys):
+    """--from-results is repeatable; the filters are ANDed (ID regex, site, date range, demix status)."""
+    run1 = _fake_run(
+        tmp_path / "Run1",
+        [
+            ("S1", "2026-01-01", "A", "ok"),
+            ("S2", "2026-01-08", "A", "ok"),
+            ("S3", "2026-01-15", "A", "low_confidence"),
+        ],
+    )
+    run2 = _fake_run(
+        tmp_path / "Run2",
+        [
+            ("S8", "2026-01-22", "A", "ok"),
+            ("S9", "2026-01-29", "B", "ok"),
+            ("S10", "2026-02-05", "A", "ok"),
+        ],
+    )
+    out = tmp_path / "sheet.csv"
+    rc, _, err = run(
+        ["--from-results", run1, "--from-results", run2, "--mode", "aggregate", "-o", out]
+        + ["--exclude-id", "^S10$", "--site", "A", "--date-from", "2026-01-05", "--status", "ok"],
+        capsys,
+    )
+    assert rc == 0, err
+    assert [r["sample"] for r in read(out)] == [
+        "S2",
+        "S8",
+    ]  # S1 too early, S3 low_confidence, S9 site B, S10 excluded
+    assert list(read(out)[0]) == ["sample", "demix", "sample_type", "collection_date", "site"]
+    assert "4 sample(s) removed by filters" in err
+
+
+def test_duplicate_ids_across_results_dirs_and_list(tmp_path, capsys):
+    run1 = _fake_run(
+        tmp_path / "Run1", [("S1", "2026-01-01", "A", "ok"), ("S2", "2026-01-08", "A", "ok")]
+    )
+    run2 = _fake_run(tmp_path / "Run2", [("S1", "2026-02-01", "A", "ok")])
+    base = [
+        "--from-results",
+        run1,
+        "--from-results",
+        run2,
+        "--mode",
+        "aggregate",
+        "-o",
+        tmp_path / "s.csv",
+    ]
+    rc, _, err = run(base, capsys)
+    assert rc == 1 and "'S1'" in err and "Run1, Run2" in err and not (tmp_path / "s.csv").exists()
+    rc, _, err = run([*base, "--on-duplicate", "prefix"], capsys)
+    rows = read(tmp_path / "s.csv")
+    assert rc == 0, err
+    assert [r["sample"] for r in rows] == ["Run1__S1", "S2", "Run2__S1"]
+    assert rows[0]["demix"].endswith("Run1/samples/S1/freyja/S1.demix")  # path unchanged
+    rc, _, err = run([*base[:-2], "--on-duplicate", "first", "-o", tmp_path / "f.csv"], capsys)
+    assert [r["sample"] for r in read(tmp_path / "f.csv")] == ["S1", "S2"]
+    assert "1 duplicate row(s) dropped" in err
+    (tmp_path / "s.csv").unlink()
+    rc, out, _ = run([*base, "--list"], capsys)
+    assert rc == 0 and not (tmp_path / "s.csv").exists()
+    lines = out.splitlines()
+    assert lines[0].split() == [
+        "run",
+        "sample",
+        "sample_type",
+        "site",
+        "collection_date",
+        "demix_status",
+        "selected",
+        "reason",
+    ]
+    assert sum("duplicate ID" in ln for ln in lines) == 2 and any(
+        ln.split()[:2] == ["Run1", "S2"] and "yes" in ln for ln in lines
+    )

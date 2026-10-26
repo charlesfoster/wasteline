@@ -56,6 +56,14 @@ Files that a run did not produce (no bootstrap, no lineage groups, no mutations 
 - A directory without `run_info.json` is accepted (its path is the identity), but has no run date, so its samples count only
   when the samplesheet gives a collection date.
 
+- **Panel results.** The results of a `--panel` run (`summary/<target>/demix_status.tsv`, `pipeline_info/<target>/run_info.json`)
+  are added as **one run per target** (identity `run_name@start#target`; idempotent per directory and target). The `runs` and
+  `samples` tables have a `target` column, empty for single-target results; a store made before this column existed is
+  migrated by `ALTER TABLE ... ADD COLUMN target TEXT DEFAULT ''` the first time it is opened. Targets are never mixed: the latest
+  run per sample is chosen per target, and the four alert rules group by target and site. `runs` shows a `target` column and
+  `alerts.tsv` (and the Markdown and terminal output) a `target` column after `rule`, **only when some run in the store has a
+  target**, so the output for single-target stores is unchanged.
+
 The tables are plain SQLite: `runs`, `samples`, `lineage_abundance`, `group_abundance`, `unexplained`, `moi`. Query them with
 `sqlite3` if you want something the alerts do not give.
 

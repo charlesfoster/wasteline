@@ -198,3 +198,20 @@ def test_execute_is_refused_after_a_checksum_mismatch(tmp_path, capsys, fake_nex
     # --force overrides the checksum mismatch, nothing else
     assert world.run("--nextflow", str(script), "--force", execute=True) == 7
     assert log.exists()
+
+
+def test_panel_results_are_replayed_as_one_run_not_per_target(tmp_path, capsys):
+    """Results of a --panel run keep one run_info.json per target (same command line and params): one replay."""
+    world = build(tmp_path, "full")
+    pipeline_info = world.results / "pipeline_info"
+    text = (pipeline_info / "run_info.json").read_text()
+    (pipeline_info / "run_info.json").unlink()
+    for target in ("TA", "TB"):
+        (pipeline_info / target).mkdir()
+        (pipeline_info / target / "run_info.json").write_text(text)
+    rc, out = run_and_read(world, capsys)
+    assert rc == 0, out
+    assert "panel run: 2 target(s) (TA, TB), one replay of the whole run" in out
+    assert command(out).count("nextflow run") == 1
+    assert f"-r {world.run_info['git_commit']}" in command(out)
+    assert "Problems: 0 error(s)" in out

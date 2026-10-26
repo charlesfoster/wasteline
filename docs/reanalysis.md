@@ -62,6 +62,18 @@ network itself and never modifies or overwrites existing results.
 (`<sample>/freyja/...`, [migration_from_snakemake.md](migration_from_snakemake.md)) are found too and are listed with barcode
 version `unknown`.
 
+## Panel results
+
+The results of a `--panel` run ([usage.md](usage.md)) hold several targets (`pipeline_info/<target>/run_info.json`,
+`summary/<target>/`, `samples/<id>/<target>/freyja/`). Each (results directory, target) is **one run** for this script: it is listed as
+`run1 [RSVa]`, `run1 [RSVb]` and re-analysed on its own with `--mode demix --previous_results <run> --targets <target>`, plus
+`--panel <file>` when the target's `run_info.json` recorded a custom panel file that still exists (otherwise the targets are looked up in
+the registry, with a note). A panel file that gives the target its own `barcodes` wins over `--barcodes`: the plan says so. The new
+directory is `<run>_reanalysis_<barcode>_<target>`, and the comparison is written to `<new>/summary/<target>/reanalysis_diff.*`.
+`--last N` counts directories, `--runs run1` selects every target of `run1` (or `"run1 [RSVa]"` one). `--diff` of two panel
+results compares each target they have in common (the CSV gets a leading `target` column instead of `run`); a panel and a single-target
+result cannot be compared. Single-target and legacy results behave exactly as described below.
+
 ## Choosing the runs
 
 | Option               | Meaning                                                                                                             |

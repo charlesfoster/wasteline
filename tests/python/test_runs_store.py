@@ -8,6 +8,7 @@ S:N501Y is on the watchlist.
 
 import csv
 import json
+import shutil
 import sqlite3
 
 import pytest
@@ -203,3 +204,40 @@ def test_low_confidence_samples_are_left_out_of_emerging_unless_asked(store, tmp
     assert "G.low" not in {a["group_or_mutation"] for a in alerts(store, tmp_path)}
     with_low = alerts(store, tmp_path, "--include-low-confidence")
     assert ("emerging", "G.low") in {(a["rule"], a["group_or_mutation"]) for a in with_low}
+
+
+def test_panel_results_are_stored_per_target_and_alerts_never_mix_targets(tmp_path):
+    """Panel results (summary/<t>/, pipeline_info/<t>/run_info.json) are one run per target, idempotent per
+    (dir, target). Target TA is the weekly series above, TB has the same sample IDs and dates but nothing
+    to alert on: only TA alerts, the TSV gets a target column, and TB does not overwrite TA's samples."""
+    stage, panel = tmp_path / "stage", tmp_path / "panel"
+    for i, date in enumerate(WEEKS):
+        for target, quiet in (("TA", False), ("TB", True)):
+            groups = {} if quiet else {"G.grow": GROW[i], "G.new": 0.20 if i == 3 else 0.0}
+            src = make_results(
+                stage / target,
+                f"week{i + 1}",
+                date + "T09:00:00+10:00",
+                "2026-10-06T05-25",
+                [(f"S{i + 1}", date, "ok", groups, i >= 1 and not quiet, 0.02 if quiet else 0.30)],
+            )
+            (panel / f"week{i + 1}" / "pipeline_info" / target).mkdir(parents=True)
+            shutil.copytree(src / "summary", panel / f"week{i + 1}" / "summary" / target)
+            shutil.copy(
+                src / "pipeline_info" / "run_info.json",
+                panel / f"week{i + 1}" / "pipeline_info" / target / "run_info.json",
+            )
+    store = tmp_path / "store.sqlite"
+    dirs = [str(panel / f"week{i}") for i in (1, 2, 3, 4)]
+    assert rs.main(["add", str(store), *dirs]) == 0
+    assert rs.main(["add", str(store), str(panel)]) == 0  # a folder of panel results, again
+    counts = table_counts(store)
+    assert counts["runs"] == 8 and counts["samples"] == 8
+    found = alerts(store, tmp_path)
+    assert list(found[0])[:3] == ["rule", "target", "level"]
+    assert {(a["rule"], a["target"]) for a in found} == {
+        ("emerging", "TA"),
+        ("sustained_growth", "TA"),
+        ("recurring_unexplained", "TA"),
+        ("watchlist", "TA"),
+    }

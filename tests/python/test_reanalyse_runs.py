@@ -166,3 +166,47 @@ def test_appearing_disappearing_samples_and_status_changes(tmp_path):
     assert result["flagged_samples"] == ["A", "C", "E"]
     assert result["old"]["barcode"] == OLD_ISO and result["new"]["barcode"] == "2026-10-20T04-10"
     assert result["old"]["freyja"] == "2.0.6" and result["new"]["freyja"] == "2.0.7"
+
+
+def make_panel_run(parent, name, targets, panel_csv, summary="old"):
+    """Results of a --panel run: pipeline_info/<t>/run_info.json, samples/<id>/<t>/freyja, summary/<t>/."""
+    run = Path(parent) / name
+    for target in targets:
+        data = info("full")
+        data.update({"target": target, "panel": str(panel_csv)})
+        (run / "pipeline_info" / target).mkdir(parents=True)
+        (run / "pipeline_info" / target / "run_info.json").write_text(json.dumps(data))
+        freyja = run / "samples" / "A" / target / "freyja"
+        freyja.mkdir(parents=True)
+        (freyja / "A.variants.tsv").write_text("REGION\tPOS\n")
+        (freyja / "A.depths").write_text("NC\t1\tA\t10\n")
+        shutil.copytree(FIX / summary / "summary", run / "summary" / target)
+    return run
+
+
+def test_panel_results_are_one_run_per_target_in_the_dry_run_and_the_diff(tmp_path, capsys):
+    """(dir, target) is a run: `run1 [T]`, `--targets T` and the recorded custom `--panel` on the command, one
+    new directory per target (nothing is written), and --diff compares each target on its own."""
+    panel = tmp_path / "panel.csv"
+    panel.write_text("target,barcodes\nTA,/x/a.csv\nTB,\n")
+    run = make_panel_run(tmp_path, "run1", ["TA", "TB"], panel)
+    before = snapshot(tmp_path)
+    rc, out = dry(tmp_path, capsys, run, "--barcodes", "2026-10-20T04-10")
+    assert rc == 0 and "run1 [TA]" in out and "run1 [TB]" in out
+    commands = run_commands(out)
+    assert [flag(c, "--targets") for c in commands] == ["TA", "TB"]
+    assert all(flag(c, "--panel") == str(panel) for c in commands)
+    assert [flag(c, "--outdir") for c in commands] == [
+        f"{run}_reanalysis_2026-10-20T04-10_TA",
+        f"{run}_reanalysis_2026-10-20T04-10_TB",
+    ]
+    assert flag(commands[0], "--previous_results") == str(run)
+    assert "its own barcodes" in out  # TA's panel row names a barcodes file: it beats --barcodes
+    assert snapshot(tmp_path) == before
+    new = make_panel_run(tmp_path, "new", ["TA", "TB"], panel, summary="new")
+    report = tmp_path / "diff.csv"
+    assert main("--diff", run, new, "--report", report) == 0
+    assert "target TA" in capsys.readouterr().out
+    header, *rows = report.read_text().splitlines()
+    assert header.startswith("target,sample,level,item")
+    assert {r.split(",")[0] for r in rows} == {"TA", "TB"}

@@ -16,6 +16,9 @@ Reads `pipeline_info/run_info.json` and `pipeline_info/params_*.json` of the res
 
 and then the command. `--execute` runs it, but only after printing it and only when no hard problem was found.
 
+The results of a `--panel` run keep one run_info.json per target (`pipeline_info/<target>/run_info.json`, all with
+the same command line and params): they are replayed as ONE run of the whole panel, not once per target.
+
 Runs on the user's host Python: standard library only, Python >= 3.8 syntax. Exit status 0 = the command is ready,
 2 = problems (listed above the command), 1 = the record could not be read; with --execute the exit status is Nextflow's.
 """
@@ -107,6 +110,16 @@ def load_json(path):
         return json.load(handle)
 
 
+def panel_run_infos(pipeline_info):
+    """{target: run_info} of panel results: pipeline_info/<target>/run_info.json ({} for every other layout)."""
+    found = {}
+    if pipeline_info is not None and Path(pipeline_info).is_dir():
+        for child in sorted(Path(pipeline_info).iterdir()):
+            if child.is_dir() and (child / "run_info.json").is_file():
+                found[child.name] = load_json(child / "run_info.json")
+    return found
+
+
 def find_record(target):
     """(run_info dict or None, params dict or None, pipeline_info dir or None, results dir) for a results
     directory, a pipeline_info directory, run_info.json or params_*.json. `report` runs write no run_info.json,
@@ -120,8 +133,15 @@ def find_record(target):
         pipeline_info = target
     else:
         return None, None, None, target
+    if pipeline_info.parent.name == "pipeline_info" and (pipeline_info / "run_info.json").is_file():
+        pipeline_info = pipeline_info.parent  # run_info.json of one target of panel results
     run_info_path = pipeline_info / "run_info.json"
     run_info = load_json(run_info_path) if run_info_path.is_file() else None
+    if (
+        run_info is None
+    ):  # results of a panel run: one run_info.json per target; they describe one run
+        panel_infos = panel_run_infos(pipeline_info)
+        run_info = next(iter(panel_infos.values()), None)
     params_files = sorted(pipeline_info.glob("params_*.json"))
     params = load_json(params_files[-1]) if params_files else None
     results_dir = pipeline_info.parent if pipeline_info.name == "pipeline_info" else pipeline_info
@@ -384,6 +404,61 @@ def plan_barcodes(plan, run_info, params, mode, args):
     return extras
 
 
+def panel_own_barcodes(params):
+    """Targets whose row of the recorded custom panel file names their own barcodes (set()
+    when there is no such file): those beat --barcodes, so the command line need not pin them."""
+    panel = str(params.get("panel") or "")
+    own = set()
+    if panel.endswith(".csv") and Path(panel).is_file():
+        try:
+            with open(panel, newline="", encoding="utf-8-sig") as handle:
+                for row in csv.DictReader(handle):
+                    if (row.get("barcodes") or "").strip():
+                        own.add((row.get("target") or "").strip())
+        except (OSError, csv.Error, UnicodeDecodeError):
+            pass
+    return own
+
+
+def plan_barcodes_panel(plan, infos, params, mode, args):
+    """The barcodes of a panel run: each target's record is resolved on its own; the command line has ONE
+    --barcodes, so differing values are reported and the first target's is used (a panel row's own
+    `barcodes` file, passed through the params file, beats it anyway)."""
+    plan.say(
+        "[3] Freyja barcodes (each target's record; the targets of a panel can use different datasets)"
+    )
+    if mode in MODES_WITHOUT_BARCODES:
+        plan.say(f"    not used in mode {mode}")
+        return []
+    per_target = {}
+    own = panel_own_barcodes(params)
+    for target, info in infos.items():
+        one = Plan()
+        per_target[target] = plan_barcodes(one, info, params, mode, args)
+        plan.say(f"    target {target}")
+        if target in own:
+            plan.say(
+                "      the panel file gives this target its own barcodes: not pinned with --barcodes"
+            )
+            per_target[target] = [(f, v) for f, v in per_target[target] if f != "--barcodes"]
+        plan.lines.extend("    " + line for line in one.lines[1:])
+        plan.issues.extend(one.issues)
+    merged = {}
+    for target, extras in per_target.items():
+        for flag, value in extras:
+            merged.setdefault(flag, []).append((target, value))
+    result = []
+    for flag, values in merged.items():
+        if len({v for _, v in values}) > 1:
+            plan.warn(
+                "the targets used different values of {}: {}; only the first ({}) goes on the command line".format(
+                    flag, ", ".join(f"{t}={v}" for t, v in values), values[0][1]
+                )
+            )
+        result.append((flag, values[0][1]))
+    return result
+
+
 # --------------------------------------------------------------------------- 4. inputs
 
 
@@ -442,7 +517,37 @@ def check_reads(plan, samplesheet):
         )
 
 
-def plan_inputs(plan, run_info, params, mode, args):
+def plan_previous_run(plan, record, target=""):
+    """Earlier results the run built on: present, and (with a recorded checksum) unchanged. `target`: panel
+    results keep run_info.json under pipeline_info/<target>/."""
+    path = record.get("path")
+    label = "earlier results" + (f" [{target}]" if target else "")
+    if not path or not Path(path).is_dir():
+        plan.error(f"earlier results {path} not found")
+        return
+    info = Path(path) / "pipeline_info" / target / "run_info.json"
+    want = record.get("run_info_sha256")
+    if want and info.is_file():
+        got = sha256_file(info)
+        if got == want:
+            plan.say(f"    {label:<16} OK       {path}")
+        else:
+            plan.error(
+                f"earlier results {path} changed: run_info.json sha256 {got[:12]} vs recorded {want[:12]}",
+                forceable=True,
+            )
+    elif want:
+        plan.error(
+            f"earlier results {path} have no {info.relative_to(path)} (recorded sha256 {want[:12]})",
+            forceable=True,
+        )
+    else:
+        plan.say(f"    {label:<16} present  {path} (legacy results: no checksum recorded)")
+
+
+def plan_inputs(plan, run_info, params, mode, args, infos=None):
+    """`infos` is {target: run_info} for panel results: the earlier results of each target are checked against
+    that target's pipeline_info/<target>/run_info.json."""
     plan.say("[4] Inputs")
     sums = (run_info or {}).get("input_checksums") or {}
     if run_info is None:
@@ -478,42 +583,25 @@ def plan_inputs(plan, run_info, params, mode, args):
             check_recorded_file(plan, "reference", fasta, sums["reference_fasta"])
         else:
             plan.say("    {:<16} not checked: bundled with the commit".format("reference"))
-    previous = (run_info or {}).get("previous_runs") or []
-    for record in previous:
-        path = record.get("path")
-        if not path or not Path(path).is_dir():
-            plan.error(f"earlier results {path} not found")
-            continue
-        info = Path(path) / "pipeline_info" / "run_info.json"
-        want = record.get("run_info_sha256")
-        if want and info.is_file():
-            got = sha256_file(info)
-            if got == want:
-                plan.say("    {:<16} OK       {}".format("earlier results", path))
-            else:
-                plan.error(
-                    f"earlier results {path} changed: run_info.json sha256 {got[:12]} vs recorded {want[:12]}",
-                    forceable=True,
-                )
-        elif want:
-            plan.error(
-                f"earlier results {path} have no pipeline_info/run_info.json (recorded sha256 {want[:12]})",
-                forceable=True,
-            )
-        else:
-            plan.say(
-                "    {:<16} present  {} (legacy results: no checksum recorded)".format(
-                    "earlier results", path
-                )
-            )
+    for target, info in (infos or {"": run_info}).items():
+        for record in (info or {}).get("previous_runs") or []:
+            plan_previous_run(plan, record, target)
     results_dir = params.get("results_dir")
     if mode == "report" and results_dir:
         if not Path(results_dir).is_dir():
             plan.error(f"results_dir {results_dir} not found")
-        elif not (Path(results_dir) / "pipeline_info" / "run_info.json").is_file():
+        elif not (Path(results_dir) / "pipeline_info" / "run_info.json").is_file() and not (
+            panel_run_infos(Path(results_dir) / "pipeline_info")
+        ):
             plan.error(f"results_dir {results_dir} has no pipeline_info/run_info.json")
         else:
             plan.say("    {:<16} present  {}".format("results_dir", results_dir))
+    panel = str(params.get("panel") or "")
+    if panel and (panel.endswith(".csv") or "/" in panel) and "assets/panels/" not in panel:
+        if Path(panel).is_file():
+            plan.say("    {:<16} present  {} (no checksum recorded)".format("panel", panel))
+        else:
+            plan.error(f"panel file {panel} not found")
     demix_dir = params.get("demix_dir")
     if demix_dir:
         if Path(demix_dir).is_dir():
@@ -640,14 +728,28 @@ def format_command(env_extra, argv):
 
 def build_plan(args):
     plan = Plan()
-    run_info, params, _pipeline_info, results_dir = find_record(args.results)
+    run_info, params, pipeline_info, results_dir = find_record(args.results)
     if run_info is None and params is None:
         raise SystemExit(
             f"error: no pipeline_info/run_info.json or params_*.json found in {args.results}"
         )
+    infos = {}
+    if pipeline_info is not None and not (pipeline_info / "run_info.json").is_file():
+        infos = panel_run_infos(pipeline_info)
+    if infos:  # the containers of all the targets decide whether the run was locked
+        run_info = dict(run_info)
+        run_info["containers"] = {
+            k: v for info in infos.values() for k, v in (info.get("containers") or {}).items()
+        }
     recorded = dict((run_info or {}).get("params") or params or {})
     mode = (run_info or {}).get("mode") or recorded.get("mode") or "full"
     plan.say(f"wasteline replay of {results_dir}")
+    if infos:
+        plan.say(
+            "  panel run: {} target(s) ({}), one replay of the whole run".format(
+                len(infos), ", ".join(infos)
+            )
+        )
     if run_info:
         plan.say(
             "  recorded: {} {}, mode {}, started {}, success {}".format(
@@ -658,7 +760,10 @@ def build_plan(args):
                 run_info.get("success", "not recorded"),
             )
         )
-        if run_info.get("success") is False:
+        failed = [t for t, info in infos.items() if info.get("success") is False]
+        if failed:
+            plan.warn("the recorded run did not succeed for target(s) " + ", ".join(failed))
+        elif run_info.get("success") is False:
             plan.warn("the recorded run did not succeed")
         elif "success" not in run_info:
             plan.warn("the recorded run has no success flag: it may have crashed before completion")
@@ -669,9 +774,12 @@ def build_plan(args):
     args.params_out = args.params_out or "replay_params.json"
     plan_params(plan, run_info, recorded, mode, args)
     plan.say()
-    extras = plan_barcodes(plan, run_info, recorded, mode, args)
+    if infos:
+        extras = plan_barcodes_panel(plan, infos, recorded, mode, args)
+    else:
+        extras = plan_barcodes(plan, run_info, recorded, mode, args)
     plan.say()
-    plan_inputs(plan, run_info, recorded, mode, args)
+    plan_inputs(plan, run_info, recorded, mode, args, infos or None)
     plan.say()
     profile = plan_profile(plan, run_info, args)
     plan.say()

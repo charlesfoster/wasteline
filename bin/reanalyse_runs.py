@@ -114,6 +114,8 @@ PATH_PARAMS = {
 # never dropped because it equals the schema default: in demix mode amplicon coverage runs only when a primer
 # scheme/BED is given explicitly (PLAN D14), so the effective scheme of the run must be passed on
 ALWAYS_KEEP = {"primer_scheme", "primer_bed"}
+# a panel names the targets (reference and pathogen included): the pipeline refuses these together with --panel
+PANEL_DROPPED = {"pathogen", "fasta", "gff"}
 BUNDLED_MARKERS = ("assets/references/", "assets/primer_schemes/", "assets/lineage_groups")
 DROPPED_PROFILES = {"locked", "test", "test_stub", "test_full"}
 
@@ -227,14 +229,33 @@ def looks_legacy(path):
     return False
 
 
+def panel_targets(directory):
+    """Targets of the results of a panel run: the folders of pipeline_info/ that hold a run_info.json
+    (pipeline_info/<target>/run_info.json). Each (directory, target) is one run for this script."""
+    info = Path(directory) / "pipeline_info"
+    return sorted(c.name for c in child_dirs(info) if (c / "run_info.json").is_file())
+
+
+def panel_result_targets(directory):
+    """Targets of panel results by their tables (summary/<target>/freyja_aggregated.tsv, and no
+    summary/freyja_aggregated.tsv); [] for every other layout."""
+    summary = Path(directory) / "summary"
+    if (summary / "freyja_aggregated.tsv").is_file():
+        return []
+    return sorted(c.name for c in child_dirs(summary) if (c / "freyja_aggregated.tsv").is_file())
+
+
 def find_runs(root, max_depth=2):
-    """[(directory, 'wasteline'|'legacy')] at depth <= max_depth below `root` (root itself is depth 0).
+    """[(directory, 'wasteline'|'legacy'|'panel')] at depth <= max_depth below `root` (root itself is depth 0).
     A run is never searched further (its own directories are samples, not runs)."""
     found = []
 
     def walk(directory, depth):
         if (directory / "pipeline_info" / "run_info.json").is_file():
             found.append((directory, "wasteline"))
+            return
+        if panel_targets(directory):
+            found.append((directory, "panel"))
             return
         if looks_legacy(directory):
             found.append((directory, "legacy"))
@@ -257,13 +278,14 @@ def has_files(directory, suffixes):
         return False
 
 
-def count_samples(path, kind):
-    """Samples that still have both variants and depths (what a demix needs). Cheap: directory listings only."""
+def count_samples(path, kind, target=""):
+    """Samples that still have both variants and depths (what a demix needs). Cheap: directory listings only.
+    `target`: panel results, samples/<sample>/<target>/freyja/."""
     count = 0
     if kind == "wasteline":
         base = path / "samples"
         for sample in child_dirs(base) if base.is_dir() else []:
-            freyja = sample / "freyja"
+            freyja = (sample / target if target else sample) / "freyja"
             if has_files(freyja, (".variants.tsv", ".variants.tsv.gz")) and has_files(
                 freyja, (".depths", ".depths.gz")
             ):
@@ -294,9 +316,10 @@ def recorded_barcode(run_info):
 class Run:
     """One discovered results directory."""
 
-    def __init__(self, path, kind):
+    def __init__(self, path, kind, target=""):
         self.path = Path(os.path.abspath(str(path)))
         self.kind = kind
+        self.target = target  # panel results: one Run per (directory, target)
         self.name = self.path.name
         self.run_info = None
         self.params = {}
@@ -314,9 +337,22 @@ class Run:
         self.notes = []
         self.load()
 
+    @property
+    def label(self):
+        """`run1` or, for panel results, `run1 [RSVa]`."""
+        return f"{self.name} [{self.target}]" if self.target else self.name
+
+    @property
+    def summary_dir(self):
+        return self.path / "summary" / self.target if self.target else self.path / "summary"
+
     def load(self):
         if self.kind == "wasteline":
-            info_path = self.path / "pipeline_info" / "run_info.json"
+            info_path = (
+                self.path / "pipeline_info" / self.target / "run_info.json"
+                if self.target
+                else self.path / "pipeline_info" / "run_info.json"
+            )
             try:
                 self.run_info = load_json(info_path)
             except (OSError, ValueError) as err:
@@ -344,7 +380,7 @@ class Run:
                 self.start = stamp.strftime("%Y-%m-%dT%H:%M:%S")
             except OSError:
                 self.start = ""
-        self.n_samples = count_samples(self.path, self.kind)
+        self.n_samples = count_samples(self.path, self.kind, self.target)
         self.skip_reason = self.ineligible_reason()
 
     @property
@@ -389,9 +425,13 @@ def discover(roots):
             continue
         for directory, kind in found:
             key = os.path.realpath(str(directory))
-            if key not in runs:
+            if kind == "panel":
+                for target in panel_targets(directory):
+                    if (key, target) not in runs:
+                        runs[(key, target)] = Run(directory, "wasteline", target)
+            elif key not in runs:
                 runs[key] = Run(directory, kind)
-    ordered = sorted(runs.values(), key=lambda r: (r.date, r.start, str(r.path)))
+    ordered = sorted(runs.values(), key=lambda r: (r.date, r.start, str(r.path), r.target))
     return ordered, messages
 
 
@@ -407,22 +447,27 @@ def select_runs(runs, args):
                 r
                 for r in chosen
                 if r.name == name
+                or r.label == name
                 or os.path.realpath(str(r.path)) == real
                 or str(r.path).endswith("/" + name.strip("/"))
             ]
             if not hits:
                 raise Problem(
-                    f"--runs: no run named {name!r}; found: " + ", ".join(r.name for r in runs)
+                    f"--runs: no run named {name!r}; found: " + ", ".join(r.label for r in runs)
                 )
             picked.extend(h for h in hits if h not in picked)
         chosen = picked
     if args.since:
         chosen = [r for r in chosen if r.date and r.date >= args.since]
     if args.last is not None:
-        eligible = [r for r in chosen if r.skip_reason is None]
-        keep = {id(r) for r in eligible[-args.last :]} if args.last > 0 else set()
-        chosen = [r for r in chosen if r.skip_reason is not None or id(r) in keep]
-    return sorted(chosen, key=lambda r: (r.date, r.start, str(r.path)))
+        # the N most recent directories (a panel directory counts once, whatever its number of targets)
+        eligible = []
+        for r in chosen:
+            if r.skip_reason is None and r.path not in eligible:
+                eligible.append(r.path)
+        keep = set(eligible[-args.last :]) if args.last > 0 else set()
+        chosen = [r for r in chosen if r.skip_reason is not None or r.path in keep]
+    return sorted(chosen, key=lambda r: (r.date, r.start, str(r.path), r.target))
 
 
 # =========================================================================================================
@@ -551,6 +596,9 @@ def carry_params(run, defaults, notes):
             continue
         if name not in CARRY_EXACT and not name.startswith(CARRY_PREFIXES):
             continue
+        if run.target and name in PANEL_DROPPED:
+            notes.append(f"{name} is not used with panel results: left out")
+            continue
         if name in PATH_PARAMS:
             if name in ("fasta", "gff") and is_bundled(value):
                 continue  # the pathogen config of the checkout supplies it
@@ -599,7 +647,7 @@ def carry_lineage_groups(run, notes):
         for candidate in (Path(str(value)).expanduser(), run.path.parent / str(value)):
             if candidate.is_file():
                 return os.path.abspath(str(candidate))
-    used = run.path / "summary" / "lineage_groups_used.csv"
+    used = run.summary_dir / "lineage_groups_used.csv"
     if used.is_file():
         want = info.get("lineage_groups_sha256")
         if not want or sha256_file(used) == want:
@@ -618,6 +666,8 @@ def outdir_for(run, target_label, args):
     """(new outdir or None when it exists, note). `{barcode}` in the suffix is the barcode version."""
     label = re.sub(r"[^A-Za-z0-9._-]+", "-", str(target_label)).strip("-") or "new"
     suffix = args.outdir_suffix.replace("{barcode}", label)
+    if run.target:  # panel results: one new directory per target
+        suffix += "_" + re.sub(r"[^A-Za-z0-9._-]+", "-", run.target)
     base = str(run.path).rstrip("/") + suffix
     if not os.path.lexists(base):
         return base, None
@@ -627,6 +677,34 @@ def outdir_for(run, target_label, args):
     while os.path.lexists(f"{base}_{counter}"):
         counter += 1
     return f"{base}_{counter}", f"{base} exists: using a numbered copy"
+
+
+def panel_file_of(run, notes):
+    """The custom panel file the target's run recorded (`panel` in its run_info.json), as an absolute path,
+    or None: nothing recorded, the panel came from results, it is a bundled panel, or the file is gone."""
+    value = (run.run_info or {}).get("panel") or run.params.get("panel")
+    text = str(value or "")
+    if not text or not (text.endswith(".csv") or "/" in text) or "assets/panels/" in text:
+        return None
+    path = resolve_path_param("panel", text, run, notes)
+    if path is None:
+        notes.append(
+            "the targets are looked up in the registry (assets/panels/registry.csv) instead; "
+            "a target that is not in it stops the run (--extra-args '--panel <csv>' supplies a panel)"
+        )
+        return None
+    try:
+        with open(path, newline="", encoding="utf-8-sig") as handle:
+            for row in csv.DictReader(handle):
+                if (row.get("target") or "").strip() == run.target and (
+                    row.get("barcodes") or ""
+                ).strip():
+                    notes.append(
+                        f"the panel file gives {run.target} its own barcodes, which beat --barcodes"
+                    )
+    except (OSError, csv.Error, UnicodeDecodeError):
+        pass
+    return path
 
 
 class Plan:
@@ -689,11 +767,13 @@ def build_plan(run, target, args, defaults):
         "demix",
         "--previous_results",
         str(run.path),
-        "--outdir",
-        outdir,
-        "--barcodes",
-        target.spec,
     ]
+    if run.target:  # panel results: this target only (the others are separate runs)
+        argv += ["--targets", run.target]
+        panel_file = panel_file_of(run, plan.notes)
+        if panel_file:
+            argv += ["--panel", panel_file]
+    argv += ["--outdir", outdir, "--barcodes", target.spec]
     if args.db_dir:
         argv += ["--db_dir", args.db_dir]
     argv += shlex.split(args.extra_args or "")
@@ -852,9 +932,10 @@ def read_status(path):
     return {row[s]: row[t] for row in rows if len(row) > max(s, t)}
 
 
-def run_versions(directory):
-    """{"barcode": .., "freyja": ..} of a results directory: run_info.json, else summary/barcode_version.json."""
-    info_path = directory / "pipeline_info" / "run_info.json"
+def run_versions(directory, target=""):
+    """{"barcode": .., "freyja": ..} of a results directory: run_info.json, else summary/barcode_version.json
+    (panel results: pipeline_info/<target>/ and summary/<target>/)."""
+    info_path = directory / "pipeline_info" / target / "run_info.json"
     if info_path.is_file():
         try:
             info = load_json(info_path)
@@ -868,7 +949,7 @@ def run_versions(directory):
             }
         except (OSError, ValueError):
             pass
-    bv = directory / "summary" / "barcode_version.json"
+    bv = directory / "summary" / target / "barcode_version.json"
     if bv.is_file():
         try:
             data = load_json(bv)
@@ -888,13 +969,18 @@ def run_versions(directory):
 class Results:
     """The tables of one results directory that the diff needs."""
 
-    def __init__(self, directory):
+    def __init__(self, directory, target=""):
         self.dir = Path(directory)
+        self.target = target
         self.warnings = []
         if not self.dir.is_dir():
             raise Problem(f"not a directory: {directory}")
+        summary = self.dir / "summary" / target
         self.aggregated_path = None
-        for rel in ("summary/freyja_aggregated.tsv", "freyja_aggregated.tsv"):
+        candidates = ["summary/freyja_aggregated.tsv", "freyja_aggregated.tsv"]
+        if target:
+            candidates = [f"summary/{target}/freyja_aggregated.tsv"]
+        for rel in candidates:
             if (self.dir / rel).is_file():
                 self.aggregated_path = self.dir / rel
                 break
@@ -908,7 +994,7 @@ class Results:
         except (OSError, UnicodeDecodeError) as err:
             raise Problem(f"cannot read {self.aggregated_path}: {err}")
         self.groups, self.group_columns = {}, []
-        group_path = self.dir / "summary" / "lineage_summary.csv"
+        group_path = summary / "lineage_summary.csv"
         self.has_groups = group_path.is_file()
         if self.has_groups:
             try:
@@ -916,8 +1002,8 @@ class Results:
             except (OSError, csv.Error, UnicodeDecodeError) as err:
                 self.warnings.append(f"cannot read {group_path}: {err}")
                 self.has_groups = False
-        self.status = read_status(self.dir / "summary" / "demix_status.tsv")
-        self.versions = run_versions(self.dir)
+        self.status = read_status(summary / "demix_status.tsv")
+        self.versions = run_versions(self.dir, target)
 
 
 def is_flagged(change, threshold):
@@ -1060,13 +1146,13 @@ def csv_row(row):
     ]
 
 
-def write_csv(path, result_sets):
-    """`result_sets` is [(run label or None, diff dict)]; a `run` column is added when a label is given."""
+def write_csv(path, result_sets, label_column="run"):
+    """`result_sets` is [(run label or None, diff dict)]; a `run` column (`label_column`) is added when a label is given."""
     with_run = any(label is not None for label, _ in result_sets)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(str(path), "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, lineterminator="\n")
-        writer.writerow((["run"] if with_run else []) + CSV_COLUMNS)
+        writer.writerow(([label_column] if with_run else []) + CSV_COLUMNS)
         for label, result in result_sets:
             for row in result["rows"]:
                 writer.writerow(([label or ""] if with_run else []) + csv_row(row))
@@ -1170,9 +1256,9 @@ def markdown_summary(title, result, top_n=20):
     return "\n".join(out)
 
 
-def run_diff(old_dir, new_dir, args):
-    """Compare two results directories; returns the diff dict."""
-    old, new = Results(old_dir), Results(new_dir)
+def run_diff(old_dir, new_dir, args, target=""):
+    """Compare two results directories (of one target of panel results); returns the diff dict."""
+    old, new = Results(old_dir, target), Results(new_dir, target)
     return diff_results(old, new, args.threshold, args.level)
 
 
@@ -1194,7 +1280,7 @@ def table_rows(plans):
         action = plan.action + (f" ({plan.reason})" if plan.reason else "")
         rows.append(
             [
-                run.name,
+                run.label,
                 run.date or "?",
                 run.mode,
                 run.barcode,
@@ -1254,7 +1340,7 @@ def execute_plan(plan, args):
 
 
 def print_plan(index, total, plan, execute):
-    print(f"[{index}/{total}] {plan.run.name}  ->  {plan.outdir}")
+    print(f"[{index}/{total}] {plan.run.label}  ->  {plan.outdir}")
     carried = ", ".join(f"{k}={v}" for k, v in sorted(plan.params.items())) or "(none)"
     print(f"    params file {plan.params_path}{'' if execute else ' (written with --execute)'}")
     print(f"    carried over: {carried}")
@@ -1293,7 +1379,7 @@ def reanalyse(args):
         raise Problem("no results directories found")
     selected = select_runs(runs, args)
     if not selected:
-        print("No run matches the selection (" + ", ".join(r.name for r in runs) + " were found).")
+        print("No run matches the selection (" + ", ".join(r.label for r in runs) + " were found).")
         return 0
 
     todo = [build_plan(r, target, args, defaults) for r in selected]
@@ -1351,27 +1437,28 @@ def reanalyse(args):
         print_plan(i, len(pending), plan, True)
         status = execute_plan(plan, args)
         if status != 0:
-            failed.append(plan.run.name)
-            print(f"FAILED: {plan.run.name} (exit status {status})", file=sys.stderr)
+            failed.append(plan.run.label)
+            print(f"FAILED: {plan.run.label} (exit status {status})", file=sys.stderr)
             if not args.keep_going:
                 print("Stopping (use --keep-going to continue with the next run).", file=sys.stderr)
                 break
             continue
-        done.append(plan.run.name)
+        done.append(plan.run.label)
         try:
-            result = run_diff(plan.run.path, plan.outdir, args)
+            result = run_diff(plan.run.path, plan.outdir, args, plan.run.target)
         except Problem as err:
             print(f"NOTE: no comparison made: {err}", file=sys.stderr)
             continue
-        out_csv = Path(plan.outdir) / "summary" / "reanalysis_diff.csv"
+        new_summary = Path(plan.outdir) / "summary" / plan.run.target
+        out_csv = new_summary / "reanalysis_diff.csv"
         write_csv(out_csv, [(None, result)])
-        (Path(plan.outdir) / "summary" / "reanalysis_diff.md").write_text(
-            markdown_summary(f"{plan.run.name}: re-analysis with new barcodes", result)
+        (new_summary / "reanalysis_diff.md").write_text(
+            markdown_summary(f"{plan.run.label}: re-analysis with new barcodes", result)
         )
         print(f"Comparison written to {out_csv}")
         print("\n".join("  " + line for line in summary_lines(result)))
         print()
-        combined.append((plan.run.name, result))
+        combined.append((plan.run.label, result))
     if combined and args.report:
         write_csv(args.report, combined)
         print(f"Combined comparison: {args.report}")
@@ -1394,6 +1481,9 @@ def reanalyse(args):
 
 def diff_only(args):
     old_dir, new_dir = args.diff
+    old_targets, new_targets = panel_result_targets(old_dir), panel_result_targets(new_dir)
+    if old_targets or new_targets:
+        return diff_panel(args, old_dir, new_dir, old_targets, new_targets)
     result = run_diff(old_dir, new_dir, args)
     print(f"Comparison of {old_dir} (old) with {new_dir} (new)")
     print("\n".join(summary_lines(result)))
@@ -1403,6 +1493,43 @@ def diff_only(args):
     if args.summary_md:
         Path(args.summary_md).write_text(
             markdown_summary(f"{Path(new_dir).name} vs {Path(old_dir).name}", result)
+        )
+        print(f"Summary: {args.summary_md}")
+    return 0
+
+
+def diff_panel(args, old_dir, new_dir, old_targets, new_targets):
+    """--diff of panel results: one comparison per target present in both (never mixed)."""
+    if not (old_targets and new_targets):
+        raise Problem(
+            "one of the two directories has panel results (summary/<target>/) and the other has not: "
+            "nothing to compare"
+        )
+    common = [t for t in old_targets if t in new_targets]
+    if not common:
+        raise Problem(
+            f"no target in common: {old_dir} has {', '.join(old_targets)}; {new_dir} has "
+            + ", ".join(new_targets)
+        )
+    print(f"Comparison of {old_dir} (old) with {new_dir} (new), per target")
+    for target in sorted(set(old_targets) ^ set(new_targets)):
+        side = "old" if target in old_targets else "new"
+        print(f"NOTE: target {target} is only in the {side} results: not compared")
+    results = []
+    for target in common:
+        result = run_diff(old_dir, new_dir, args, target)
+        results.append((target, result))
+        print(f"\ntarget {target}")
+        print("\n".join("  " + line for line in summary_lines(result)))
+    if args.report:
+        write_csv(args.report, results, "target")
+        print(f"Report: {args.report}")
+    if args.summary_md:
+        Path(args.summary_md).write_text(
+            "\n".join(
+                markdown_summary(f"{Path(new_dir).name} vs {Path(old_dir).name}: {t}", r)
+                for t, r in results
+            )
         )
         print(f"Summary: {args.summary_md}")
     return 0

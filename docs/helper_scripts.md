@@ -71,6 +71,36 @@ Both layouts are detected automatically (per sample):
   `site` (and a valid `viral_load`) are carried over from `<dir>/samplesheet.csv` or `<dir>/summary/samplesheet.csv` when present
   (the sheet's `sample_type` wins over inference), and `--metadata` can also be given.
 - Paths are absolute (or relative to the output file with `--relative`).
+- Results of a panel run (`summary/targets.tsv`, `samples/<s>/<target>/freyja/`) give one row per (sample, target) and a `target` column after
+  `sample`; `--targets A,B` keeps only those targets.
+
+#### Several runs, filters, `--list`
+
+`--from-results` is repeatable: the rows of all the directories go into one sheet (one header; the columns are the union, blank where a run has
+none). The single-directory output is unchanged. Filters are applied to the discovered rows and combined with AND; site, date and sample type are
+the values carried over from the run's `summary/samplesheet.csv` (or `--metadata`).
+
+| Option                        | Meaning                                                                                                                                                                                                                                                                            |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--samples ID[,ID...]\|@file` | Keep only these exact IDs (a file: one ID per line, blank lines and `#` lines ignored). In panel results all targets of a sample. IDs not found give a warning.                                                                                                                    |
+| `--include-id REGEX`          | Keep IDs matching the regex (searched, not anchored). Not the FASTQ-mode `--exclude-pattern`.                                                                                                                                                                                      |
+| `--exclude-id REGEX`          | Drop IDs matching the regex.                                                                                                                                                                                                                                                       |
+| `--site A,B`                  | Keep these sites (exact). Rows without a site are dropped.                                                                                                                                                                                                                         |
+| `--date-from`, `--date-to`    | Keep `collection_date` within `YYYY-MM-DD` bounds (inclusive). Rows without a date are dropped when either is given.                                                                                                                                                               |
+| `--sample-type`               | `sample` or `negative`.                                                                                                                                                                                                                                                            |
+| `--status ok`                 | Keep samples whose `summary/demix_status.tsv` (`summary/<target>/demix_status.tsv` for panel results) says `ok`; a sample with no status is kept, with a note.                                                                                                                     |
+| `--on-duplicate`              | The same (sample, target) in two directories, checked after the filters. `error` (default): exit 1 naming the directories; `prefix`: rename to `<dirname>__<id>` in the `sample` column only (directory names must be distinct and use `[A-Za-z0-9._-]`); `first`: keep the first. |
+| `--list`                      | Print a table (run, sample, target when present, sample_type, site, collection_date, demix_status, selected, reason) to stdout and write nothing. Unusable samples (missing files) are listed with the reason.                                                                     |
+
+Everything removed by a filter is counted in one `NOTE: N sample(s) removed by filters` line. If nothing is left the command fails.
+Mixing panel and single-target results works but gives the single-target rows a blank `target` (a warning says so).
+
+```bash
+# Run1 samples 1-3 and Run2 samples 8-10, clean demixes only
+python bin/make_samplesheet.py --from-results Run1/ --from-results Run2/ --mode aggregate \
+    --include-id '^(S[1-3]|S([89]|10))$' --status ok -o aggregate_sheet.csv
+python bin/make_samplesheet.py --from-results Run1/ --from-results Run2/ --mode aggregate --list
+```
 
 ## `check_samplesheet.py`
 

@@ -10,6 +10,10 @@ Two uses:
    make_samplesheet.py --from-results <dir> --mode demix|aggregate [--targets A,B] -o sheet.csv
    Results of a panel run (summary/targets.tsv, samples/<id>/<target>/freyja/) give one row per (sample, target) and a
    `target` column after `sample`; --targets keeps only those targets. Other layouts give no target column.
+   --from-results is repeatable (rows of all the runs in one sheet) and the rows can be filtered (all filters are
+   combined with AND): --samples, --include-id, --exclude-id, --site, --date-from, --date-to, --sample-type,
+   --status ok; --on-duplicate says what to do when a sample ID is in several runs; --list prints the table of
+   candidate rows (selected or not, with the reason) and writes nothing.
 
 Sample IDs are NEVER rewritten (no underscore-to-dash); the only transformation is the removal of
 the Illumina `_S<n>_L001_R1_001.fastq.gz` tail for the default suffix, or of the user suffix.
@@ -659,6 +663,237 @@ def discover_results(
 
 
 # ----------------------------------------------------------------------------------------------
+# row selection for --from-results (filters, duplicate handling, --list)
+# ----------------------------------------------------------------------------------------------
+ON_DUPLICATE = ("error", "prefix", "first")
+FILTER_OPTIONS = (
+    "samples",
+    "include_id",
+    "exclude_id",
+    "site",
+    "date_from",
+    "date_to",
+    "sample_type",
+    "status",
+)
+STATUS_FILE = "demix_status.tsv"
+
+
+def parse_sample_list(spec: str) -> tuple[set[str], str | None]:
+    """`ID[,ID...]` or `@file` (one ID per line; blank lines and # comments ignored)."""
+    if spec.startswith("@"):
+        try:
+            text = Path(spec[1:]).read_text(encoding="utf-8")
+        except OSError as exc:
+            return set(), f"cannot read --samples file {spec[1:]}: {exc}"
+        ids = [ln.strip() for ln in text.splitlines()]
+        return {i for i in ids if i and not i.startswith("#")}, None
+    return {i.strip() for i in spec.split(",") if i.strip()}, None
+
+
+def build_filters(args: argparse.Namespace) -> tuple[dict, list[str]]:
+    """The filters of the command line as a dict (only those given) and the errors in them."""
+    flt: dict = {}
+    errors: list[str] = []
+    if args.samples:
+        ids, err = parse_sample_list(args.samples)
+        if err:
+            errors.append(err)
+        flt["samples"] = ids
+    for key, option in (("include_id", "--include-id"), ("exclude_id", "--exclude-id")):
+        value = getattr(args, key)
+        if value:
+            try:
+                flt[key] = re.compile(value)
+            except re.error as exc:
+                errors.append(f"invalid regular expression for {option}: {exc}")
+    if args.site:
+        flt["site"] = {s.strip() for s in args.site.split(",") if s.strip()}
+    for key, option in (("date_from", "--date-from"), ("date_to", "--date-to")):
+        value = getattr(args, key)
+        if value:
+            if not valid_date(value):
+                errors.append(f"{option} '{value}' is not an ISO YYYY-MM-DD date")
+            flt[key] = value
+    if args.sample_type:
+        flt["sample_type"] = args.sample_type
+    if args.status:
+        flt["status"] = args.status
+    return flt, errors
+
+
+def filter_reason(rec: dict, flt: dict) -> str | None:
+    """Why a row is removed by the filters (the first that fails), or None."""
+    sample = rec["sample"]
+    if "samples" in flt and sample not in flt["samples"]:
+        return "not in --samples"
+    if "include_id" in flt and not flt["include_id"].search(sample):
+        return "ID does not match --include-id"
+    if "exclude_id" in flt and flt["exclude_id"].search(sample):
+        return "ID matches --exclude-id"
+    if "site" in flt and rec.get("site", "") not in flt["site"]:
+        return f"site '{rec.get('site', '')}' not in --site" if rec.get("site") else "no site"
+    date = rec.get("collection_date", "")
+    if ("date_from" in flt or "date_to" in flt) and not date:
+        return "no collection_date"
+    if "date_from" in flt and date < flt["date_from"]:
+        return f"date {date} before --date-from"
+    if "date_to" in flt and date > flt["date_to"]:
+        return f"date {date} after --date-to"
+    if "sample_type" in flt and rec.get("sample_type", "") != flt["sample_type"]:
+        return f"sample_type {rec.get('sample_type', '')}"
+    if "status" in flt and rec.get("_status") not in (None, flt["status"]):
+        return f"demix status {rec['_status']}"
+    return None
+
+
+class StatusLookup:
+    """demix_status.tsv of a results directory (summary/<target>/ for panel results), read once."""
+
+    def __init__(self) -> None:
+        self.cache: dict[tuple[str, str], dict[str, str] | None] = {}
+        self.missing: dict[str, int] = {}
+
+    def get(self, results: Path, target: str, sample: str) -> str | None:
+        key = (str(results), target)
+        if key not in self.cache:
+            path = results / "summary" / target / STATUS_FILE if target else None
+            if path is None:
+                path = results / "summary" / STATUS_FILE
+            table = None
+            if path.is_file():
+                try:
+                    header, rows = read_csv_rows(path)
+                except (OSError, csv.Error):
+                    header, rows = [], []
+                if "sample" in header and "status" in header:
+                    table = {r["sample"]: r["status"] for r in rows if r.get("sample")}
+            self.cache[key] = table
+        table = self.cache[key]
+        status = None if table is None else table.get(sample)
+        if status is None:
+            self.missing[str(results)] = self.missing.get(str(results), 0) + 1
+        return status
+
+
+def run_labels(dirs: list[str]) -> dict[str, str]:
+    """A short label per results directory: its name, or its full path when two share a name."""
+    names = [os.path.basename(os.path.abspath(d)) for d in dirs]
+    return {d: (n if names.count(n) == 1 else os.path.abspath(d)) for d, n in zip(dirs, names)}
+
+
+def resolve_duplicates(
+    records: list[dict], policy: str
+) -> tuple[list[dict], list[tuple[dict, str]], list[str]]:
+    """The same (sample, target) in several results directories. Returns (kept, dropped with reason, errors)."""
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for rec in records:
+        groups.setdefault((rec["sample"], rec.get("target", "")), []).append(rec)
+    kept: list[dict] = []
+    dropped: list[tuple[dict, str]] = []
+    errors: list[str] = []
+    for rec in records:
+        group = groups[(rec["sample"], rec.get("target", ""))]
+        if len(group) == 1:
+            kept.append(rec)
+            continue
+        runs = ", ".join(r["_run"] for r in group)
+        where = f" (target {rec['target']})" if rec.get("target") else ""
+        if policy == "error":
+            dropped.append((rec, f"duplicate ID, also in {runs}; set --on-duplicate prefix|first"))
+            if rec is group[0]:
+                errors.append(
+                    f"sample '{rec['sample']}'{where} is in several results directories: {runs} "
+                    "(use --on-duplicate prefix|first)"
+                )
+        elif policy == "first":
+            if rec is group[0]:
+                kept.append(rec)
+            else:
+                dropped.append((rec, f"duplicate of the one in {group[0]['_run']}"))
+        else:  # prefix
+            names = [os.path.basename(os.path.abspath(r["_dir"])) for r in group]
+            name = os.path.basename(os.path.abspath(rec["_dir"]))
+            if rec is group[0]:
+                if len(set(names)) < len(names):
+                    errors.append(
+                        f"--on-duplicate prefix: the directories of '{rec['sample']}' share a name "
+                        f"({runs}); cannot build distinct prefixes"
+                    )
+                if not ID_RE.match(name):
+                    errors.append(
+                        f"--on-duplicate prefix: directory name '{name}' has characters outside "
+                        "[A-Za-z0-9._-]"
+                    )
+            rec["_renamed_from"] = rec["sample"]
+            rec["sample"] = f"{name}__{rec['sample']}"
+            kept.append(rec)
+    seen = set()
+    for rec in kept:
+        key = (rec["sample"], rec.get("target", ""))
+        if key in seen:
+            errors.append(f"sample ID '{rec['sample']}' is not unique after --on-duplicate prefix")
+        seen.add(key)
+    return kept, dropped, errors
+
+
+def select_rows(
+    records: list[dict], unusable: list[dict], flt: dict, policy: str
+) -> tuple[list[dict], list[dict], list[str], list[str]]:
+    """Apply the filters, then the duplicate policy. Returns (selected, table, errors, notes).
+    `table` has every candidate row (selected or not, with the reason) for --list."""
+    notes: list[str] = []
+    after_filters, table = [], []
+    n_removed = 0
+    for rec in records:
+        reason = filter_reason(rec, flt)
+        if reason:
+            n_removed += 1
+            table.append({**rec, "_selected": "no", "_reason": reason})
+        else:
+            after_filters.append(rec)
+    if flt:
+        notes.append(f"{n_removed} sample(s) removed by filters")
+    selected, dropped, errors = resolve_duplicates(after_filters, policy)
+    for rec, reason in dropped:
+        table.append({**rec, "_selected": "no", "_reason": reason})
+    if dropped and policy == "first":
+        notes.append(f"{len(dropped)} duplicate row(s) dropped (--on-duplicate first)")
+    for rec in selected:
+        reason = f"renamed from {rec['_renamed_from']}" if "_renamed_from" in rec else ""
+        table.append({**rec, "_selected": "yes", "_reason": reason})
+    for rec in unusable:
+        table.append({**rec, "_selected": "no", "_reason": f"unusable: {rec['_reason']}"})
+    return selected, table, errors, notes
+
+
+def print_table(table: list[dict], run_order: dict[str, int], with_target: bool) -> None:
+    columns = [("run", "_run"), ("sample", "_shown")]
+    if with_target:
+        columns.append(("target", "target"))
+    columns += [
+        ("sample_type", "sample_type"),
+        ("site", "site"),
+        ("collection_date", "collection_date"),
+        ("demix_status", "_status"),
+        ("selected", "_selected"),
+        ("reason", "_reason"),
+    ]
+    table = sorted(
+        table, key=lambda r: (run_order[r["_run"]], r.get("_shown", ""), r.get("target", ""))
+    )
+    cells = [[h for h, _ in columns]]
+    for rec in table:
+        cells.append([str(rec.get(key) or "-") for _, key in columns])
+    widths = [max(len(row[i]) for row in cells) for i in range(len(columns))]
+    for i, row in enumerate(cells):
+        line = "  ".join(c.ljust(w) for c, w in zip(row, widths)).rstrip()
+        print(line)
+        if i == 0:
+            print("  ".join("-" * w for w in widths))
+
+
+# ----------------------------------------------------------------------------------------------
 # CLI
 # ----------------------------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
@@ -687,7 +922,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--from-results",
         metavar="DIR",
-        help="build a demix/aggregate sheet from an existing results directory",
+        action="append",
+        help="build a demix/aggregate sheet from an existing results directory "
+        "(repeatable: the rows of all of them go into one sheet)",
     )
     p.add_argument("--mode", choices=["demix", "aggregate"], help="sheet type for --from-results")
     p.add_argument(
@@ -707,7 +944,88 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --from-results: write (sample, reason) of every sample that was found but "
         "skipped (missing files, zero-byte legacy .demix) to this TSV",
     )
+    g = p.add_argument_group(
+        "row filters for --from-results (combined with AND)",
+        "Site, date and sample type are the values carried over from the results' samplesheet.",
+    )
+    g.add_argument(
+        "--samples",
+        metavar="ID[,ID...]|@FILE",
+        help="keep only these sample IDs (exact; @FILE has one ID per line); all targets of a sample",
+    )
+    g.add_argument("--include-id", metavar="REGEX", help="keep only IDs matching this regex")
+    g.add_argument("--exclude-id", metavar="REGEX", help="drop IDs matching this regex")
+    g.add_argument("--site", metavar="A,B", help="keep only these sites (exact, comma-separated)")
+    g.add_argument("--date-from", metavar="YYYY-MM-DD", help="keep collection_date >= this date")
+    g.add_argument("--date-to", metavar="YYYY-MM-DD", help="keep collection_date <= this date")
+    g.add_argument("--sample-type", choices=list(SAMPLE_TYPES), help="keep only this sample_type")
+    g.add_argument(
+        "--status",
+        choices=["ok"],
+        help="keep only samples whose demix_status.tsv says ok (drops low_confidence, skipped_*, ...); "
+        "samples with no status file are kept",
+    )
+    p.add_argument(
+        "--on-duplicate",
+        choices=list(ON_DUPLICATE),
+        default="error",
+        help="the same sample ID in two --from-results directories: error (default, exit 1), "
+        "prefix (rename to <dirname>__<id> in the sample column only) or first (keep the first)",
+    )
+    p.add_argument(
+        "--list",
+        action="store_true",
+        help="with --from-results: print the table of candidate rows (selected or not, with the "
+        "reason) to stdout and write nothing",
+    )
     return p
+
+
+def discover_all(args, dirs, wanted, status_lookup):
+    """Discover every --from-results directory. Returns (records, unusable, skipped_rows, panel_flags,
+    errors, warnings, notes); the rows carry _run/_dir/_shown/_status for the selection."""
+    labels = run_labels(dirs)
+    records: list[dict] = []
+    unusable: list[dict] = []
+    skipped_rows: list[tuple[str, ...]] = []
+    errors: list[str] = []
+    warnings: list[str] = []
+    notes: list[str] = []
+    panel_flags = []
+    for d in dirs:
+        results = Path(d)
+        skipped: list[tuple[str, ...]] = []
+        recs, errs, warns, nts = discover_results(
+            results, args.mode, args.negative_pattern, skipped, wanted
+        )
+        errors += errs
+        warnings += warns
+        notes += nts
+        panel = is_panel_layout(results) if results.is_dir() else False
+        panel_flags.append(panel)
+        for rec in recs:
+            rec["_run"] = labels[d]
+            rec["_dir"] = d
+            rec["_shown"] = rec["sample"]
+            rec["_status"] = status_lookup.get(results, rec.get("target", ""), rec["sample"])
+            records.append(rec)
+        for row in skipped:
+            skipped_rows.append(row if panel else (row[0], "", *row[1:]))
+            sample, target, reason, sample_type, date, site = skipped_rows[-1]
+            unusable.append(
+                {
+                    "_run": labels[d],
+                    "_shown": sample,
+                    "sample": sample,
+                    "target": target,
+                    "sample_type": sample_type,
+                    "collection_date": date,
+                    "site": site,
+                    "_status": status_lookup.get(results, target, sample),
+                    "_reason": reason,
+                }
+            )
+    return records, unusable, skipped_rows, panel_flags, errors, warnings, notes
 
 
 def run(args: argparse.Namespace) -> int:
@@ -715,34 +1033,55 @@ def run(args: argparse.Namespace) -> int:
     warnings: list[str] = []
     notes: list[str] = []
 
-    if bool(args.fastq_dir) == bool(args.from_results):
+    dirs = args.from_results or []
+    if bool(args.fastq_dir) == bool(dirs):
         print("ERROR: give exactly one of <fastq_dir> or --from-results", file=sys.stderr)
         return 2
-    if args.from_results and not args.mode:
+    if dirs and not args.mode:
         print("ERROR: --from-results requires --mode demix|aggregate", file=sys.stderr)
         return 2
-    if args.mode and not args.from_results:
+    if args.mode and not dirs:
         print("ERROR: --mode is only valid with --from-results", file=sys.stderr)
         return 2
 
-    if args.targets and not args.from_results:
+    if args.targets and not dirs:
         print("ERROR: --targets is only valid with --from-results", file=sys.stderr)
         return 2
+    given = ["--" + k.replace("_", "-") for k in (*FILTER_OPTIONS, "list") if getattr(args, k)]
+    if args.on_duplicate != "error":
+        given.append("--on-duplicate")
+    if given and not dirs:
+        print(f"ERROR: {', '.join(given)} only valid with --from-results", file=sys.stderr)
+        return 2
+    flt, flt_errors = build_filters(args)
+    if flt_errors:
+        for e in flt_errors:
+            print(f"ERROR: {e}", file=sys.stderr)
+        return 2
 
-    if args.from_results:
-        skipped: list[tuple[str, ...]] = []
+    unusable: list[dict] = []
+    status_lookup = StatusLookup()
+    panel_flags: list[bool] = []
+    if dirs:
         wanted = {t.strip() for t in args.targets.split(",") if t.strip()} if args.targets else None
-        records, errors, warnings, notes = discover_results(
-            Path(args.from_results), args.mode, args.negative_pattern, skipped, wanted
+        records, unusable, skipped_rows, panel_flags, errors, warnings, notes = discover_all(
+            args, dirs, wanted, status_lookup
         )
-        panel = is_panel_layout(Path(args.from_results))
-        if args.skipped_out and not errors:
+        panel = any(panel_flags)
+        if panel and not all(panel_flags):
+            warnings.append(
+                "panel and single-target results are mixed: the rows of the single-target "
+                "results have a blank target"
+            )
+        if args.skipped_out and not errors and not args.list:
             with open(args.skipped_out, "w", newline="", encoding="utf-8") as fh:
                 if panel:
                     fh.write("sample\ttarget\treason\tsample_type\tcollection_date\tsite\n")
+                    rows = skipped_rows
                 else:
                     fh.write("sample\treason\tsample_type\tcollection_date\tsite\n")
-                fh.writelines("\t".join(row) + "\n" for row in sorted(skipped))
+                    rows = [(r[0], *r[2:]) for r in skipped_rows]
+                fh.writelines("\t".join(row) + "\n" for row in sorted(rows))
         columns = DEMIX_COLUMNS if args.mode == "demix" else AGGREGATE_COLUMNS
         if panel:
             columns = [columns[0], "target", *columns[1:]]
@@ -765,6 +1104,28 @@ def run(args: argparse.Namespace) -> int:
         if not m_err:
             warnings += apply_metadata(records, meta)
 
+    table: list[dict] = []
+    if dirs and not errors:
+        if "samples" in flt:
+            known = {r["sample"] for r in records} | {r["sample"] for r in unusable}
+            absent = sorted(flt["samples"] - known)
+            if absent:
+                warnings.append(f"--samples: no such sample in the results: {', '.join(absent)}")
+        if "status" in flt and status_lookup.missing:
+            for d, n in sorted(status_lookup.missing.items()):
+                notes.append(
+                    f"--status ok: no demix status for {n} sample(s) of {d} "
+                    f"({STATUS_FILE} missing or without them); kept"
+                )
+        records, table, sel_errors, sel_notes = select_rows(
+            records, unusable, flt, args.on_duplicate
+        )
+        notes += sel_notes
+        if not args.list:
+            errors += sel_errors
+            if not records and not sel_errors:
+                errors.append("no sample is left after the filters")
+
     for n in notes:
         print(f"NOTE: {n}", file=sys.stderr)
     for w in warnings:
@@ -774,6 +1135,13 @@ def run(args: argparse.Namespace) -> int:
             print(f"ERROR: {e}", file=sys.stderr)
         print(f"ERROR: no samplesheet written ({len(errors)} problem(s))", file=sys.stderr)
         return 1
+
+    if args.list:
+        labels = run_labels(dirs)
+        order = {labels[d]: i for i, d in enumerate(dirs)}
+        print_table(table, order, any(panel_flags))
+        print("NOTE: --list: no samplesheet written", file=sys.stderr)
+        return 0
 
     rel_to = None
     if args.relative:
