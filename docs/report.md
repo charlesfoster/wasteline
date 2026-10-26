@@ -58,6 +58,10 @@ settings used. A table of contents links to the sections; sections that have no 
 (negative controls, dropout impact, mutations of interest, unexplained mutations, time series, barcode comparison) or
 show a "not available" note.
 
+In the report of one target of a `--panel` run (`summary/<target>/report.html`) the subtitle also names the target
+(`... pipeline 0.1.0 · target RSVa`) and a small "&larr; overview" link above the title opens `../overview.html`, the
+[panel overview](usage.md#panels-several-targets-in-one-run). Reports of single-target runs have neither.
+
 ## Run-level flags
 
 A short list of things you should know before trusting the run, most severe first: `ERROR` (red), `WARN` (amber),

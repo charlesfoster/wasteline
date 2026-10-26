@@ -863,6 +863,56 @@ Not run: real influenza reads; a real whole-genome panel (amplicon protocol on a
 their reference files and profile entries are tested: pytest `test_pathogen_profiles_are_consistent`); `--freyja_boot`; `--mode demix` for the influenza results
 (only for the two-contig SARS-CoV-2 + measles run); Singularity and conda for these runs.
 
+## Panels (several targets in one run)
+
+`--panel rsv` (RSVa, RSVb), `--panel flu` (H1N1, H3N2, H5Nx, FLU-B-VIC) or `--panel my_panel.csv` analyses several of the pathogens
+above in one run, for samples that may carry more than one (a respiratory capture panel, say). The full user documentation (panel
+file format, thresholds, layout, overview page, modes) is [usage.md, Panels](usage.md#panels-several-targets-in-one-run). The design in ten lines:
+
+1. The registry `assets/panels/registry.csv` has one row per Freyja pathogen with barcodes (10 targets); a panel file lists registry rows and may override columns.
+2. Every sample is trimmed (fastp) and mapped **once** to the concatenation of all the panel's references (contig names unique across the panel).
+3. Each read fragment belongs to the target whose contigs all its mapped primary reads are on (MAPQ >= 10), else it is ambiguous.
+4. Counts are taken on each target's marker contig (the HA segment for influenza: internal segments cross-map between subtypes).
+5. A target is `detected` with >= 100 fragments, >= 5 % breadth and, unless it tops its family, >= 5 % of the family's fragments; `trace` with some fragments below a floor; else `not_detected`. Two detected targets of one family make the sample `mixed`.
+6. The reads of each detected (sample, target) pair are split into a BAM of their own and go through the normal per-sample chain with that target's reference, primer scheme and barcodes.
+7. Negative controls are analysed for every target detected in another sample.
+8. Run-level steps (aggregate, QC, consensus, time series, ...) and a report run once per target: `samples/<id>/<target>/`, `summary/<target>/`.
+9. `summary/targets.tsv` records every (sample, target) typing; `summary/overview.html` shows the sample x target matrix.
+10. Only Freyja-supported pathogens, `--aligner bwa` only, and a samplesheet `primer_scheme` cell is refused for more than one target.
+
+RSV panel (RSV-A and RSV-B, one library type for the run):
+
+```bash
+nextflow run charlesfoster/wasteline -profile docker --mode full --input samples.csv --panel rsv \
+    --protocol capture --barcodes latest --outdir results
+```
+
+Influenza panel (whole-genome H1N1, H3N2 and H5Nx plus HA-only B/Victoria; capture is the usual protocol):
+
+```bash
+nextflow run charlesfoster/wasteline -profile docker --mode full --input samples.csv --panel flu \
+    --protocol capture --barcodes latest --outdir results
+```
+
+A panel of your own is a CSV with a `target` column (and optional override columns such as `barcodes` or `primer_scheme`):
+
+```csv
+target,primer_scheme
+RSVa,rsva-rsv-pipeline
+RSVb,rsvb-rsv-pipeline
+```
+
+**Validation (simulated reads only).** The typing was checked on simulated RSV-A / RSV-B reads (`tests/simulate_pathogen_mixture.py`, a
+two-lineage barcodes CSV per target so no network is needed): pure RSVa and pure RSVb samples are `detected` for their own target only
+and `not_detected` for the other; a 70/30 mixture is `mixed` with both targets detected and `fraction_of_family` 0.70 / 0.30 (within
+0.05); a sample with RSVa plus about 40 RSVb pairs is `trace` for RSVb (not analysed, no `samples/<id>/RSVb`) and no cross-mapping
+inflated it to `detected`; a no-template control with a handful of reads is `trace` and its sample `no_target_detected`. This was run
+end to end (stub runs of `--panel rsv` and `--panel flu` for the wiring, and real docker runs of the per-sample part, the per-target
+run-level steps, the optional analyses and `--mode demix|aggregate|report` on those results; the work units U2, U3b and U4b in
+`docs/wiring/multi_target_s2_plan.md`). **Real-data calibration is pending**: the thresholds are starting points, nothing here has
+been run on real RSV or influenza reads or on real mixtures, and the cross-mapping rate between close relatives has not been
+measured on real data.
+
 ## What is supported and what Route B would add
 
 **Route B (all eight segments) is implemented** as `--whole_genome` (PLAN D25 phase 1, the section above). The table below was the list of what it

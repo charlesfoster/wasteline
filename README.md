@@ -41,6 +41,10 @@ profiles).
   `update_db` (download the current Freyja data).
 - **Amplicon and probe-capture libraries.** `--protocol capture` handles probe-capture data (e.g. Twist): no primer trimming,
   no amplicon-dropout analysis, PCR duplicates marked. `--skip_primer_trimming` is for already-trimmed amplicon reads.
+- **Panels: several targets in one run.** `--panel rsv|flu|panel.csv` types every sample against all the panel's references
+  (RSV-A/B, influenza subtypes, any Freyja pathogen with barcodes), then analyses each detected target with its own barcodes, QC and
+  report (`summary/<target>/`), plus one `summary/overview.html` with the sample x target matrix. Every mode works per target; see
+  [Panels in the usage guide](docs/usage.md#panels-several-targets-in-one-run).
 - **Reproducible and traceable.** One Freyja barcode dataset is resolved per run and shared by all samples
   (`--barcodes latest|container|<YYYY-MM-DD>|<stamp>|<file or directory>`); its version and checksums are recorded in
   `pipeline_info/run_info.json`, every per-sample status file, `summary/demix_status.tsv` and the report header. A run never silently falls back to

@@ -1,0 +1,7 @@
+sample	sample_type	target	family	status	reason	sample_status	mixed	secondary_targets	fragments	ambiguous_fragments	fraction_of_family	breadth_pct	mean_depth	mean_mapq	second_target	margin	rescue	analysed
+NTC	negative	RSVa	rsv	not_detected	no_panel_reads	qc_fail	false		0	0	0.0000	0.00	0.00	NA				false
+NTC	negative	RSVb	rsv	not_detected	no_panel_reads	qc_fail	false		0	0	0.0000	0.00	0.00	NA				false
+S1	sample	RSVa	rsv	detected		ok	true	RSVb	300	0	0.7000	98.00	6.00	60.0	RSVb	0.4000		true
+S1	sample	RSVb	rsv	detected		ok	true	RSVa	130	0	0.3000	80.00	2.00	60.0	RSVa	-0.4000		true
+S2	sample	RSVa	rsv	trace	low_fragments(5<50)	no_target_detected	false		5	0	1.0000	9.00	0.10	60.0				false
+S2	sample	RSVb	rsv	not_detected	no_fragments	no_target_detected	false		0	0	0.0000	0.00	0.00	NA				false

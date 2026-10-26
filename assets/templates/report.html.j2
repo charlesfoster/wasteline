@@ -342,8 +342,9 @@ tr.seg-bad td{background:var(--warn-bg)}
 <body>
 <div class="wrap">
 <header class="top">
+  {% if h.panel %}<p class="note" style="margin:0 0 4px"><a href="../overview.html" id="overview-link">&larr; overview</a></p>{% endif %}
   <h1>{{ h.pipeline_name or 'wasteline' }} report</h1>
-  <p class="sub">Wastewater {{ h.pathogen or 'SARS-CoV-2' }} lineage deconvolution &middot; mode <b>{{ mode }}</b>{% if h.pipeline_version %} &middot; pipeline {{ h.pipeline_version }}{% endif %}</p>
+  <p class="sub">Wastewater {{ h.pathogen or 'SARS-CoV-2' }} lineage deconvolution &middot; mode <b>{{ mode }}</b>{% if h.pipeline_version %} &middot; pipeline {{ h.pipeline_version }}{% endif %}{% if h.panel and h.target %} &middot; target <b>{{ h.target }}</b>{% endif %}</p>
   {% if seg %}
   <p class="note" id="segments-note">Freyja demixes <b>{{ seg.freyja or 'one segment' }}</b> only; other segments are QC/consensus only.</p>
   {% endif %}

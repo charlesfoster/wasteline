@@ -53,6 +53,7 @@ include { MUTATIONS_OF_INTEREST  } from '../modules/local/mutations_of_interest/
 include { MUTATIONS_OF_INTEREST_CONCAT } from '../modules/local/mutations_of_interest_concat/main'
 include { BUILD_REPORT_DATA      } from '../modules/local/build_report_data/main'
 include { RENDER_REPORT          } from '../modules/local/render_report/main'
+include { BUILD_OVERVIEW         } from '../modules/local/build_overview/main'
 include { PROVENANCE             } from '../modules/local/provenance/main'
 include { FREYJA_DATA            } from '../subworkflows/local/freyja_data/main'
 include { PANEL_FRONT            } from '../subworkflows/local/panel_front/main'
@@ -157,6 +158,25 @@ workflow WASTELINE {
                 channel.fromList(ready.collect { t -> [ tkey([ target: t ]), file("${results}/summary${t.summary_sub}/report_data.json") ] }).mix(BUILD_REPORT_DATA.out.json),
                 report_template,
             )
+            // the panel overview of the results, once every report of this call exists (it links to them); a run from before
+            // summary/targets.tsv has none
+            def results_targets_tsv = file("${results}/summary/targets.tsv")
+            if (!params.skip_report && results_targets_tsv.exists()) {
+                def overview_items = report_targets.collect { t ->
+                    def run_info = file("${results}/pipeline_info${t.summary_sub}/run_info.json")
+                    [ t.name, optionalFile(results, 'freyja_aggregated.tsv', t.summary_sub), optionalFile(results, 'qc_summary.tsv', t.summary_sub), optionalFile(results, 'demix_status.tsv', t.summary_sub), run_info.exists() ? run_info : [] ]
+                }
+                def ch_overview_in = RENDER_REPORT.out.html.toList().map { _reports -> overviewInputs(report_targets.collect { t -> t.name }, overview_items) }
+                BUILD_OVERVIEW(
+                    channel.value(results_targets_tsv),
+                    ch_overview_in.map { manifest, _files -> manifest },
+                    ch_overview_in.map { _manifest, files -> files },
+                    file("${projectDir}/assets/templates/overview.html.j2"),
+                )
+            }
+            else if (!params.skip_report) {
+                log.info "No summary/overview.html: ${results}/summary/targets.tsv does not exist (the results were written by a version without the panel overview)."
+            }
         }
         else {
             def existing_data = file("${results}/summary/report_data.json")
@@ -1173,6 +1193,26 @@ workflow WASTELINE {
             }
         BUILD_REPORT_DATA(ch_to_report.data, ch_to_report.extra, ch_to_report.analyses, ch_to_report.groups, ch_to_report.contigs)
         RENDER_REPORT(BUILD_REPORT_DATA.out.json, file("${projectDir}/assets/templates/report.html.j2"))
+
+        //
+        // Panel overview (summary/overview.html): the sample x target matrix, once the report of every target exists (it links to
+        // them; a target with no analysed sample has none). One run of a single process for the whole panel.
+        //
+        if (is_panel && !params.skip_report) {
+            def ch_overview_items = ch_report_parts
+                .join(RENDER_REPORT.out.html)
+                .map { key, parts, _html -> [ key.id, parts.aggregated ?: [], parts.qc_summary ?: [], parts.demix_status ?: [], parts.run_info ?: [] ] }
+                .toList()
+            def ch_overview_in = PANEL_FRONT.out.targets
+                .combine(wrapItem(ch_overview_items))   // (combine would spread the list of items)
+                .map { targets_tsv, items -> [ targets_tsv ] + overviewInputs(targets.collect { t -> t.name }, items) }
+                .multiMap { targets_tsv, manifest, files ->
+                    targets_tsv: targets_tsv
+                    manifest: manifest
+                    files: files
+                }
+            BUILD_OVERVIEW(ch_overview_in.targets_tsv, ch_overview_in.manifest, ch_overview_in.files, file("${projectDir}/assets/templates/overview.html.j2"))
+        }
     }
     }
 
@@ -1396,6 +1436,28 @@ def groupSamples(ch) {
 // [ tkey, item ] -> [ tkey, role, item ]: to collect the optional tables of a target in one map (role -> item)
 def taggedByTarget(ch, role) {
     return ch.map { key, item -> [ key, role, item ] }
+}
+
+//
+// The inputs of BUILD_OVERVIEW: the manifest (tab separated: target, role, path as staged under in/<n>/) and the list of files it names. target_names =
+// every target of the run (a column of the matrix, also when it has no report); items = [ name, aggregate, qc table, demix status, run_info.json ]
+// of the targets that have a report ([] for a file the target lacks). Sorted by target so the staging (and a -resume) does not depend on arrival order.
+//
+def overviewInputs(target_names, items) {
+    def files = []
+    def lines = target_names.sort(false).collect { name -> "${name}\ttarget\t-".toString() }
+    items.sort(false) { a, b -> a[0] <=> b[0] }.each { item ->
+        def name = item[0]
+        [ 'aggregated', 'qc', 'demix_status', 'run_info' ].eachWithIndex { role, i ->
+            def f = item[i + 1]
+            if (f) {
+                files << f
+                lines << "${name}\t${role}\tin/${files.size()}/${f.name}".toString()
+            }
+        }
+        lines << "${name}\treport\t-".toString()
+    }
+    return [ workTextFile('overview_inputs.tsv', lines.join('\n') + '\n'), files ]
 }
 
 //

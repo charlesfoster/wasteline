@@ -1,0 +1,6 @@
+RSVa	target	-
+RSVb	target	-
+RSVa	aggregated	RSVa/freyja_aggregated.tsv
+RSVa	qc	RSVa/qc_summary.tsv
+RSVa	demix_status	RSVa/demix_status.tsv
+RSVa	report	-

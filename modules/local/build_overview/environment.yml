@@ -1,0 +1,10 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/nf-core/modules/master/modules/environment-schema.json
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # Same recipe as modules/local/render_report/environment.yml (bin/build_overview.py needs python >= 3.10 + jinja2);
+  # the container below is the image built from it (docs/development.md, "Rebuilding the report renderer image").
+  - conda-forge::python=3.12.12
+  - conda-forge::jinja2=3.1.6

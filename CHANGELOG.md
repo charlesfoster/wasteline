@@ -3,6 +3,43 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### `Added`
+
+- Panels, several targets (pathogens) in one run: `--panel rsv|flu|panel.csv` (S2 plan, work units U0-U6). Every sample is trimmed, mapped
+  once to the concatenation of all the panel's references, typed per target (`detected` / `trace` / `not_detected` from fragments, genome
+  breadth and family share; `--panel_min_fragments`, `--panel_min_breadth_pct`, `--panel_family_share_pct`, `--panel_mapq`; the defaults are
+  uncalibrated) and the reads of each detected (sample, target) pair go through the usual per-sample chain with that target's reference,
+  primer scheme and Freyja barcodes. A sample with two detected targets of one family is `mixed`; negative controls are analysed for every
+  detected target. The registry `assets/panels/registry.csv` (10 Freyja pathogens with barcodes) and the panel files `rsv.csv` / `flu.csv`
+  (a panel CSV can override registry columns, for example `barcodes` or `primer_scheme`) define the targets; only Freyja-supported
+  pathogens, `--aligner bwa` only, and a samplesheet `primer_scheme` cell is refused for more than one target. Docs: usage.md (Panels),
+  other_pathogens.md (Panels).
+- Per-target outputs: `samples/<id>/<target>/`, `summary/<target>/`, `pipeline_info/<target>/` and the run's `summary/targets.tsv` (every
+  sample x target typing). Every run-level step (aggregate and plots, QC, consensus, mutation tables, dropout impact, unexplained
+  mutations, time series, growth rates, dashboard, site aggregation, lineage-group summary, bootstrap intervals, `--compare_barcodes`,
+  provenance, report) runs once per target; single-target runs keep their layout and numbers (a normal run is a panel of one).
+- Modes on panel results: `--mode demix`, `aggregate`, `report` and `update_db` work per target on the results of a panel run
+  (`--previous_results`, `--results_dir`, or a samplesheet with a `target` column); `--targets A,B` selects targets and `--panel <csv>`
+  supplies the panel's overrides. `bin/make_samplesheet.py --from-results` and `DISCOVER_RESULTS` list (sample, target) pairs.
+- `summary/overview.html`: one offline HTML page for a panel run, a sample x target matrix (typing status in words and colour, fragments,
+  genome breadth, `mixed` marker, and for analysed cells the top lineage with its abundance and the QC WARN/FAIL badge), a strip per target
+  and the samples flagged `qc_fail` / `no_target_detected` with the reason; every analysed cell links to the target's report. Built by
+  `bin/build_overview.py` (`BUILD_OVERVIEW`, the report renderer image) after the reports, also by `--mode report` on panel results,
+  skipped by `--skip_report`; `--report_anonymize paths|full` removes paths and (full) replaces sample IDs, with the private
+  `summary/overview_sample_id_map.csv`. The report of one target names the target in its subtitle and links back to `../overview.html`
+  (single-target reports are unchanged).
+- `bin/make_samplesheet.py --from-results` is repeatable and filters the rows (`--samples`, `--include-id` / `--exclude-id`, `--site`,
+  `--date-from` / `--date-to`, `--sample-type`, `--status ok`, `--on-duplicate`), and `--list` prints the candidate rows without writing a
+  sheet, so an aggregate sheet can be built from selected samples of several runs.
+- Panel support in `bin/reanalyse_runs.py`, `bin/runs_store.py` and `bin/replay_run.py`: a target folder of a panel run counts as a run.
+
+### `Changed`
+
+- `--help` now shows the 30 common options; `--help_full` shows every parameter, and the advanced options are hidden from the short help
+  (`--help <name>` and `--show_hidden` still work).
+
 ## v0.1.0 - 2026-10-26
 
 Initial release of charlesfoster/wasteline: a Nextflow DSL2 (nf-core style) port of the wastewater workflow of

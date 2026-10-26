@@ -1297,7 +1297,7 @@ def build_header(run_info, mode):
     freyja_data = run_info.get("freyja_data") if isinstance(run_info, dict) else None
     freyja_data = freyja_data if isinstance(freyja_data, dict) else {}
     nextflow = first_of(run_info, ("nextflow_version", "nextflow.version", "nextflow"))
-    return {
+    header = {
         "pipeline_name": first_of(run_info, ("pipeline_name", "pipeline.name")) or "wasteline",
         "pipeline_version": first_of(run_info, ("pipeline_version", "pipeline.version")),
         "git_commit": first_of(run_info, GIT_KEYS),
@@ -1320,6 +1320,11 @@ def build_header(run_info, mode):
         "run_started": first_of(run_info, ("start", "run_started", "timestamp.start")),
         "run_info_generated": first_of(run_info, ("provenance_generated", "generated")),
     }
+    # a report of a --panel run only (the key is absent otherwise, so single-target report_data.json is unchanged):
+    # the panel's file name (never its path); the template adds the target to the subtitle and a link to ../overview.html
+    if isinstance(run_info.get("panel"), str) and run_info["panel"]:
+        header["panel"] = _basename(run_info["panel"])
+    return header
 
 
 def build_params_summary(run_info):

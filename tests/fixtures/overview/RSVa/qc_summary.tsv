@@ -1,0 +1,2 @@
+sample	sample_type	qc_status	qc_reasons
+S1	sample	WARN	low_depth

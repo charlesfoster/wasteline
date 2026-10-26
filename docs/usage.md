@@ -166,6 +166,38 @@ wrote 5 sample(s) to agg_sheet.csv
 Samples lacking the required files are skipped with a reason; if nothing usable remains the command fails.
 `sample_type`, `collection_date`, `site`, `viral_load` and, when some sample has a value, `protocol` and `primer_scheme` are carried over from `results/summary/samplesheet.csv` when present. A `--metadata` table may also carry `protocol` and `primer_scheme` columns.
 
+Results of a panel run give one row per (sample, target) with a `target` column; `--targets A,B` keeps only those targets.
+
+**Several runs and sample filters.** `--from-results` can be repeated (all rows go into one sheet), and the rows can be filtered before
+the sheet is written. All filters are combined with AND:
+
+| Option                                 | Keeps                                                                                                                                  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `--samples ID[,ID...]\|@file`          | exactly these IDs (a file has one ID per line); every target of a sample in panel results                                              |
+| `--include-id` / `--exclude-id REGEX`  | IDs that match / do not match the regex                                                                                                |
+| `--site A,B`                           | these sites (the value carried over from the run's `summary/samplesheet.csv`)                                                          |
+| `--date-from` / `--date-to YYYY-MM-DD` | `collection_date` in the range (a sample with no date is dropped when either is given)                                                 |
+| `--sample-type sample\|negative`       | that sample type                                                                                                                       |
+| `--status ok`                          | samples whose `demix_status.tsv` says `ok` (drops `low_confidence` and `skipped_*`); a sample with no status file is kept, with a note |
+
+`--on-duplicate error|prefix|first` says what to do when the same ID is in two runs: `error` (default) stops and names the runs; `prefix`
+renames the sample to `<run dir name>__<id>` in the `sample` column only (the demix path is unchanged); `first` keeps the first run's row.
+Duplicates are looked for after the filters. `--list` prints the candidate rows (run, sample, target, type, site, date, demix status, selected
+yes/no with the reason; unusable samples are listed too) and writes nothing. The filtered rows are counted in one `NOTE` line.
+
+Example: an aggregate of samples 1 to 3 of Run1 and 8 to 10 of Run2, leaving out anything that was not a clean demix:
+
+```bash
+python bin/make_samplesheet.py --from-results Run1/ --from-results Run2/ --mode aggregate \
+    --include-id '^(S[1-3]|S([89]|10))$' --status ok -o aggregate_sheet.csv
+python bin/make_samplesheet.py --from-results Run1/ --from-results Run2/ --mode aggregate --list   # look first
+```
+
+```
+NOTE: 2 sample(s) removed by filters
+wrote 6 sample(s) to aggregate_sheet.csv
+```
+
 ### Checking a samplesheet: `bin/check_samplesheet.py`
 
 ```bash
@@ -416,52 +448,131 @@ by a factor of about 10 from all others there); on real runs watch the enrichmen
 `--qc_min_primer_trimmed_pct` (default 0, off) is a blunter WARN on the ivar trimming percentage alone. Details of the
 method are in [qc_scripts.md](qc_scripts.md#primer_scheme_checkpy).
 
-## Panels (in development)
+## Panels (several targets in one run)
 
-A panel is several targets (pathogens) analysed in one run: `--panel rsv` (RSVa, RSVb) or `--panel flu` (H1N1, H3N2, H5Nx,
-FLU-B-VIC), or `--panel my_panel.csv`. The panel files and the panel parameters ([parameters.md](parameters.md#panel-options))
-are validated at start-up. `--mode full` runs a panel; `--mode demix`, `aggregate`, `report` and `update_db` work on the results of a panel
-run, per target (below).
+A panel analyses several targets (Freyja pathogens) in one run: which of them is in each sample is decided from the reads,
+and every target found then gets the full per-target analysis (lineages, QC, consensus, report) with its own reference, primer
+scheme and Freyja barcodes. Use it for a sample type that can contain more than one pathogen, for example a respiratory
+wastewater panel with probe capture. The design in short: every sample is trimmed with fastp and mapped **once** to the
+concatenation of all the panel's references (competitive mapping, so RSV-B reads do not pile up on the RSV-A reference), each read
+fragment is assigned to the target whose contigs it maps to, the target is called `detected`, `trace` or `not_detected` from those
+counts, and the reads of every detected (sample, target) pair are cut out into a BAM of their own that goes through the usual
+per-sample chain.
 
-**Panel runs (S2a status).** Works now: every sample is trimmed with fastp, mapped once to all the panel's references, typed
-(which targets are present: `summary/targets.tsv`, and `samples/<id>/<id>.targets.tsv` with the numbers behind it in
-`<id>.panel_stats.tsv`), and the reads of every detected (sample, target) pair go through the usual per-sample chain with that
-target's reference, primer scheme and Freyja dataset: primer trimming, duplicate marking, `freyja variants` and `demix`, QC
-row, amplicon coverage, consensus, mutation tables, bootstraps. Their files are under `samples/<id>/<target>/` (`bam/`,
-`freyja/`, `coverage/`, `consensus/`, `variants/`); `trace` and `not_detected` targets are listed in `targets.tsv` but not
-analysed; a negative control is analysed for every target detected in some other sample. Each target needs its own Freyja
-barcodes: `--barcodes latest` (all targets), or a `barcodes` column in the panel CSV. A primer scheme comes from the panel CSV
-`primer_scheme` column (a samplesheet `primer_scheme` cell is refused for a panel of several targets), or use `--protocol capture`.
-**Not yet** (planned, per target): the run-level outputs. For a panel run these are skipped, with one warning: the aggregate and
-its plots, the control aggregate, `qc_summary.tsv`, `consensus_stats.tsv`, `consensus.fasta`, `mutations_of_interest.tsv`,
-`demix_status.tsv` (each sample's status is in its `samples/<id>/<target>/freyja/<id>.demix_status.json`), `barcode_version.json`,
-the dropout-impact and unexplained-mutation summaries, time series, growth rates, the dashboard, site aggregation, the lineage-group
-summary, `--compare_barcodes`, `pipeline_info/run_info.json` and the report.
+```bash
+nextflow run charlesfoster/wasteline -profile docker --mode full --input samples.csv --panel rsv \
+    --protocol capture --barcodes latest --outdir results
+```
 
-**Modes on panel results.** `--mode demix` and `--mode aggregate` take the results of a panel run with `--previous_results <out>` (or a
-samplesheet with a `target` column: `bin/make_samplesheet.py --from-results <out> --mode demix` writes one, one row per sample and
-target, with the metadata of `summary/<target>/samplesheet.csv`); `--mode report` takes `--results_dir <out>`. The targets are those the
-results contain; `--panel <csv>` names them with the panel's own overrides (for example a `barcodes` column, which re-demixing needs when
-the original run used one), and `--targets RSVb,RSVa` keeps only some. Everything is then done per target and written to
-`samples/<id>/<target>/` and `summary/<target>/` of `--outdir` (also with one target selected), re-using the stored variants and depths, so
-no re-mapping is needed. `--mode report` rebuilds `report_data.json` and `report.html` of each target (`--report_anonymize` as
-usual); `--mode update_db --panel <csv>` updates the Freyja dataset of every target of the panel (`--targets` selects). `--panel` with
-single-target results is an error (drop `--panel` and use `--pathogen`); results of both kinds in one `--previous_results` are refused.
-Results of single-target runs and of the Snakemake pipeline are unchanged in every mode.
+`--panel rsv` is RSVa + RSVb, `--panel flu` is H1N1, H3N2, H5Nx and FLU-B-VIC, `--panel my_panel.csv` is your own list. `--panel`
+replaces `--pathogen`, `--fasta`, `--gff`, `--freyja_contig` and `--whole_genome` (an error if combined). The samplesheet is the
+ordinary one; a `primer_scheme` cell is refused when the panel has more than one target (a scheme belongs to one pathogen: use the
+`primer_scheme` column of the panel CSV, a BED path in the same column, or `--protocol capture`).
+
+### Registry and panel files
 
 - `assets/panels/registry.csv` has one row per target wasteline can analyse (the Freyja pathogens that have barcodes), with
   the columns `target, fasta, gff, freyja_pathogen, freyja_contig, marker_contig, family, primer_scheme_default,
 primer_schemes_bundled, lineage_groups_bundled, freyja_container_pathogen, barcodes`. Paths are relative to the
   pipeline directory; an empty cell means none. The influenza rows use the whole-genome references (`freyja_contig` and
   `marker_contig` are the HA sequence; family `fluA`), except FLU-B-VIC, which stays HA-only (family `fluB`); RSVa and RSVb
-  are family `rsv`. H5Nx and H5Nx-cattle share one FASTA.
+  are family `rsv`. H5Nx and H5Nx-cattle share one FASTA (one of them per panel).
 - A panel file (`assets/panels/rsv.csv`, `flu.csv`, or your own) has a `target` column naming registry rows, one per line.
   Any other column is an optional override of the registry column of the same name for that target (empty cell = keep the
-  registry value), plus `primer_scheme` (a bundled scheme name or a BED path). Relative paths in overrides are relative to
-  the directory you launch Nextflow from.
-- The reads are mapped to all the panel's references at once, so contig names must be unique across the panel (an error
-  names the target and contig otherwise); two targets may share a FASTA only within one family.
-- `--panel` excludes `--pathogen`, `--fasta`, `--gff`, `--freyja_contig` and `--whole_genome`.
+  registry value), plus `primer_scheme` (a bundled scheme name or a BED path). A `barcodes` cell (a barcodes CSV or a dataset
+  directory) beats `--barcodes` for that target and keeps a run offline. Relative paths in overrides are relative to the
+  directory you launch Nextflow from.
+- Contig names must be unique across the panel (an error names the target and contig otherwise); two targets may share a
+  FASTA only within one family. Everything is validated at start-up.
+
+### Detection thresholds and statuses
+
+For every sample and every target of the panel the typing counts **fragments** (read pairs; a pair belongs to a target only if all
+its mapped primary reads are on that target's contigs with mapping quality >= `--panel_mapq`, otherwise it is counted as ambiguous)
+on the target's marker contig (the HA segment for influenza, so the internal segments that cross-map between subtypes do not
+count), and the breadth of that contig they cover. The status of the pair:
+
+| Status         | Rule                                                                                                                                                                                                                      | Analysed?                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `detected`     | fragments >= `--panel_min_fragments` (100) **and** breadth >= `--panel_min_breadth_pct` (5 %) **and** (it is the top target of its family **or** its share of the family's fragments >= `--panel_family_share_pct` (5 %)) | yes                          |
+| `trace`        | at least one fragment but a threshold is not met (the reason names it, for example `low_fragments(41<50)`)                                                                                                                | no (listed in `targets.tsv`) |
+| `not_detected` | no fragment (reason `no_fragments`, or `no_panel_reads` when the sample has no panel read at all)                                                                                                                         | no                           |
+
+A sample with two or more `detected` targets of one family (two RSV subtypes, two influenza A subtypes) is marked `mixed` (the
+other targets are in `secondary_targets`; each target is still analysed on its own reads). A sample's `sample_status` is `ok`,
+`no_target_detected` (nothing detected) or `qc_fail` (no panel read at all); such a sample is not dropped: it keeps a row per target.
+**Negative controls** are analysed for every target detected in at least one other sample, so a contaminated control shows up in
+that target's report. The thresholds are **starting points that have not been calibrated on real data** (see Limits).
+
+### Layout and `targets.tsv`
+
+Panel runs write per-target folders (single-target runs keep their old layout, unchanged):
+
+```
+results/
+  samples/<id>/fastp/, <id>.targets.tsv, <id>.panel_stats.tsv     per sample: trimming and typing
+  samples/<id>/<target>/{bam,freyja,coverage,consensus,variants}/   per analysed (sample, target)
+  summary/targets.tsv                                             the typing of every sample against every target
+  summary/overview.html                                           the sample x target page (below)
+  summary/<target>/{qc_summary.tsv,freyja_aggregated.tsv,demix_status.tsv,report.html,...}   the usual run-level files, per target
+  pipeline_info/<target>/run_info.json                            provenance per target; pipeline_info/panel/: the panel reference
+```
+
+`summary/targets.tsv` has one row per (sample, target) with the columns `sample, sample_type, target, family, status, reason,
+sample_status, mixed, secondary_targets, fragments, ambiguous_fragments, fraction_of_family, breadth_pct, mean_depth,
+mean_mapq, second_target, margin, rescue, analysed` (`analysed` is `true` when the pair went through the per-sample chain;
+`fraction_of_family` is the target's share of the family's fragments). A target with no analysed sample has no `summary/<target>/` folder.
+
+### The overview page
+
+`summary/overview.html` is one offline HTML file (the look of the report, light and dark) for the whole panel run:
+
+- a header with the pipeline version, mode, panel (its file name only), date and the number of samples and targets;
+- a strip with one card per target: how many samples are detected / trace, how many were analysed and have a lineage result, and
+  a link to the target's report (a target without an analysed sample says so and has no report);
+- the **sample x target matrix**: every cell has the status in words (`detected`, `trace`, `not detected`, with a symbol and colour),
+  the fragments and genome breadth, a `mixed` marker, and for an analysed cell the top lineage with its abundance (from
+  `summary/<target>/freyja_aggregated.tsv`) and a WARN/FAIL badge from `summary/<target>/qc_summary.tsv`; the cell links to
+  `<target>/report.html`. A table that is missing for a target shows `-`;
+- samples whose `sample_status` is `qc_fail` or `no_target_detected` are marked with the reason under the sample name.
+
+Each target's `report.html` shows the target in its subtitle and a "&larr; overview" link back to `../overview.html`. The overview
+is built after the reports, so `--skip_report` skips it too. With `--report_anonymize paths|full` it never shows a path (the panel
+is shown by file name). With `full` the sample IDs are replaced by pseudonyms **numbered over the whole panel**
+(`S001`, ...) and the private table `summary/overview_sample_id_map.csv` is written next to it (never share that file). These
+pseudonyms can differ from the ones inside a target's report, because each report numbers only its own samples; use the map of
+each report (`summary/<target>/sample_id_map.csv`) and the overview map to translate.
+
+### Modes on panel results
+
+Every other mode works per target on the results of a panel run. `--mode demix` and `--mode aggregate` take the results with
+`--previous_results <out>` (or a samplesheet with a `target` column: `bin/make_samplesheet.py --from-results <out> --mode demix`
+writes one, one row per sample and target, with the metadata of `summary/<target>/samplesheet.csv`); `--mode report` takes
+`--results_dir <out>`. The targets are those the results contain; `--panel <csv>` names them with the panel's own overrides (for
+example a `barcodes` column, which re-demixing needs when the original run used one), and `--targets RSVb,RSVa` keeps only some.
+Everything is then done per target and written to `samples/<id>/<target>/` and `summary/<target>/` of `--outdir` (also with one
+target selected), re-using the stored variants and depths, so no re-mapping is needed. `--mode report` rebuilds `report_data.json`
+and `report.html` of each target (`--report_anonymize` as usual) **and `summary/overview.html`** (from `summary/targets.tsv` of the
+results; a report written before this version has no overview link until it is rebuilt with `--report_anonymize paths` or deleted
+`report_data.json`). `--mode update_db --panel <csv>` updates the Freyja dataset of every target (`--targets` selects). `--panel`
+with single-target results is an error (drop `--panel` and use `--pathogen`); results of both kinds in one `--previous_results` are
+refused. Results of single-target runs and of the Snakemake pipeline are unchanged in every mode. The re-analysis helpers
+(`reanalyse_runs.py`, `runs_store.py`, `replay_run.py`) are described in [reanalysis.md](reanalysis.md) and [runs_store.md](runs_store.md).
+
+### Limits
+
+- **The thresholds are not calibrated.** The defaults (100 fragments, 5 % breadth, 5 % family share, MAPQ 10) were chosen from
+  simulated reads; check `targets.tsv` of your first real runs (look at the `trace` rows) and adjust the four `--panel_*`
+  parameters. Cross-mapping between close relatives (RSV-A/B, influenza subtypes) is reduced by the competitive mapping and the
+  family-share rule, not eliminated.
+- **One competitive mapping.** All references are mapped at once, so the typing sees the panel as a whole, but a pathogen that is
+  not in the panel is invisible, and its reads can cross-map onto a panel target.
+- **Only Freyja-supported pathogens**: a target needs Freyja barcodes (the registry lists the ten that have them); there are no
+  barcode-less targets.
+- **No `--aligner minibwa`** for panels (bwa mem only), and the samplesheet `primer_scheme` cell is refused for a panel of more
+  than one target.
+- A target that no sample carries has no summary and no report, and the overview says so.
+- Real-data validation is pending: see "Panels (several targets in one run)" in [other_pathogens.md](other_pathogens.md#panels-several-targets-in-one-run).
 
 ## 5. Running each mode
 
@@ -709,6 +820,9 @@ needs `--pipeline-dir` to leave out parameters that equal the schema defaults; s
 again (it tells you when one has to be restored); uncommitted changes of the original checkout are not recorded;
 `--compare_barcodes` and email options are deliberately not repeated. The script uses only the standard library and runs on the
 host Python (3.8 or newer). The end-to-end test replays the full synthetic run and checks the demix files are byte-identical.
+The results of a `--panel` run (one `pipeline_info/<target>/run_info.json` per target) are replayed as **one** run of the whole
+panel; the barcodes of each target are checked on their own, and a target whose panel row names its own barcodes file is not pinned
+with `--barcodes`.
 
 ### Comparing barcode versions: `--compare_barcodes`
 

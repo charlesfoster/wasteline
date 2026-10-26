@@ -1,0 +1,168 @@
+{#- wasteline panel OVERVIEW. Self-contained: no external URLs, fonts, images or scripts.
+    Rendered by bin/build_overview.py with autoescape ON; every data string goes through {{ }}.
+    Same colour tokens (light/dark) as the per-target report (report.html.j2). -#}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="generator" content="wasteline build_overview.py">
+<title>wasteline panel overview</title>
+<style>
+:root{
+  --bg:#ffffff;--fg:#1c2128;--muted:#5b6570;--line:#d5dbe1;--panel:#f5f7f9;--link:#0b5cad;
+  --pass:#00775a;--pass-bg:#d9f0e8;--warn:#8a5a00;--warn-bg:#fdebc8;--fail:#a83900;--fail-bg:#fbdccc;--na:#5b6570;--na-bg:#e8ebee;--info:#0b5cad;--info-bg:#dcebf8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14181d;--fg:#e4e8ec;--muted:#9aa5b1;--line:#2f3741;--panel:#1b2128;--link:#6db3f2;
+    --pass:#4cc9a4;--pass-bg:#10382e;--warn:#f0b84a;--warn-bg:#40300c;--fail:#ff9a66;--fail-bg:#4a1f0c;--na:#9aa5b1;--na-bg:#262d35;--info:#6db3f2;--info-bg:#17324b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14181d;--fg:#e4e8ec;--muted:#9aa5b1;--line:#2f3741;--panel:#1b2128;--link:#6db3f2;
+  --pass:#4cc9a4;--pass-bg:#10382e;--warn:#f0b84a;--warn-bg:#40300c;--fail:#ff9a66;--fail-bg:#4a1f0c;--na:#9aa5b1;--na-bg:#262d35;--info:#6db3f2;--info-bg:#17324b;
+}
+*{box-sizing:border-box}
+html{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--fg)}
+body{margin:0;background:var(--bg);color:var(--fg)}
+[hidden]{display:none!important}
+a{color:var(--link)}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px 48px}
+header.top{border-bottom:1px solid var(--line);padding:18px 0 14px;margin-bottom:12px}
+header.top h1{margin:0 0 4px;font-size:1.6rem}
+.sub{color:var(--muted);margin:0 0 10px}
+.facts{display:flex;flex-wrap:wrap;gap:8px 28px;margin:10px 0 0}
+.facts div{min-width:120px}
+.facts dt{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.facts dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+h2{font-size:1.25rem;margin:26px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.note{color:var(--muted);margin:6px 0}
+.warnbox{border:1px solid var(--warn);border-left:5px solid var(--warn);background:var(--warn-bg);border-radius:0 6px 6px 0;padding:6px 10px;margin:8px 0}
+.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.78rem;font-weight:700;border:1px solid currentColor;white-space:nowrap}
+.badge::before{margin-right:4px}
+.b-pass{color:var(--pass);background:var(--pass-bg)}.b-pass::before{content:"\2713"}
+.b-warn{color:var(--warn);background:var(--warn-bg)}.b-warn::before{content:"!"}
+.b-fail{color:var(--fail);background:var(--fail-bg)}.b-fail::before{content:"\2715"}
+.b-na{color:var(--na);background:var(--na-bg)}.b-na::before{content:"\2013"}
+.chip{font-style:normal;font-size:.68rem;font-weight:700;border:1px solid var(--muted);color:var(--muted);border-radius:4px;padding:0 4px;margin-left:4px}
+.chip.mixed{border-color:var(--info);color:var(--info);background:var(--info-bg)}
+.cards{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;min-width:190px}
+.card h3{margin:0 0 4px;font-size:1.05rem}
+.card p{margin:2px 0;font-size:.86rem}
+.card.empty{border-style:dashed}
+.scroll{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{padding:5px 9px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;vertical-align:top}
+th:last-child,td:last-child{border-right:0}
+thead th{position:sticky;top:0;background:var(--panel);z-index:2;white-space:nowrap}
+tbody th{background:var(--bg);font-weight:600;min-width:150px}
+th.s,td.s{position:sticky;left:0;z-index:1;box-shadow:1px 0 0 var(--line)}
+thead th.s{z-index:3}
+td.cell{min-width:190px}
+td.cell.dim{background:var(--panel);color:var(--muted)}
+td.cell div{margin:1px 0}
+.num{font-variant-numeric:tabular-nums;font-size:.8rem;color:var(--muted)}
+.lin{font-weight:600}
+.reasons{color:var(--muted);font-size:.8rem}
+tr.flag th.s{border-left:5px solid var(--warn)}
+tr.flag.bad th.s{border-left-color:var(--fail)}
+tr.ntc th.s .nm{font-style:italic}
+td.cell a.cl{text-decoration:none;color:inherit;display:block}
+td.cell a.cl:hover{text-decoration:underline}
+ul.legend{list-style:none;display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0;padding:0;font-size:.85rem}
+footer{margin-top:32px;border-top:1px solid var(--line);padding-top:8px;color:var(--muted);font-size:.8rem}
+@media print{.scroll{overflow:visible}thead th{position:static}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <h1>wasteline panel overview</h1>
+  <p class="sub">{{ h.n_samples }} sample{{ 's' if h.n_samples != 1 }} &times; {{ h.n_targets }} target{{ 's' if h.n_targets != 1 }}{% if h.panel %} &middot; panel <b>{{ h.panel }}</b>{% endif %}{% if h.mode %} &middot; mode <b>{{ h.mode }}</b>{% endif %}{% if h.pipeline_version %} &middot; pipeline {{ h.pipeline_version }}{% endif %}</p>
+  <dl class="facts">
+    <div><dt>Samples</dt><dd>{{ h.n_samples }}</dd></div>
+    <div><dt>Targets</dt><dd>{{ h.n_targets }}</dd></div>
+    <div><dt>Panel</dt><dd>{{ h.panel or '-' }}</dd></div>
+    <div><dt>Mode</dt><dd>{{ h.mode or '-' }}</dd></div>
+    <div><dt>Pipeline version</dt><dd>{{ h.pipeline_version or '-' }}</dd></div>
+    <div><dt>Run date</dt><dd>{{ h.date }}</dd></div>
+  </dl>
+  {% if h.anonymize != 'none' %}
+  <p class="note"><b>Anonymised for sharing ({{ h.anonymize }}).</b> The panel is shown by file name only{% if h.anonymize == 'full' %}; sample IDs are replaced by pseudonyms (S001, ...) numbered over the whole panel. They can differ from the pseudonyms inside a target's report, which numbers only its own samples{% endif %}.</p>
+  {% endif %}
+</header>
+
+{% if not samples %}
+<p class="warnbox"><b>No sample was typed.</b> summary/targets.tsv has no rows, so there is nothing to show.</p>
+{% else %}
+
+{% if n_unanalysed_targets %}
+<p class="warnbox">{{ n_unanalysed_targets }} target{{ 's have' if n_unanalysed_targets != 1 else ' has' }} no analysed sample (no sample was detected for {{ 'them' if n_unanalysed_targets != 1 else 'it' }}): no lineages and no report.</p>
+{% endif %}
+{% if n_flagged %}
+<p class="warnbox">{{ n_flagged }} sample{{ 's are' if n_flagged != 1 else ' is' }} flagged (qc_fail or no target detected); the reason is shown under the sample name.</p>
+{% endif %}
+
+<h2>Targets</h2>
+<div class="cards">
+  {% for t in targets %}
+  <div class="card{{ ' empty' if t.n_analysed == 0 }}">
+    <h3>{% if t.link %}<a href="{{ t.link }}">{{ t.name }}</a>{% else %}{{ t.name }}{% endif %}</h3>
+    <p><span class="badge b-pass">{{ t.n_detected }} detected</span> <span class="badge b-warn">{{ t.n_trace }} trace</span></p>
+    <p>{{ t.n_analysed }} of {{ t.n_samples }} sample{{ 's' if t.n_samples != 1 }} analysed{% if t.n_analysed %}, {{ t.n_lineage }} with a lineage result{% endif %}</p>
+    <p class="note">{% if t.link %}<a href="{{ t.link }}">open the {{ t.name }} report</a>{% elif t.n_analysed %}no report was written{% else %}no report: nothing to analyse{% endif %}</p>
+  </div>
+  {% endfor %}
+</div>
+
+<h2>Samples &times; targets</h2>
+<ul class="legend" aria-label="Legend">
+  <li><span class="badge b-pass">detected</span> analysed</li>
+  <li><span class="badge b-warn">trace</span> a few reads, not analysed (negative controls always are)</li>
+  <li><span class="badge b-na">not detected</span></li>
+  <li><span class="chip mixed">mixed</span> two targets of one family detected in the sample</li>
+</ul>
+<p class="note">Each cell: typing status, fragments and genome breadth; for an analysed cell also the top lineage (abundance) and QC status. Click an analysed cell to open the target's report.</p>
+<div class="scroll">
+<table id="matrix">
+  <thead><tr><th class="s" scope="col">Sample</th>{% for t in targets %}<th scope="col">{% if t.link %}<a href="{{ t.link }}">{{ t.name }}</a>{% else %}{{ t.name }}{% endif %}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for s in samples %}
+  <tr class="{{ 'flag' if s.flag }}{{ ' bad' if s.flag == 'qc_fail' }}{{ ' ntc' if s.negative }}" data-sample="{{ s.name }}">
+    <th class="s" scope="row"><span class="nm">{{ s.name }}</span>{% if s.negative %}<em class="chip">NTC</em>{% endif %}
+      {% if s.flag %}<div><span class="badge {{ 'b-fail' if s.flag == 'qc_fail' else 'b-warn' }}">{{ s.flag }}</span></div>
+      {% if s.reasons %}<div class="reasons">{{ s.reasons }}</div>{% endif %}
+      {% if s.negative and s.flag == 'no_target_detected' %}<div class="reasons">expected for a negative control</div>{% endif %}{% endif %}
+    </th>
+    {% for c in s.cells %}
+    {% if c is none %}
+    <td class="cell dim">-</td>
+    {% else %}
+    <td class="cell{{ '' if c.analysed else ' dim' }}">
+      {% if c.link %}<a class="cl" href="{{ c.link }}">{% endif %}
+      <div><span class="badge {{ {'detected': 'b-pass', 'trace': 'b-warn'}.get(c.status, 'b-na') }}">{{ c.status|replace('_', ' ') }}</span>{% if c.mixed %}<em class="chip mixed" title="Also detected in this sample: {{ c.secondary|join(', ') }}">mixed{% if c.secondary %}: {{ c.secondary|join(', ') }}{% endif %}</em>{% endif %}</div>
+      <div class="num">{{ c.fragments }} fragment{{ 's' if c.fragments != '1' }}{% if c.breadth is not none %} &middot; {{ '%.1f'|format(c.breadth) }} % breadth{% endif %}</div>
+      {% if c.analysed %}
+      {% if c.lineage %}<div class="lin">{{ c.lineage.name }} <span class="num">{{ '%.1f'|format(c.lineage.pct) }} %{% if c.lineage.more %} (+{{ c.lineage.more }} more){% endif %}</span></div>
+      {% else %}<div class="reasons" title="{{ c.demix_reason }}">no lineage result{% if c.demix %}: {{ c.demix|replace('_', ' ') }}{% endif %}</div>{% endif %}
+      {% if c.qc in ('WARN', 'FAIL') %}<div><span class="badge {{ 'b-fail' if c.qc == 'FAIL' else 'b-warn' }}" title="{{ c.qc_reasons }}">QC {{ c.qc }}</span>{% if c.qc_reasons %} <span class="reasons">{{ c.qc_reasons }}</span>{% endif %}</div>{% endif %}
+      {% else %}
+      <div class="reasons">not analysed{% if c.reason %}: {{ c.reason }}{% endif %}</div>
+      {% endif %}
+      {% if c.link %}</a>{% endif %}
+    </td>
+    {% endif %}
+    {% endfor %}
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+<footer>Generated by wasteline {{ h.pipeline_version or '' }} &middot; self-contained file, no external resources.</footer>
+</div>
+</body>
+</html>

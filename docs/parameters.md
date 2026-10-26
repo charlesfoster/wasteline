@@ -94,9 +94,8 @@ Reference genome and amplicon primer scheme.
 
 ## Panel options
 
-Several targets (pathogens) in one run. **In development:** the parameters and the panel files are validated, but a run with
-`--panel` stops with a message that panel runs are not implemented yet in this build. The panel file format is described in
-[usage.md](usage.md#panels-in-development).
+Several targets (pathogens) in one run (`--panel rsv|flu|panel.csv`; every mode works per target). The panel file format, the
+detection rules and the outputs are described in [usage.md](usage.md#panels-several-targets-in-one-run).
 
 | Parameter                  | Type    | Default | Description                                                                                                                                                                                                                                                                                                |
 | -------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

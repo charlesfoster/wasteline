@@ -829,6 +829,14 @@ Written by `bin/reanalyse_runs.py --execute` into the **new** `<run>_reanalysis_
 row per sample and item comparing the old and the new run (`sample, level, item, old_abundance, new_abundance, change, flagged, note`), with a
 Markdown summary `reanalysis_diff.md` next to it. `flagged` is `yes` when the change is at least `--threshold` (0.05).
 
+### `summary/targets.tsv` and `summary/overview.html` (panel runs)
+
+Panel runs (`--panel`, [usage.md](usage.md#panels-several-targets-in-one-run)) write the run-level files of each target to
+`summary/<target>/` (the same files as below) and, once for the run, `summary/targets.tsv` (one row per sample and target: status
+`detected`/`trace`/`not_detected`, reason, `sample_status`, `mixed`, fragments, breadth, `analysed`, ...) and `summary/overview.html`,
+the sample x target matrix with the top lineage and QC badge of each analysed cell and a link to the target's report. With
+`--report_anonymize full` the private `summary/overview_sample_id_map.csv` (original -> pseudonym of the overview) is written too; never share it.
+
 ### `summary/samplesheet.csv`
 
 The samplesheet in effect, copied to the results so that a later `demix`/`aggregate`/`report` run on this directory
