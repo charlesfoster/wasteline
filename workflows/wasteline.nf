@@ -184,7 +184,8 @@ workflow WASTELINE {
     // Freyja dataset: resolved once, shared by every sample. update_db always fetches the latest.
     //
     def target = targetFromParams()
-    FREYJA_DATA(mode == 'update_db' ? 'latest' : params.barcodes, target.freyja_pathogen, '--barcodes')
+    // (one dataset per target: a list of one target here; the unkeyed outputs serve the run-level steps, the *_by_target ones the per-sample chain)
+    FREYJA_DATA(mode == 'update_db' ? 'latest' : params.barcodes, [ target ], '--barcodes')
 
     if (mode == 'update_db') {
         // Nothing else to do: the dataset is now in --db_dir/freyja/<barcode-version>/
@@ -194,9 +195,10 @@ workflow WASTELINE {
         }
     }
     else {
-        // --fasta is required by modes full and demix (validateInputParameters); --gff is optional for pathogens without a bundled annotation
+        // --fasta is required by modes full and demix (validateInputParameters); --gff is optional for pathogens without a bundled annotation.
+        // ch_fasta serves the read mapping (BWA_INDEX / BWA_MEM, until the panel front end replaces it) and the run provenance; the per-sample
+        // steps get their reference from meta.target (referenceFasta / referenceGff), in lockstep with the sample through a multiMap.
         def ch_fasta = channel.value(target.fasta ? file(target.fasta, checkIfExists: true) : [])
-        def ch_gff = channel.value(target.gff ? file(target.gff, checkIfExists: true) : [])
         // A reference with several contigs (PLAN D25; validated at start-up: --freyja_contig names the one Freyja demixes). Every
         // branch for it is guarded by this; a single-contig run does not change.
         def multi_contig = (mode == 'full' || mode == 'demix') && multiContig(target)
@@ -312,7 +314,7 @@ workflow WASTELINE {
                 .filter { meta, _bam, _bai, _count -> meta.primer_trimming }
                 .multiMap { meta, bam, bai, _count ->
                     reads: [ meta, bam, bai ]
-                    bed: primerBedFor(meta)
+                    bed: primerBedFor(meta, meta.target)
                 }
             IVAR_TRIM(ch_to_trim.reads, ch_to_trim.bed)
             ch_ivar_log = IVAR_TRIM.out.log
@@ -326,7 +328,7 @@ workflow WASTELINE {
                 def ch_to_check = READ_STARTS.out.tsv.multiMap { meta, tsv ->
                     starts: [ meta, tsv ]
                     declared: meta.primer_scheme
-                    custom_bed: meta.primer_bed ? primerBedFor(meta) : []
+                    custom_bed: meta.primer_bed ? primerBedFor(meta, meta.target) : []
                 }
                 PRIMER_SCHEME_CHECK(
                     ch_to_check.starts,
@@ -362,10 +364,18 @@ workflow WASTELINE {
             // --bam_format cram: a reference-based CRAM is published instead of the BAM (a leaf: Freyja, QC and
             // the consensus keep using the BAM, which stays in the work directory)
             if (params.save_bam && params.bam_format == 'cram') {
-                SAMTOOLS_CRAM(ch_final_bam, ch_fasta, [])
+                def ch_to_cram = ch_final_bam.multiMap { meta, bam, bai ->
+                    aligned: [ meta, bam, bai ]
+                    fasta: referenceFasta(meta)
+                }
+                SAMTOOLS_CRAM(ch_to_cram.aligned, ch_to_cram.fasta, [])
             }
 
-            FREYJA_VARIANTS(ch_final_bam, ch_fasta)
+            def ch_to_variants = ch_final_bam.multiMap { meta, bam, bai ->
+                aligned: [ meta, bam, bai ]
+                fasta: referenceFasta(meta)
+            }
+            FREYJA_VARIANTS(ch_to_variants.aligned, ch_to_variants.fasta)
 
             ch_freyja_in = FREYJA_VARIANTS.out.variants.join(FREYJA_VARIANTS.out.depths)
 
@@ -395,15 +405,22 @@ workflow WASTELINE {
         // What Freyja (demix, bootstrap, the coverage gate) and the mutation tables get: with several reference contigs only the
         // variants and depths of the demixed contig (a view made by FREYJA_SELECT_CONTIG; the files under samples/ stay complete);
         // QC, amplicon coverage, the consensus and the report keep the all-contig files above. Single contig: the same channels.
+        // Decided PER SAMPLE from its target (a run of several targets can mix single- and multi-contig references).
         def ch_freyja_view = ch_freyja_in
-        def ch_view_variants = ch_variants
-        def ch_view_depths = ch_depths
-        if (multi_contig) {
-            FREYJA_SELECT_CONTIG(ch_freyja_in, target.freyja_contig)
-            ch_freyja_view = FREYJA_SELECT_CONTIG.out.view
-            ch_view_variants = ch_freyja_view.map { meta, variants, _depths -> [ meta, variants ] }
-            ch_view_depths = ch_freyja_view.map { meta, _variants, depths -> [ meta, depths ] }
+        if (mode == 'full' || mode == 'demix') {
+            def ch_by_contigs = ch_freyja_in.branch { meta, _variants, _depths ->
+                multi: multiContig(meta.target)
+                single: true
+            }
+            def ch_to_select = ch_by_contigs.multi.multiMap { meta, variants, depths ->
+                files: [ meta, variants, depths ]
+                contig: meta.target.freyja_contig
+            }
+            FREYJA_SELECT_CONTIG(ch_to_select.files, ch_to_select.contig)
+            ch_freyja_view = ch_by_contigs.single.mix(FREYJA_SELECT_CONTIG.out.view)
         }
+        def ch_view_variants = ch_freyja_view.map { meta, variants, _depths -> [ meta, variants ] }
+        def ch_view_depths = ch_freyja_view.map { meta, _variants, depths -> [ meta, depths ] }
 
         //
         // Demix per sample (never fails the run) -> [ meta, demix ]; aggregate mode takes given .demix files
@@ -419,11 +436,17 @@ workflow WASTELINE {
         def ch_status_lines = ch_skipped.map { sample, reason, _type, _date, _site -> [ sample, 'missing', reason, '', '', '' ].collect { value -> value.toString().replaceAll('[\t\r\n]+', ' ') }.join('\t') }
 
         if (mode == 'full' || mode == 'demix') {
-            FREYJA_DEMIX(
-                ch_freyja_view,
-                FREYJA_DATA.out.dataset,
-                FREYJA_DATA.out.barcode_version,
-            )
+            // each sample is demixed with the dataset of ITS target: [ target name, dataset, barcode_version ] joined on meta.target.name
+            def ch_demix_data = FREYJA_DATA.out.dataset_by_target.join(FREYJA_DATA.out.barcode_version_by_target)
+            def ch_to_demix = ch_freyja_view
+                .map { meta, variants, depths -> [ meta.target.name, meta, variants, depths ] }
+                .combine(ch_demix_data, by: 0)
+                .multiMap { _name, meta, variants, depths, dataset, barcode_version ->
+                    sample: [ meta, variants, depths ]
+                    dataset: dataset
+                    barcode_version: barcode_version
+                }
+            FREYJA_DEMIX(ch_to_demix.sample, ch_to_demix.dataset, ch_to_demix.barcode_version)
 
             ch_status_lines = ch_status_lines.mix(FREYJA_DEMIX.out.status
                 .map { _meta, status_json ->
@@ -443,12 +466,17 @@ workflow WASTELINE {
             // independently, recorded as freyja_data_compare); abundances of both side by side
             //
             if (params.compare_barcodes) {
-                FREYJA_DATA_COMPARE(params.compare_barcodes, target.freyja_pathogen, '--compare_barcodes')
-                FREYJA_DEMIX_COMPARE(
-                    ch_freyja_view,
-                    FREYJA_DATA_COMPARE.out.dataset,
-                    FREYJA_DATA_COMPARE.out.barcode_version,
-                )
+                FREYJA_DATA_COMPARE(params.compare_barcodes, [ target ], '--compare_barcodes')
+                def ch_compare_data = FREYJA_DATA_COMPARE.out.dataset_by_target.join(FREYJA_DATA_COMPARE.out.barcode_version_by_target)
+                def ch_to_compare = ch_freyja_view
+                    .map { meta, variants, depths -> [ meta.target.name, meta, variants, depths ] }
+                    .combine(ch_compare_data, by: 0)
+                    .multiMap { _name, meta, variants, depths, dataset, barcode_version ->
+                        sample: [ meta, variants, depths ]
+                        dataset: dataset
+                        barcode_version: barcode_version
+                    }
+                FREYJA_DEMIX_COMPARE(ch_to_compare.sample, ch_to_compare.dataset, ch_to_compare.barcode_version)
                 BARCODE_COMPARE(
                     FREYJA_DEMIX.out.demix.join(FREYJA_DEMIX_COMPARE.out.demix),
                     FREYJA_DATA.out.barcode_version,
@@ -474,7 +502,14 @@ workflow WASTELINE {
             // --freyja_boot: bootstrap intervals for every sample that demixed
             //
             if (params.freyja_boot) {
-                FREYJA_BOOT(ch_freyja_view.join(FREYJA_DEMIX.out.demix), FREYJA_DATA.out.dataset)
+                def ch_to_boot = ch_freyja_view.join(FREYJA_DEMIX.out.demix)
+                    .map { meta, variants, depths, demix -> [ meta.target.name, meta, variants, depths, demix ] }
+                    .combine(FREYJA_DATA.out.dataset_by_target, by: 0)
+                    .multiMap { _name, meta, variants, depths, demix, dataset ->
+                        sample: [ meta, variants, depths, demix ]
+                        dataset: dataset
+                    }
+                FREYJA_BOOT(ch_to_boot.sample, ch_to_boot.dataset)
                 ch_boot_raw = FREYJA_BOOT.out.raw.map { _meta, raw -> raw }
                 ch_boot_summary = FREYJA_BOOT.out.summary
                     .map { _meta, summary -> summary }
@@ -562,7 +597,7 @@ workflow WASTELINE {
                 .filter { meta, _depths -> meta.primer_scheme }
                 .multiMap { meta, depths ->
                     depths: [ meta, depths ]
-                    bed: primerBedFor(meta)
+                    bed: primerBedFor(meta, meta.target)
                 }
             AMPLICON_COVERAGE(ch_to_cover.depths, ch_to_cover.bed)
             def ch_amplicons = AMPLICON_COVERAGE.out.tsv
@@ -600,11 +635,27 @@ workflow WASTELINE {
             //
             if (!params.skip_consensus) {
                 def ch_consensus_samples = ch_variants.filter { meta, _variants -> meta.sample_type != 'negative' }
-                IVAR_VARIANTS_TO_VCF(ch_consensus_samples, ch_fasta)
+                def ch_to_vcf = ch_consensus_samples.multiMap { meta, variants ->
+                    sample: [ meta, variants ]
+                    fasta: referenceFasta(meta)
+                }
+                IVAR_VARIANTS_TO_VCF(ch_to_vcf.sample, ch_to_vcf.fasta)
                 CONSENSUS_FILTER_VCF(IVAR_VARIANTS_TO_VCF.out.vcf)
-                LOW_DEPTH_MASK(ch_depths.join(CONSENSUS_FILTER_VCF.out.bed), ch_fasta)
-                CONSENSUS_BCFTOOLS(CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed), ch_fasta)
-                CONSENSUS_STATS(CONSENSUS_BCFTOOLS.out.fasta.join(CONSENSUS_BCFTOOLS.out.status), ch_fasta)
+                def ch_to_mask = ch_depths.join(CONSENSUS_FILTER_VCF.out.bed).multiMap { meta, depths, bed ->
+                    sample: [ meta, depths, bed ]
+                    fasta: referenceFasta(meta)
+                }
+                LOW_DEPTH_MASK(ch_to_mask.sample, ch_to_mask.fasta)
+                def ch_to_consensus = CONSENSUS_FILTER_VCF.out.vcf.join(LOW_DEPTH_MASK.out.bed).multiMap { meta, vcf, tbi, mask ->
+                    sample: [ meta, vcf, tbi, mask ]
+                    fasta: referenceFasta(meta)
+                }
+                CONSENSUS_BCFTOOLS(ch_to_consensus.sample, ch_to_consensus.fasta)
+                def ch_to_stats = CONSENSUS_BCFTOOLS.out.fasta.join(CONSENSUS_BCFTOOLS.out.status).multiMap { meta, fasta, status_json ->
+                    sample: [ meta, fasta, status_json ]
+                    reference: referenceFasta(meta)
+                }
+                CONSENSUS_STATS(ch_to_stats.sample, ch_to_stats.reference)
 
                 def ch_stats = ch_consensus_samples
                     .join(CONSENSUS_STATS.out.tsv, remainder: true)
@@ -630,7 +681,12 @@ workflow WASTELINE {
 
                 // --annotate_variants: amino-acid consequences of the variants applied to the consensus
                 if (params.annotate_variants) {
-                    ANNOTATE_VARIANTS(CONSENSUS_FILTER_VCF.out.vcf, ch_fasta, ch_gff)
+                    def ch_to_annotate = CONSENSUS_FILTER_VCF.out.vcf.multiMap { meta, vcf, tbi ->
+                        sample: [ meta, vcf, tbi ]
+                        fasta: referenceFasta(meta)
+                        gff: referenceGff(meta)
+                    }
+                    ANNOTATE_VARIANTS(ch_to_annotate.sample, ch_to_annotate.fasta, ch_to_annotate.gff)
                     ANNOTATE_VARIANTS.out.tsv
                         .map { _meta, tsv -> tsv }
                         .toSortedList { a, b -> a.name <=> b.name }
@@ -643,7 +699,12 @@ workflow WASTELINE {
             // Mutations of interest (opt-in)
             //
             if (params.mutations_of_interest) {
-                MUTATIONS_OF_INTEREST(ch_view_variants.join(ch_view_depths), file(params.mutations_of_interest, checkIfExists: true), ch_gff, ch_fasta)
+                def ch_to_moi = ch_view_variants.join(ch_view_depths).multiMap { meta, variants, depths ->
+                    sample: [ meta, variants, depths ]
+                    gff: referenceGff(meta)
+                    fasta: referenceFasta(meta)
+                }
+                MUTATIONS_OF_INTEREST(ch_to_moi.sample, file(params.mutations_of_interest, checkIfExists: true), ch_to_moi.gff, ch_to_moi.fasta)
                 MUTATIONS_OF_INTEREST_CONCAT(MUTATIONS_OF_INTEREST.out.tsv.map { _meta, tsv -> tsv }.collect())
                 ch_moi = MUTATIONS_OF_INTEREST_CONCAT.out.tsv.ifEmpty([])
             }
@@ -688,7 +749,16 @@ workflow WASTELINE {
                         .join(ch_demixed, remainder: true)
                         .filter { meta, variants, _demix -> meta && variants }
                         .map { meta, variants, demix -> [ meta, variants, demix ?: [] ] }
-                    UNEXPLAINED_MUTATIONS(ch_unexplained_in, FREYJA_DATA.out.dataset, ch_gff, ch_fasta)
+                    def ch_to_unexplained = ch_unexplained_in
+                        .map { meta, variants, demix -> [ meta.target.name, meta, variants, demix ] }
+                        .combine(FREYJA_DATA.out.dataset_by_target, by: 0)
+                        .multiMap { _name, meta, variants, demix, dataset ->
+                            sample: [ meta, variants, demix ]
+                            dataset: dataset
+                            gff: referenceGff(meta)
+                            fasta: referenceFasta(meta)
+                        }
+                    UNEXPLAINED_MUTATIONS(ch_to_unexplained.sample, ch_to_unexplained.dataset, ch_to_unexplained.gff, ch_to_unexplained.fasta)
                     UNEXPLAINED_MUTATIONS_CONCAT(UNEXPLAINED_MUTATIONS.out.tsv.map { _meta, tsv -> tsv }.collect())
                     ch_unexplained = UNEXPLAINED_MUTATIONS_CONCAT.out.tsv
                 }
@@ -835,7 +905,7 @@ workflow WASTELINE {
         def ch_beds = ch_rows
             .map { row -> row[0] }
             .filter { meta -> meta.primer_scheme }
-            .map { meta -> primerBedFor(meta) }
+            .map { meta -> primerBedFor(meta, meta.target) }
             .unique()
             .toSortedList { a, b -> a.name <=> b.name }
         PROVENANCE(
@@ -910,6 +980,17 @@ workflow WASTELINE {
 def optionalFile(results, name) {
     def candidate = file("${results}/summary/${name}")
     return candidate.exists() ? candidate : []
+}
+
+//
+// The reference FASTA of the target of a sample (a per-sample channel item, see multiMap), and its annotation ([] = none)
+//
+def referenceFasta(meta) {
+    return meta.target.fasta ? file(meta.target.fasta, checkIfExists: true) : []
+}
+
+def referenceGff(meta) {
+    return meta.target.gff ? file(meta.target.gff, checkIfExists: true) : []
 }
 
 //

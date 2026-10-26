@@ -15,10 +15,12 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = file("\$projectDir/assets/references/NC_045512.fasta")
-                input[1] = 'custom'
-                input[2] = 'somewhere'
-                input[3] = params.pathogen
+                input[0] = [
+                    [ id: params.pathogen, target: [ freyja_pathogen: params.pathogen, sample_sub: '', summary_sub: '' ] ],
+                    file("\$projectDir/assets/references/NC_045512.fasta"),
+                    'custom',
+                    'somewhere',
+                ]
                 """
             }
         }
@@ -26,7 +28,7 @@ nextflow_process {
         then {
             assertAll(
                 { assert process.success },
-                { assert snapshot(process.out.freyja_data, process.out.barcode_version).match() }
+                { assert snapshot(process.out.freyja_data.collect { it[1] }, process.out.barcode_version.collect { it[1] }).match() }
             )
         }
     }

@@ -1,5 +1,5 @@
 process FREYJA_DATASET_INFO {
-    tag "${source}"
+    tag "${meta.id}:${source}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -8,20 +8,22 @@ process FREYJA_DATASET_INFO {
         : 'quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0'}"
 
     input:
-    path dataset       // Freyja dataset directory, or a single .csv/.feather barcode file
-    val source         // latest | container | pinned | custom
-    val dataset_path   // where the dataset came from (recorded verbatim)
-    val pathogen       // Freyja --pathogen name
+    // meta: [ id: <target name>, target: <target map> ]; the Freyja --pathogen name is meta.target.freyja_pathogen
+    // dataset: Freyja dataset directory, or a single .csv/.feather barcode file
+    // source: latest | container | pinned | custom
+    // dataset_path: where the dataset came from (recorded verbatim)
+    tuple val(meta), path(dataset), val(source), val(dataset_path)
 
     output:
-    path "freyja_data.json",     emit: freyja_data     // full provenance block (PLAN 5.13)
-    path "barcode_version.json", emit: barcode_version // small record copied into every status file
+    tuple val(meta), path("freyja_data.json"),     emit: freyja_data     // full provenance block (PLAN 5.13)
+    tuple val(meta), path("barcode_version.json"), emit: barcode_version // small record copied into every status file
     tuple val("${task.process}"), val('freyja'), eval('freyja --version | sed "s/.*version //"'), emit: versions_freyja, topic: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
+    def pathogen = meta.target.freyja_pathogen
     """
     # `freyja demix --version` reports the data bundled in the Freyja package (it ignores
     # --outdir datasets), so it identifies the dataset only when source == container.
@@ -43,6 +45,7 @@ process FREYJA_DATASET_INFO {
     """
 
     stub:
+    def pathogen = meta.target.freyja_pathogen
     """
     cat <<'EOF' > freyja_data.json
     {

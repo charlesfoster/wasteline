@@ -1166,16 +1166,17 @@ def datasetRoot(db_dir, target = targetFromParams()) {
 //
 // Dataset directory names already stored in the local database
 //
-def availableDatasets(db_dir) {
-    def root = file(datasetRoot(db_dir))
+def availableDatasets(db_dir, target = targetFromParams()) {
+    def root = file(datasetRoot(db_dir, target))
     return root.isDirectory() ? root.listFiles().findAll { entry -> entry.isDirectory() }.collect { entry -> entry.name }.sort() : []
 }
 
 //
 // Resolve --barcodes (PLAN 5.6) into [ kind: 'fetch'|'path', source: latest|container|pinned|custom,
-// path: <existing path, kind == 'path' only> ]. Never falls back silently to another dataset.
+// path: <existing path, kind == 'path' only> ]. Never falls back silently to another dataset. A pinned version is looked up in the
+// dataset root of `target` (default: the run's target).
 //
-def resolveBarcodes(barcodes, db_dir, option) {
+def resolveBarcodes(barcodes, db_dir, option, target = targetFromParams()) {
     def spec = barcodes.toString().trim()
     if (spec == 'latest' || spec == 'container') {
         return [ kind: 'fetch', source: spec ]
@@ -1186,18 +1187,18 @@ def resolveBarcodes(barcodes, db_dir, option) {
         def iso = stamp.matches()
             ? "${stamp[0][3]}-${stamp[0][1]}-${stamp[0][2]}T${stamp[0][4]}-${stamp[0][5]}"
             : "${iso_form[0][1]}-${iso_form[0][2]}"
-        def dir = file("${datasetRoot(db_dir)}/${iso}")
+        def dir = file("${datasetRoot(db_dir, target)}/${iso}")
         if (!dir.isDirectory()) {
-            error("Freyja dataset '${spec}' (directory ${iso}) not found in ${datasetRoot(db_dir)}. Available: ${availableDatasets(db_dir) ?: 'none'}. Download datasets with ${option} latest (stored there by date and time), or point ${option} at a dataset directory or .csv/.feather file.")
+            error("Freyja dataset '${spec}' (directory ${iso}) not found in ${datasetRoot(db_dir, target)}. Available: ${availableDatasets(db_dir, target) ?: 'none'}. Download datasets with ${option} latest (stored there by date and time), or point ${option} at a dataset directory or .csv/.feather file.")
         }
         return [ kind: 'path', source: 'pinned', path: dir ]
     }
     if (spec ==~ /^\d{4}-\d{2}-\d{2}$/) {
-        def matches = availableDatasets(db_dir).findAll { name -> name.startsWith("${spec}T") }
+        def matches = availableDatasets(db_dir, target).findAll { name -> name.startsWith("${spec}T") }
         if (!matches) {
-            error("No Freyja dataset from ${spec} found in ${datasetRoot(db_dir)}. Available: ${availableDatasets(db_dir) ?: 'none'}. Download one with ${option} latest, or point ${option} at a dataset directory or .csv/.feather file.")
+            error("No Freyja dataset from ${spec} found in ${datasetRoot(db_dir, target)}. Available: ${availableDatasets(db_dir, target) ?: 'none'}. Download one with ${option} latest, or point ${option} at a dataset directory or .csv/.feather file.")
         }
-        return [ kind: 'path', source: 'pinned', path: file("${datasetRoot(db_dir)}/${matches.last()}") ]
+        return [ kind: 'path', source: 'pinned', path: file("${datasetRoot(db_dir, target)}/${matches.last()}") ]
     }
     def path = file(spec)
     if (!path.exists()) {

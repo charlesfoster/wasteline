@@ -15,7 +15,7 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = 'latest'
+                input[0] = [ [ id: params.pathogen, target: [ freyja_pathogen: params.pathogen, freyja_container_pathogen: params.freyja_container_pathogen, sample_sub: '', summary_sub: '' ] ], 'latest' ]
                 """
             }
         }
@@ -23,8 +23,8 @@ nextflow_process {
         then {
             assertAll(
                 { assert process.success },
-                { assert file(process.out.dataset[0].toString()).name == '2000-01-01T00-00' },
-                { assert snapshot(process.out.dataset.collect { file(it.toString()).name }).match() }
+                { assert file(process.out.dataset[0][1].toString()).name == '2000-01-01T00-00' },
+                { assert snapshot(process.out.dataset.collect { file(it[1].toString()).name }).match() }
             )
         }
     }

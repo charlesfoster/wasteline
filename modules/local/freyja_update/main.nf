@@ -1,5 +1,5 @@
 process FREYJA_UPDATE {
-    tag "${source}"
+    tag "${meta.id}:${source}"
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
@@ -8,12 +8,14 @@ process FREYJA_UPDATE {
         : 'quay.io/biocontainers/freyja:2.0.6--pyhdfd78af_0'}"
 
     input:
-    val source // 'latest': download with `freyja update` (ext.args: --pathogen; other pathogens write <X>_barcodes.csv, <X>_lineages.yml,
-               // last_barcode_update_other.txt: see bin/freyja_dataset_info.py); 'container': copy the SARS-CoV-2 snapshot bundled in the Freyja
-               // package (the pipeline refuses `container` for other pathogens, validateInputParameters)
+    // meta: [ id: <target name>, target: <target map> ]; the target's freyja_pathogen / freyja_container_pathogen steer ext.args and publishDir
+    // source: 'latest': download with `freyja update` (ext.args: --pathogen; other pathogens write <X>_barcodes.csv, <X>_lineages.yml,
+    //         last_barcode_update_other.txt: see bin/freyja_dataset_info.py); 'container': copy the SARS-CoV-2 snapshot bundled in the Freyja
+    //         package (the pipeline refuses `container` for other pathogens, validateInputParameters)
+    tuple val(meta), val(source)
 
     output:
-    path "*", type: 'dir', emit: dataset
+    tuple val(meta), path("*", type: 'dir'), emit: dataset
     tuple val("${task.process}"), val('freyja'), eval('freyja --version | sed "s/.*version //"'), emit: versions_freyja, topic: versions
 
     when:
