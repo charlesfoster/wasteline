@@ -14,7 +14,15 @@ nextflow run charlesfoster/wasteline -profile docker \
     --primer_scheme midnight --barcodes latest
 ```
 
-Run `nextflow run charlesfoster/wasteline --help` for the same list at the terminal (`--help_full`, `--show_hidden` for more).
+**What `--help` shows.** `nextflow run charlesfoster/wasteline --help` lists only the 30 options people change from run to
+run (the schema leaves them without `"hidden": true`): `--input`, `--outdir`, `--mode`, `--previous_results`, `--demix_dir`,
+`--results_dir`, `--protocol`, `--primer_scheme`, `--primer_bed`, `--pathogen`, `--panel`, `--barcodes`, `--db_dir`,
+`--min_genome_coverage_for_demix`, `--demix_floor_coverage`, `--qc_min_depth`, `--qc_pass_min_pct`, `--qc_fail_below_pct`,
+`--skip_consensus`, `--freyja_boot`, `--freyja_growth`, `--annotate_variants`, `--lineage_groups`, `--site_aggregation`,
+`--skip_report`, `--report_anonymize`, `--mutations_of_interest` and the help flags. Everything else on this page is an
+advanced option. `--help_full` (or `--show_hidden` together with `--help`) lists **all** parameters, advanced ones included,
+and `--help <name>` (for example `--help freyja_eps`) prints the full description, default, bounds and help text of one
+parameter, whether advanced or not. This page documents every parameter either way.
 
 ## Modes (`--mode`)
 

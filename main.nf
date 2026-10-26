@@ -28,13 +28,14 @@ include { RESULTS_INPUT           } from './subworkflows/local/results_input'
 // as a String, so nf-schema rejects `--skip_consensus`, `--save_bam false`, `--save_bam=false` ...
 // ("expected type Boolean, found String"). Declaring the type here makes Nextflow convert the
 // value, so all of these work: `--x`, `--x true`, `--x false`, `--x=true`, `--x=false`, and
-// -params-file. This block REPEATS the boolean defaults of nextflow.config (which stays the place
+// -params-file. `help` is deliberately NOT declared here: it is `--help` (a flag) or `--help <param>` (help for one
+// parameter, hidden ones included), so it must stay untyped; a Boolean declaration rejects `--help input`.
+// This block REPEATS the boolean defaults of nextflow.config (which stays the place
 // every other default lives); tests/python/test_boolean_params.py fails when the two disagree.
 // This is why the pipeline requires Nextflow >= 26.04: the block only parses with the strict (v2)
 // parser, which is the default from 26.04. On 25.10 the old parser cannot read it, and with
 // NXF_SYNTAX_PARSER=v2 the converted values do not reach included scripts and config files.
 params {
-    help                           : Boolean = false
     help_full                      : Boolean = false
     show_hidden                    : Boolean = false
     version                        : Boolean = false
@@ -207,9 +208,9 @@ workflow {
         args,
         params.outdir,
         params.input,
-        params.help,
+        params.help.toString() == 'false' ? false : params.help,  // `--help false`
         params.help_full,
-        params.show_hidden
+        params.show_hidden || params.help_full  // --help_full lists every parameter, hidden ones included
     )
 
     //

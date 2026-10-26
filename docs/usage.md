@@ -1447,7 +1447,13 @@ valid as a `-params-file` for repeating it (edit `outdir`).
 and in a `-params-file`; this needs Nextflow >= 26.04. A value that is not a boolean is rejected:
 `Parameter `skip_consensus` with type Boolean cannot be assigned to maybe [String]`. A misspelt parameter is rejected too:
 `Parameter `primer_sheme` was specified on the command line or params file but is not declared in the script or config`.
-`nextflow run charlesfoster/wasteline --help` lists every option (use `--help_full` / `--show_hidden` for more).
+
+### Getting help
+
+`nextflow run charlesfoster/wasteline --help` lists the 30 or so options people change from run to run (inputs, mode,
+primer scheme, barcodes, the main coverage and QC thresholds, the opt-in analyses, the report). `--help_full` lists every
+parameter, including the advanced ones; `--help <name>` (for example `--help freyja_eps`) explains a single parameter in
+detail. [parameters.md](parameters.md) documents all of them.
 
 ## 15. Running on an HPC cluster
 

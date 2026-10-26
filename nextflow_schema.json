@@ -18,14 +18,15 @@
                     "exists": true,
                     "mimetype": "text/csv",
                     "pattern": "^\\S+\\.csv$",
-                    "description": "Path to a comma-separated samplesheet. Columns depend on `--mode`: `full` sample,fastq_1,fastq_2; `demix` sample,variants,depths; `aggregate` sample,demix. All modes accept optional sample_type,collection_date,site (fastp_json too for `demix`).",
-                    "help_text": "Required by `--mode full`; optional for `demix` (alternative: `--previous_results`) and `aggregate` (alternatives: `--demix_dir`, `--previous_results`); not used by `report` and `update_db`. `sample` may only contain letters, digits, `.`, `_` and `-` and is never rewritten. `sample_type` is `sample` (default) or `negative`; `collection_date` is ISO `YYYY-MM-DD`. The columns are validated against assets/schema_input.json (full), assets/schema_input_demix.json or assets/schema_input_aggregate.json. See docs/usage.md.",
+                    "description": "Path to the samplesheet CSV; its columns depend on `--mode`. Required for `full`.",
+                    "help_text": "Path to a comma-separated samplesheet. Columns depend on `--mode`: `full` sample,fastq_1,fastq_2; `demix` sample,variants,depths; `aggregate` sample,demix. All modes accept optional sample_type,collection_date,site (fastp_json too for `demix`). Required by `--mode full`; optional for `demix` (alternative: `--previous_results`) and `aggregate` (alternatives: `--demix_dir`, `--previous_results`); not used by `report` and `update_db`. `sample` may only contain letters, digits, `.`, `_` and `-` and is never rewritten. `sample_type` is `sample` (default) or `negative`; `collection_date` is ISO `YYYY-MM-DD`. The columns are validated against assets/schema_input.json (full), assets/schema_input_demix.json or assets/schema_input_aggregate.json. See docs/usage.md.",
                     "fa_icon": "fas fa-file-csv"
                 },
                 "outdir": {
                     "type": "string",
                     "format": "directory-path",
-                    "description": "The output directory where the results will be saved. You have to use absolute paths to storage on Cloud infrastructure.",
+                    "description": "The output directory where the results will be saved.",
+                    "help_text": "The output directory where the results will be saved. You have to use absolute paths to storage on Cloud infrastructure.",
                     "fa_icon": "fas fa-folder-open"
                 },
                 "mode": {
@@ -38,21 +39,22 @@
                 },
                 "previous_results": {
                     "type": "string",
-                    "description": "Modes `demix`/`aggregate`: results directory (or several, comma-separated) of an earlier run, from wasteline or from the legacy Snakemake pipeline. Never modified.",
-                    "help_text": "Both layouts are detected per sample: `samples/<sample>/freyja/` (wasteline) and `<sample>/freyja/` (Snakemake). Gzipped legacy variants files are handled. Alternative to `--input`; discovery uses `bin/make_samplesheet.py --from-results`, and `sample_type`, `collection_date` and `site` are carried over from the results' `summary/samplesheet.csv` when present (otherwise IDs matching `NEG_|NC_` are negative controls).",
+                    "description": "Modes `demix`/`aggregate`: results directory (or several, comma-separated) of an earlier run.",
+                    "help_text": "Modes `demix`/`aggregate`: results directory (or several, comma-separated) of an earlier run, from wasteline or from the legacy Snakemake pipeline. Never modified. Both layouts are detected per sample: `samples/<sample>/freyja/` (wasteline) and `<sample>/freyja/` (Snakemake). Gzipped legacy variants files are handled. Alternative to `--input`; discovery uses `bin/make_samplesheet.py --from-results`, and `sample_type`, `collection_date` and `site` are carried over from the results' `summary/samplesheet.csv` when present (otherwise IDs matching `NEG_|NC_` are negative controls).",
                     "fa_icon": "fas fa-history"
                 },
                 "demix_dir": {
                     "type": "string",
                     "format": "directory-path",
-                    "description": "Mode `aggregate`: directory searched (recursively) for `*.demix` files. The sample ID is the file name without `.demix`.",
-                    "help_text": "Alternative to `--input`. IDs matching `NEG_|NC_` are treated as negative controls.",
+                    "description": "Mode `aggregate`: directory searched recursively for `*.demix` files.",
+                    "help_text": "Mode `aggregate`: directory searched (recursively) for `*.demix` files. The sample ID is the file name without `.demix`. Alternative to `--input`. IDs matching `NEG_|NC_` are treated as negative controls.",
                     "fa_icon": "fas fa-folder-open"
                 },
                 "results_dir": {
                     "type": "string",
                     "format": "directory-path",
-                    "description": "Mode `report`: results directory of a previous run. Needs `pipeline_info/run_info.json`; `summary/report_data.json` is reused when present, otherwise rebuilt from the other files in `summary/`. `--outdir` must differ from it.",
+                    "description": "Mode `report`: results directory of a previous run to re-render the report from.",
+                    "help_text": "Mode `report`: results directory of a previous run. Needs `pipeline_info/run_info.json`; `summary/report_data.json` is reused when present, otherwise rebuilt from the other files in `summary/`. `--outdir` must differ from it.",
                     "fa_icon": "fas fa-folder-open"
                 },
                 "include_negatives_in_aggregate": {
@@ -60,6 +62,7 @@
                     "default": false,
                     "description": "Include negative controls (`sample_type=negative`) in `freyja aggregate` and the plots.",
                     "help_text": "Negative controls that pass the coverage gate are always demixed and listed in `demix_status.tsv`, but by default they are kept out of the aggregate and plots (PLAN D8).",
+                    "hidden": true,
                     "fa_icon": "fas fa-vial"
                 },
                 "include_low_confidence": {
@@ -67,11 +70,13 @@
                     "default": false,
                     "description": "Keep `low_confidence` samples in the time series, growth rates, dashboard and site aggregation.",
                     "help_text": "Samples between `--demix_floor_coverage` and `--min_genome_coverage_for_demix` are demixed and flagged `low_confidence` (PLAN D18). They appear in `freyja_aggregated.tsv`, the lineage summary and the report, but by default are left out of the time-based analyses and site aggregation. Mode `aggregate` with given `.demix` files treats every sample as `ok` (no coverage information), so this has no effect there.",
+                    "hidden": true,
                     "fa_icon": "fas fa-triangle-exclamation"
                 },
                 "email": {
                     "type": "string",
                     "description": "Email address for completion summary.",
+                    "hidden": true,
                     "fa_icon": "fas fa-envelope",
                     "help_text": "Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits. If set in your user config file (`~/.nextflow/config`) then you don't need to specify this on the command line for every run.",
                     "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$"
@@ -88,14 +93,15 @@
                     "type": "string",
                     "default": "amplicon",
                     "enum": ["amplicon", "capture"],
-                    "description": "Library protocol. `amplicon` (default): tiled PCR amplicons, reads are primer-trimmed. `capture`: probe-capture libraries (e.g. Twist): no primer trimming, no amplicon-dropout analysis, PCR duplicates are marked.",
-                    "help_text": "With `capture`, `--primer_scheme` and `--primer_bed` are ignored (with a warning). The protocol is recorded in run_info.json and shown in the report header.",
+                    "description": "Library protocol: `amplicon` (tiled PCR amplicons, primer-trimmed) or `capture` (probe capture).",
+                    "help_text": "Library protocol. `amplicon` (default): tiled PCR amplicons, reads are primer-trimmed. `capture`: probe-capture libraries (e.g. Twist): no primer trimming, no amplicon-dropout analysis, PCR duplicates are marked. With `capture`, `--primer_scheme` and `--primer_bed` are ignored (with a warning). The protocol is recorded in run_info.json and shown in the report header.",
                     "fa_icon": "fas fa-flask"
                 },
                 "skip_primer_trimming": {
                     "type": "boolean",
                     "default": false,
                     "description": "Do not primer-trim (`ivar trim`). For reads that are already trimmed. Implied by `--protocol capture`. Amplicon-level QC is off too: `--primer_scheme`/`--primer_bed` are ignored.",
+                    "hidden": true,
                     "fa_icon": "fas fa-cut"
                 },
                 "duplicates": {
@@ -104,6 +110,7 @@
                     "enum": ["auto", "mark", "none"],
                     "description": "PCR-duplicate handling after alignment. `mark`: flag duplicates (`samtools markdup`); Freyja's pileup then ignores them. `none`: leave them. `auto`: `mark` for `--protocol capture`, `none` for `amplicon`.",
                     "help_text": "Duplicates are flagged, never removed. Not used by modes without reads (`demix`, `aggregate`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-clone"
                 }
             }
@@ -122,6 +129,7 @@
                     "pattern": "^\\S+\\.fn?a(sta)?(\\.gz)?$",
                     "description": "Path to the reference FASTA. Default: the bundled reference of the pathogen (conf/pathogens/*.config); required for pathogens without one.",
                     "help_text": "The BWA index is built from this file once per run. For a pathogen other than SARS-CoV-2, MEASLESgenome, MPX, RSVa, RSVb and the influenza pathogens this must be the reference.fasta that the Freyja barcodes were built on (the pathogen's folder in the Freyja-barcodes repository). A FASTA with several sequences (a segmented genome, or a genome plus other targets) is accepted only together with `--freyja_contig <name of the sequence Freyja demixes>` (or with `--whole_genome` for the bundled influenza references); every sequence then gets depth QC, variant calls and a consensus genome.",
+                    "hidden": true,
                     "fa_icon": "far fa-file-code"
                 },
                 "gff": {
@@ -131,6 +139,7 @@
                     "mimetype": "text/plain",
                     "pattern": "^\\S+\\.gff3?(\\.gz)?$",
                     "description": "Path to the reference annotation (GFF3). Default: the bundled annotation (SARS-CoV-2, MPX, RSVa, RSVb, influenza). Optional for the other pathogens; `--annotate_variants` needs it.",
+                    "hidden": true,
                     "fa_icon": "far fa-file-code"
                 },
                 "whole_genome": {
@@ -138,13 +147,14 @@
                     "default": false,
                     "description": "Influenza H1N1, H3N2, H5Nx and H5Nx-cattle: map the reads to all eight segments (bundled `<HA accession>_wg.fasta`) instead of the HA segment only.",
                     "help_text": "Freyja still demixes the HA segment only (its barcodes cover nothing else); the other seven segments get depth QC, variant calls and a consensus genome, and the report shows a per-segment coverage table. B/Victoria (FLU-B-VIC) has no whole-genome reference yet. For any other multi-sequence reference give `--fasta` and `--freyja_contig` instead. See docs/other_pathogens.md.",
+                    "hidden": true,
                     "fa_icon": "fas fa-dna"
                 },
                 "primer_scheme": {
                     "type": "string",
                     "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-                    "description": "Name of an amplicon primer scheme: bundled for the pathogen (assets/primer_schemes/) or a `<name>.bed` in `--primer_scheme_dir`. Default: `qiagenv1` for SARS-CoV-2 in mode `full`; other pathogens have no default.",
-                    "help_text": "SARS-CoV-2: midnight, midnightv2, articv3, articv4.1, articv5.3.2, eden, swift, qiagenv1, xgen. MEASLESgenome: artic-measles-v1.0.0. MPX: bccdc-mpox-v2.3.0, yale-mpox-2000-v1.0.0-lifted, artic-inrb-mpox-2500-v1.0.0-cladeiib. RSVa: rsva-rsv-pipeline, rsva-1000-v1.0.0-lifted. RSVb: rsvb-rsv-pipeline, rsvb-1000-v1.0.0-lifted. A name found in `--primer_scheme_dir` wins over a bundled one. An unknown name stops the run at start-up and lists the names available for the pathogen. Ignored if `--primer_bed` is given. The `swift` scheme implies `--ivar_offset 5`. In mode `demix` the scheme of the old results is unknown, so per-amplicon coverage is only computed when `--primer_scheme` or `--primer_bed` is given explicitly.",
+                    "description": "Name of an amplicon primer scheme (bundled, or `<name>.bed` in `--primer_scheme_dir`).",
+                    "help_text": "Name of an amplicon primer scheme: bundled for the pathogen (assets/primer_schemes/) or a `<name>.bed` in `--primer_scheme_dir`. Default: `qiagenv1` for SARS-CoV-2 in mode `full`; other pathogens have no default. SARS-CoV-2: midnight, midnightv2, articv3, articv4.1, articv5.3.2, eden, swift, qiagenv1, xgen. MEASLESgenome: artic-measles-v1.0.0. MPX: bccdc-mpox-v2.3.0, yale-mpox-2000-v1.0.0-lifted, artic-inrb-mpox-2500-v1.0.0-cladeiib. RSVa: rsva-rsv-pipeline, rsva-1000-v1.0.0-lifted. RSVb: rsvb-rsv-pipeline, rsvb-1000-v1.0.0-lifted. A name found in `--primer_scheme_dir` wins over a bundled one. An unknown name stops the run at start-up and lists the names available for the pathogen. Ignored if `--primer_bed` is given. The `swift` scheme implies `--ivar_offset 5`. In mode `demix` the scheme of the old results is unknown, so per-amplicon coverage is only computed when `--primer_scheme` or `--primer_bed` is given explicitly.",
                     "fa_icon": "fas fa-cut"
                 },
                 "primer_scheme_dir": {
@@ -153,6 +163,7 @@
                     "exists": true,
                     "description": "Directory of your own primer schemes: `<name>.bed` files, usable by name in `--primer_scheme` and in the samplesheet `primer_scheme` column.",
                     "help_text": "Each BED needs the reference's contig name in column 1 (checked at start-up for the schemes that are used) and primalscheme-style primer names (`<scheme>_<n>_LEFT_<alt>` / `_RIGHT_<alt>`) so that amplicons can be paired. A name that is also bundled for the pathogen uses your file, with a warning. See docs/usage.md, \"Using your own primer scheme\".",
+                    "hidden": true,
                     "fa_icon": "fas fa-folder-open"
                 },
                 "primer_bed": {
@@ -169,12 +180,13 @@
                     "type": "integer",
                     "minimum": 0,
                     "description": "`ivar trim -x` primer position offset. Default: 5 for the bundled `swift` scheme, otherwise 0.",
+                    "hidden": true,
                     "fa_icon": "fas fa-arrows-alt-h"
                 },
                 "pathogen": {
                     "type": "string",
-                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome, MPX, RSVa, RSVb and the five influenza pathogens (H1N1, H3N2, FLU-B-VIC, H5Nx, H5Nx-cattle; HA segment only) have a bundled reference; every other single-contig pathogen needs `--fasta`.",
-                    "help_text": "Passed to every Freyja call. The per-pathogen defaults (reference, annotation) come from conf/pathogens/<profile>.config. Without `--fasta` and `--primer_bed` only SARS-CoV-2 runs out of the box; pass `--fasta` = the reference.fasta that the pathogen's Freyja barcodes were built on (a different one gives silently wrong results), `--primer_bed` (or `--protocol capture`), and `--lineage_groups` if you want the lineage-group summary. Freyja's influenza barcodes (H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC) cover the HA segment only: the bundled reference is the HA sequence, one run per subtype, reads of the other segments do not map. MTB (4.4 Mb) is accepted by Freyja but stops here with an explanation. See docs/other_pathogens.md.",
+                    "description": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, primer schemes, lineage groups).",
+                    "help_text": "Freyja `--pathogen` name. Default: SARS-CoV-2 (bundled reference, annotation, primer schemes and lineage groups). MEASLESgenome, MPX, RSVa, RSVb and the five influenza pathogens (H1N1, H3N2, FLU-B-VIC, H5Nx, H5Nx-cattle; HA segment only) have a bundled reference; every other single-contig pathogen needs `--fasta`. Passed to every Freyja call. The per-pathogen defaults (reference, annotation) come from conf/pathogens/<profile>.config. Without `--fasta` and `--primer_bed` only SARS-CoV-2 runs out of the box; pass `--fasta` = the reference.fasta that the pathogen's Freyja barcodes were built on (a different one gives silently wrong results), `--primer_bed` (or `--protocol capture`), and `--lineage_groups` if you want the lineage-group summary. Freyja's influenza barcodes (H5Nx, H5Nx-cattle, H1N1, H3N2, FLU-B-VIC) cover the HA segment only: the bundled reference is the HA sequence, one run per subtype, reads of the other segments do not map. MTB (4.4 Mb) is accepted by Freyja but stops here with an explanation. See docs/other_pathogens.md.",
                     "fa_icon": "fas fa-virus",
                     "enum": [
                         "SARS-CoV-2",
@@ -235,14 +247,15 @@
             "properties": {
                 "panel": {
                     "type": "string",
-                    "description": "Analyse several targets in one run: a built-in panel name (`rsv`: RSVa, RSVb; `flu`: H1N1, H3N2, H5Nx, FLU-B-VIC) or the path to a panel CSV.",
-                    "help_text": "A panel CSV has a `target` column naming rows of assets/panels/registry.csv (the Freyja pathogens with barcodes) and optional columns that override a registry column of that target (for example `primer_scheme`). Each sample is typed against the panel and every detected target is analysed with its own reference and barcodes. Cannot be combined with `--pathogen`, `--fasta`, `--gff`, `--freyja_contig` or `--whole_genome`. See docs/usage.md (Panels).",
+                    "description": "Analyse several targets in one run: a built-in panel name (`rsv`, `flu`) or a panel CSV.",
+                    "help_text": "Analyse several targets in one run: a built-in panel name (`rsv`: RSVa, RSVb; `flu`: H1N1, H3N2, H5Nx, FLU-B-VIC) or the path to a panel CSV. A panel CSV has a `target` column naming rows of assets/panels/registry.csv (the Freyja pathogens with barcodes) and optional columns that override a registry column of that target (for example `primer_scheme`). Each sample is typed against the panel and every detected target is analysed with its own reference and barcodes. Cannot be combined with `--pathogen`, `--fasta`, `--gff`, `--freyja_contig` or `--whole_genome`. See docs/usage.md (Panels).",
                     "fa_icon": "fas fa-layer-group"
                 },
                 "targets": {
                     "type": "string",
                     "description": "Comma-separated targets of the results of a panel run that modes `demix`, `aggregate` and `report` should use (default: all targets).",
                     "help_text": "For example `--targets RSVa,RSVb`. Names are those of the panel's targets (assets/panels/registry.csv). Not used by `--mode full`, which analyses every target of the panel.",
+                    "hidden": true,
                     "fa_icon": "fas fa-filter"
                 },
                 "panel_min_fragments": {
@@ -251,6 +264,7 @@
                     "minimum": 1,
                     "description": "A target is detected in a sample only with at least this many read fragments assigned to it.",
                     "help_text": "Typing thresholds are not calibrated on real data yet. A target with some fragments that misses a threshold is reported as `trace` (listed in summary/targets.tsv, not analysed).",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler"
                 },
                 "panel_min_breadth_pct": {
@@ -259,6 +273,7 @@
                     "minimum": 0,
                     "maximum": 100,
                     "description": "A target is detected only if at least this % of its marker sequence is covered by its fragments.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler"
                 },
                 "panel_family_share_pct": {
@@ -268,6 +283,7 @@
                     "maximum": 100,
                     "description": "Within a family (for example RSV, or influenza A) a target that is not the top one is detected only with at least this % of the family's fragments.",
                     "help_text": "Guards against cross-mapping between close relatives (RSVa and RSVb) inflating a minor target.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler"
                 },
                 "panel_mapq": {
@@ -276,6 +292,7 @@
                     "minimum": 0,
                     "maximum": 60,
                     "description": "A read fragment is assigned to a target only if all its mapped reads have at least this mapping quality on the target's contigs.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler"
                 }
             }
@@ -290,24 +307,28 @@
                     "type": "boolean",
                     "default": true,
                     "description": "fastp `--cut_front`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-cut"
                 },
                 "fastp_cut_tail": {
                     "type": "boolean",
                     "default": true,
                     "description": "fastp `--cut_tail`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-cut"
                 },
                 "fastp_trim_poly_x": {
                     "type": "boolean",
                     "default": true,
                     "description": "fastp `--trim_poly_x`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-cut"
                 },
                 "fastp_correction": {
                     "type": "boolean",
                     "default": true,
                     "description": "fastp `--correction` (overlap-based base correction).",
+                    "hidden": true,
                     "fa_icon": "fas fa-cut"
                 },
                 "fastp_cut_mean_quality": {
@@ -315,6 +336,7 @@
                     "default": 20,
                     "minimum": 1,
                     "description": "fastp `--cut_mean_quality`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-sort-numeric-up"
                 },
                 "fastp_qualified_quality_phred": {
@@ -322,6 +344,7 @@
                     "default": 20,
                     "minimum": 0,
                     "description": "fastp `--qualified_quality_phred`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-sort-numeric-up"
                 },
                 "fastp_unqualified_percent_limit": {
@@ -330,6 +353,7 @@
                     "minimum": 0,
                     "maximum": 100,
                     "description": "fastp `--unqualified_percent_limit`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-percent"
                 },
                 "fastp_length_required": {
@@ -337,17 +361,20 @@
                     "default": 50,
                     "minimum": 0,
                     "description": "fastp `--length_required` (reads shorter than this are discarded).",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler-horizontal"
                 },
                 "save_trimmed_reads": {
                     "type": "boolean",
                     "description": "Publish the fastp-trimmed FASTQ files.",
+                    "hidden": true,
                     "fa_icon": "fas fa-save"
                 },
                 "save_bam": {
                     "type": "boolean",
                     "default": true,
                     "description": "Publish the primer-trimmed, sorted BAM and index.",
+                    "hidden": true,
                     "fa_icon": "fas fa-save"
                 }
             }
@@ -361,8 +388,8 @@
                 "barcodes": {
                     "type": "string",
                     "default": "latest",
-                    "description": "Freyja barcode dataset: `latest`, `container`, a version (`YYYY-MM-DD`, `MM_DD_YYYY-HH-MM` or `YYYY-MM-DDTHH-MM`), or a dataset directory / `.csv` / `.feather` file.",
-                    "help_text": "`latest` runs `freyja update` and stores the dataset in `--db_dir/freyja/<YYYY-MM-DDTHH-MM>/`. `container` uses the snapshot bundled in the pinned Freyja container (offline). A version resolves a dataset previously stored in `--db_dir` (a bare date picks the newest that day) and errors if none exists. A path is used verbatim (version recorded as `custom`). The dataset is resolved once so every sample uses the same data; the version and checksums are recorded in `pipeline_info/run_info.json` and `summary/barcode_version.json`.",
+                    "description": "Freyja barcode dataset: `latest`, `container`, a version, or a dataset directory / file.",
+                    "help_text": "Freyja barcode dataset: `latest`, `container`, a version (`YYYY-MM-DD`, `MM_DD_YYYY-HH-MM` or `YYYY-MM-DDTHH-MM`), or a dataset directory / `.csv` / `.feather` file. `latest` runs `freyja update` and stores the dataset in `--db_dir/freyja/<YYYY-MM-DDTHH-MM>/`. `container` uses the snapshot bundled in the pinned Freyja container (offline). A version resolves a dataset previously stored in `--db_dir` (a bare date picks the newest that day) and errors if none exists. A path is used verbatim (version recorded as `custom`). The dataset is resolved once so every sample uses the same data; the version and checksums are recorded in `pipeline_info/run_info.json` and `summary/barcode_version.json`.",
                     "fa_icon": "fas fa-barcode"
                 },
                 "db_dir": {
@@ -376,6 +403,7 @@
                     "default": 20,
                     "minimum": 0,
                     "description": "`freyja variants --minq`: minimum base quality.",
+                    "hidden": true,
                     "fa_icon": "fas fa-sort-numeric-up"
                 },
                 "freyja_varthresh": {
@@ -385,12 +413,14 @@
                     "maximum": 1,
                     "description": "`freyja variants --varthresh`: minimum variant frequency retained.",
                     "help_text": "Freyja's own default (0.0, keep everything). The old Snakemake pipeline used 0.25; this pipeline deliberately does not.",
+                    "hidden": true,
                     "fa_icon": "fas fa-filter"
                 },
                 "freyja_eps": {
                     "type": "number",
                     "default": 0.001,
                     "description": "`freyja demix --eps`: minimum abundance reported per lineage.",
+                    "hidden": true,
                     "fa_icon": "fas fa-sort-numeric-up"
                 },
                 "freyja_covcut": {
@@ -398,6 +428,7 @@
                     "default": 10,
                     "minimum": 1,
                     "description": "`freyja demix --covcut`: depth that counts a site as covered (also used for the coverage gate).",
+                    "hidden": true,
                     "fa_icon": "fas fa-sort-numeric-up"
                 },
                 "freyja_depthcutoff": {
@@ -405,6 +436,7 @@
                     "default": 0,
                     "minimum": 0,
                     "description": "`freyja demix --depthcutoff`: exclude sites below this depth and group identical barcodes (0 = off).",
+                    "hidden": true,
                     "fa_icon": "fas fa-sort-numeric-up"
                 },
                 "freyja_adapt": {
@@ -412,39 +444,46 @@
                     "default": 0.0,
                     "minimum": 0,
                     "description": "`freyja demix --adapt`: adaptive lasso penalty.",
+                    "hidden": true,
                     "fa_icon": "fas fa-sort-numeric-up"
                 },
                 "freyja_autoadapt": {
                     "type": "boolean",
                     "description": "`freyja demix --autoadapt`: set the adaptive penalty from the sample's error profile.",
+                    "hidden": true,
                     "fa_icon": "fas fa-magic"
                 },
                 "freyja_relaxedmrca": {
                     "type": "boolean",
                     "description": "`freyja demix --relaxedmrca` (use with `--freyja_depthcutoff`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-sitemap"
                 },
                 "freyja_solver": {
                     "type": "string",
                     "default": "CLARABEL",
                     "description": "`freyja demix --solver`: solver for the abundance estimate.",
+                    "hidden": true,
                     "fa_icon": "fas fa-calculator"
                 },
                 "freyja_confirmedonly": {
                     "type": "boolean",
                     "description": "`freyja demix --confirmedonly`: exclude unconfirmed lineages.",
+                    "hidden": true,
                     "fa_icon": "fas fa-check-double"
                 },
                 "compare_barcodes": {
                     "type": "string",
                     "description": "A second Freyja dataset (same forms as `--barcodes`): every sample is demixed again with it and `summary/barcode_compare.tsv` lists the abundance changes. Modes `full` and `demix`.",
                     "help_text": "Recorded as `freyja_data_compare` in run_info.json. A sample whose second demix fails is flagged, never fatal. Default: off.",
+                    "hidden": true,
                     "fa_icon": "fas fa-not-equal"
                 },
                 "freyja_boot": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Run `freyja boot` per demixed sample: bootstrap 95% intervals (2.5/97.5 percentiles) per lineage in `summary/freyja_boot_summary.tsv`.",
+                    "description": "Run `freyja boot` per demixed sample: bootstrap 95% intervals per lineage.",
+                    "help_text": "Run `freyja boot` per demixed sample: bootstrap 95% intervals (2.5/97.5 percentiles) per lineage in `summary/freyja_boot_summary.tsv`.",
                     "fa_icon": "fas fa-sync"
                 },
                 "freyja_boot_n": {
@@ -452,12 +491,14 @@
                     "default": 100,
                     "minimum": 2,
                     "description": "Number of bootstraps (`freyja boot --nb`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-sync"
                 },
                 "freyja_boot_seed": {
                     "type": "integer",
                     "default": 0,
                     "description": "Bootstrap seed (`freyja boot --bootseed`); fixed, so reruns give identical intervals.",
+                    "hidden": true,
                     "fa_icon": "fas fa-dice"
                 },
                 "freyja_plot_mincov": {
@@ -466,6 +507,7 @@
                     "maximum": 100,
                     "description": "Minimum genome coverage (%) for a sample to appear in `freyja_plot.pdf` (`freyja plot --mincov`), the time series, the growth rates and the dashboard. Default: follow the pipeline, i.e. `--min_genome_coverage_for_demix` (50), or with `--include_low_confidence` the floor `--demix_floor_coverage` (25).",
                     "help_text": "Not set = every sample that was demixed and is meant to be analysed appears. Freyja keeps a sample only when its coverage is strictly above this value. An explicit value always wins (the previous fixed default was 60, which hid samples between 50 and 60 %).",
+                    "hidden": true,
                     "fa_icon": "fas fa-chart-bar"
                 },
                 "freyja_plot_config": {
@@ -475,6 +517,7 @@
                     "pattern": "^\\S+\\.(yml|yaml)$",
                     "description": "Freyja plot config (YAML) passed as `--config` to `freyja plot`, `freyja dash` and `freyja relgrowthrate`: your own colours and custom lineage groups.",
                     "help_text": "Keys: `VOC` (colours of the groups in the stacked-bar plot `freyja_plot.pdf`) and `Lineages` (groups and colours of the lineage-level views, the dashboard and the growth rates). The HTML report keeps its own palette. See docs/usage.md (Plot colours and lineage groups).",
+                    "hidden": true,
                     "fa_icon": "fas fa-palette"
                 },
                 "freyja_plot_interval": {
@@ -482,6 +525,7 @@
                     "default": "MS",
                     "enum": ["MS", "W", "D"],
                     "description": "Interval of the time-aware plot (`freyja plot --times`, drawn when samples have a `collection_date`): month (`MS`), week (`W`) or day (`D`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-calendar"
                 },
                 "freyja_plot_windowsize": {
@@ -489,6 +533,7 @@
                     "default": 14,
                     "minimum": 1,
                     "description": "Rolling-average window (days) of the daily (`D`) time-aware plot.",
+                    "hidden": true,
                     "fa_icon": "fas fa-calendar"
                 },
                 "min_genome_coverage_for_demix": {
@@ -496,8 +541,8 @@
                     "default": 50,
                     "minimum": 0,
                     "maximum": 100,
-                    "description": "High-confidence threshold: samples with less than this % of the genome at depth >= `--freyja_covcut` are flagged `low_confidence` (from `--demix_floor_coverage` up) or not demixed (status `skipped_low_coverage`).",
-                    "help_text": "Default 50, from real wastewater data (28 QIAseq samples: the median sample has only 58 % of the genome at >= 10x, mostly because of amplicon dropout, not too few reads). Below this an abundance estimate rests on too little of the lineage-defining sites to trust. Samples below `--demix_floor_coverage` are skipped, listed in `summary/demix_status.tsv` and excluded from the aggregate. Freyja's own plot hides samples below `--freyja_plot_mincov` (60).",
+                    "description": "High-confidence threshold: % of the genome at depth >= `--freyja_covcut` needed to demix.",
+                    "help_text": "High-confidence threshold: samples with less than this % of the genome at depth >= `--freyja_covcut` are flagged `low_confidence` (from `--demix_floor_coverage` up) or not demixed (status `skipped_low_coverage`). Default 50, from real wastewater data (28 QIAseq samples: the median sample has only 58 % of the genome at >= 10x, mostly because of amplicon dropout, not too few reads). Below this an abundance estimate rests on too little of the lineage-defining sites to trust. Samples below `--demix_floor_coverage` are skipped, listed in `summary/demix_status.tsv` and excluded from the aggregate. Freyja's own plot hides samples below `--freyja_plot_mincov` (60).",
                     "fa_icon": "fas fa-ban"
                 },
                 "demix_floor_coverage": {
@@ -505,8 +550,8 @@
                     "default": 25,
                     "minimum": 0,
                     "maximum": 100,
-                    "description": "Floor of the low-confidence band: samples with at least this % of the genome at depth >= `--freyja_covcut` but below `--min_genome_coverage_for_demix` are demixed and flagged `low_confidence`.",
-                    "help_text": "Default 25 (PLAN D18): in real QIAseq wastewater data 10 of 28 samples sit at 25-50 % and half of those have a mean depth >= 200x (amplicon dropout, not read shortage), so skipping them threw away usable signal. Below the floor a sample is skipped (`skipped_low_coverage`). Set 0, or a value at or above `--min_genome_coverage_for_demix`, to switch the band off (the behaviour before D18). Low-confidence samples are left out of the time series, growth rates, dashboard and site aggregation unless `--include_low_confidence true`.",
+                    "description": "Floor of the low-confidence band: below this % of the genome a sample is not demixed.",
+                    "help_text": "Floor of the low-confidence band: samples with at least this % of the genome at depth >= `--freyja_covcut` but below `--min_genome_coverage_for_demix` are demixed and flagged `low_confidence`. Default 25 (PLAN D18): in real QIAseq wastewater data 10 of 28 samples sit at 25-50 % and half of those have a mean depth >= 200x (amplicon dropout, not read shortage), so skipping them threw away usable signal. Below the floor a sample is skipped (`skipped_low_coverage`). Set 0, or a value at or above `--min_genome_coverage_for_demix`, to switch the band off (the behaviour before D18). Low-confidence samples are left out of the time series, growth rates, dashboard and site aggregation unless `--include_low_confidence true`.",
                     "fa_icon": "fas fa-arrow-down-short-wide"
                 }
             }
@@ -521,6 +566,7 @@
                     "type": "integer",
                     "default": 10,
                     "description": "An amplicon is dropped when its mean depth is below this.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1
                 },
@@ -534,7 +580,8 @@
                 "qc_pass_min_pct": {
                     "type": "number",
                     "default": 60,
-                    "description": "PASS needs at least this % of the genome at `qc_min_depth`. Default 60 (it was 80 in the clinical pipeline: real wastewater samples rarely reach it).",
+                    "description": "PASS needs at least this % of the genome at `--qc_min_depth`.",
+                    "help_text": "PASS needs at least this % of the genome at `qc_min_depth`. Default 60 (it was 80 in the clinical pipeline: real wastewater samples rarely reach it).",
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 100
@@ -542,7 +589,8 @@
                 "qc_fail_below_pct": {
                     "type": "number",
                     "default": 30,
-                    "description": "FAIL below this % of the genome at `qc_min_depth`. Default 30; between this and `--qc_pass_min_pct` is WARN (`low_coverage`).",
+                    "description": "FAIL below this % of the genome at `--qc_min_depth`; between this and PASS is WARN.",
+                    "help_text": "FAIL below this % of the genome at `qc_min_depth`. Default 30; between this and `--qc_pass_min_pct` is WARN (`low_coverage`).",
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 100
@@ -551,6 +599,7 @@
                     "type": "integer",
                     "default": 1,
                     "description": "WARN (`amplicon_dropout`) when more amplicons than this dropped. Raise it for schemes with many amplicons (e.g. 10 for 99-amplicon ARTIC).",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -558,6 +607,7 @@
                     "type": "integer",
                     "default": 1000,
                     "description": "A negative control FAILs (`ntc_reads`) above this many mapped reads.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -565,6 +615,7 @@
                     "type": "number",
                     "default": 10,
                     "description": "A negative control FAILs above this % of the genome at >= 1x.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 100
@@ -587,6 +638,7 @@
                     "type": "integer",
                     "default": 10,
                     "description": "Positions below this depth are masked (N); also used for `pct_genome_ge_min_depth`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1
                 },
@@ -594,6 +646,7 @@
                     "type": "number",
                     "default": 0.75,
                     "description": "SNV ALT_FREQ needed to apply the alternative allele.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -602,6 +655,7 @@
                     "type": "number",
                     "default": 0.75,
                     "description": "Indel ALT_FREQ needed to apply it.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -610,6 +664,7 @@
                     "type": "integer",
                     "default": 20,
                     "description": "Minimum ALT_QUAL of a call.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -617,6 +672,7 @@
                     "type": "integer",
                     "default": 10,
                     "description": "Minimum TOTAL_DP at a variant (not the mask depth `consensus_min_depth`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1
                 },
@@ -624,12 +680,14 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Write IUPAC codes for ambiguous SNVs; false leaves the reference base.",
+                    "hidden": true,
                     "fa_icon": "fas fa-toggle-on"
                 },
                 "consensus_iupac_min_af": {
                     "type": "number",
                     "default": 0.25,
                     "description": "SNV ALT_FREQ must be above this (and below `consensus_freq`) for an IUPAC code.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -638,6 +696,7 @@
                     "type": "integer",
                     "default": 5,
                     "description": "ALT_DP needed for an IUPAC code.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1
                 }
@@ -653,6 +712,7 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Check that the primer scheme matches the reads (amplicon protocol with primer trimming, mode `full`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-search",
                     "help_text": "Counts mapped reads whose 5' end sits at a primer 5' end of each bundled scheme and compares the declared scheme with the others (enrichment over chance). Result `ok`, `mismatch` or `uninformative` in `qc_summary.tsv`; a mismatch is a WARN (`primer_scheme_mismatch`). Libraries whose reads are not primer-anchored (e.g. tagmentation) give `uninformative`."
                 },
@@ -660,6 +720,7 @@
                     "type": "number",
                     "default": 5,
                     "description": "Enrichment of read starts at primers (times chance) needed for the declared scheme to count as matching.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -669,12 +730,14 @@
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Fraction of reads that must start within the window of a primer 5' end for a scheme to count as matching (0 disables). Stops sparse schemes whose enrichment ratio is inflated by a tiny window set.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler"
                 },
                 "primer_check_window": {
                     "type": "integer",
                     "default": 2,
                     "description": "Window (bp) around a primer 5' end that counts as `at the primer`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -682,6 +745,7 @@
                     "type": "number",
                     "default": 0,
                     "description": "WARN (`low_primer_trimming`) when the % of mapped reads that `ivar trim` primer-trimmed is below this. 0 disables.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 100,
@@ -691,12 +755,14 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Report which lineage-informative sites dropped amplicons hide (`summary/dropout_impact.tsv`). Needs an amplicon table (amplicon protocol).",
+                    "hidden": true,
                     "fa_icon": "fas fa-cut"
                 },
                 "dropout_min_abundance": {
                     "type": "number",
                     "default": 0.01,
                     "description": "A lineage counts as detected at this abundance when assessing dropout impact (it is then listed and its defining sites are counted).",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -707,12 +773,14 @@
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Minimum abundance of a detected lineage for its DEFINING sites (mutations that separate it from its parent) in a dropped amplicon to raise the dropout flag (`affects_detected_lineage`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-percentage"
                 },
                 "unexplained_mutations": {
                     "type": "boolean",
                     "default": true,
                     "description": "Find frequent mutations the demixed lineages do not predict (`summary/unexplained_mutations.tsv`; modes `full` and `demix`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-question-circle",
                     "help_text": "A hint of a novel or missing lineage, not a variant caller: observed frequency minus the frequency expected from the lineage mixture, with a binomial guard against depth noise."
                 },
@@ -720,6 +788,7 @@
                     "type": "number",
                     "default": 0.05,
                     "description": "Minimum observed frequency of the mutation.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -728,6 +797,7 @@
                     "type": "number",
                     "default": 0.05,
                     "description": "Minimum observed minus expected frequency.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -736,6 +806,7 @@
                     "type": "integer",
                     "default": 20,
                     "description": "Minimum total depth at the position.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -743,6 +814,7 @@
                     "type": "integer",
                     "default": 10,
                     "description": "Minimum number of reads supporting the mutation.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -750,6 +822,7 @@
                     "type": "integer",
                     "default": 2,
                     "description": "The same mutation unexplained in at least this many samples is flagged `recurrent`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1
                 },
@@ -757,6 +830,7 @@
                     "type": "number",
                     "default": 1.67e-6,
                     "description": "Binomial guard against depth noise (Bonferroni-style over the genome); 1 disables it.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -773,12 +847,14 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Write `summary/freyja_timeseries.tsv` (+ `_lineages.tsv`) when at least two distinct collection dates exist.",
+                    "hidden": true,
                     "fa_icon": "fas fa-calendar"
                 },
                 "timeseries_min_abundance": {
                     "type": "number",
                     "default": 0.0,
                     "description": "Drop site-date lineage groups below this mean abundance.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -786,14 +862,15 @@
                 "freyja_growth": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Estimate relative growth rates of lineages with `freyja relgrowthrate` (`summary/freyja_growth_rates.csv`).",
+                    "description": "Estimate relative growth rates of lineages with `freyja relgrowthrate`.",
                     "fa_icon": "fas fa-chart-line",
-                    "help_text": "Needs at least `--freyja_growth_min_dates` distinct dates spanning at least `--freyja_growth_min_span_days` days within the last `--freyja_growth_days` days; otherwise `summary/freyja_growth_rates.failed.txt` says why. A failure never fails the run."
+                    "help_text": "Estimate relative growth rates of lineages with `freyja relgrowthrate` (`summary/freyja_growth_rates.csv`). Needs at least `--freyja_growth_min_dates` distinct dates spanning at least `--freyja_growth_min_span_days` days within the last `--freyja_growth_days` days; otherwise `summary/freyja_growth_rates.failed.txt` says why. A failure never fails the run."
                 },
                 "freyja_growth_days": {
                     "type": "integer",
                     "default": 56,
                     "description": "Window (days back from the latest date) used for the fit.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1
                 },
@@ -801,6 +878,7 @@
                     "type": "integer",
                     "default": 1000,
                     "description": "Bootstrap replicates (the seed is fixed).",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1
                 },
@@ -808,6 +886,7 @@
                     "type": "integer",
                     "default": 1,
                     "description": "Bootstrap seed.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -815,6 +894,7 @@
                     "type": "number",
                     "default": 5.5,
                     "description": "Serial interval (days): the advantage is `exp(serial_interval * r) - 1`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0
                 },
@@ -822,6 +902,7 @@
                     "type": "number",
                     "default": 0.001,
                     "description": "Only lineages with a mean abundance above this over the window get a rate.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -830,6 +911,7 @@
                     "type": "number",
                     "default": 0.01,
                     "description": "Per-sample abundance below which a lineage is lumped into `Other`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 0,
                     "maximum": 1
@@ -838,6 +920,7 @@
                     "type": "integer",
                     "default": 4,
                     "description": "Fewer distinct dates in the window than this: no growth rates (failure note).",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 2
                 },
@@ -845,6 +928,7 @@
                     "type": "integer",
                     "default": 14,
                     "description": "The dates must span at least this many days.",
+                    "hidden": true,
                     "fa_icon": "fas fa-ruler",
                     "minimum": 1
                 },
@@ -852,12 +936,14 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Weight by `viral_load` (`freyja relgrowthrate --scale_by_viral_load`); samples without a load are dropped from the fit.",
+                    "hidden": true,
                     "fa_icon": "fas fa-weight"
                 },
                 "freyja_dash": {
                     "type": "boolean",
                     "default": false,
                     "description": "Build the interactive Freyja dashboard (`summary/freyja_dashboard.html`).",
+                    "hidden": true,
                     "fa_icon": "fas fa-tachometer-alt",
                     "help_text": "Opt-in extra. The HTML embeds Plotly but loads Bootstrap styling and a logo from the internet when opened; the pipeline's own `report.html` stays offline."
                 },
@@ -865,12 +951,14 @@
                     "type": "string",
                     "default": "wasteline wastewater dashboard",
                     "description": "Dashboard title (inserted as HTML).",
+                    "hidden": true,
                     "fa_icon": "fas fa-heading"
                 },
                 "freyja_dash_intro": {
                     "type": "string",
                     "default": "Lineage prevalence over time from wasteline.",
                     "description": "Dashboard introduction (inserted as HTML).",
+                    "hidden": true,
                     "fa_icon": "fas fa-align-left"
                 }
             }
@@ -887,6 +975,7 @@
                     "enum": ["bwa", "minibwa"],
                     "description": "Read aligner. `bwa` (bwa mem) is the default and validated choice; `minibwa` is experimental.",
                     "help_text": "minibwa is a young successor of bwa-mem; its alignments are not identical to bwa mem's. Compare with `tests/compare_aligners.sh` before relying on it; see docs/aligner_evaluation.md.",
+                    "hidden": true,
                     "fa_icon": "fas fa-align-left"
                 },
                 "bam_format": {
@@ -895,6 +984,7 @@
                     "enum": ["bam", "cram"],
                     "description": "Format of the published alignments (needs `--save_bam`).",
                     "help_text": "`cram` publishes a reference-based CRAM and its `.crai` instead of the BAM and `.bai` (about a third of the size). Reading a CRAM needs the same reference FASTA (`samtools view --reference ref.fa`). Freyja and all QC steps still use the BAM, which stays in the work directory.",
+                    "hidden": true,
                     "fa_icon": "fas fa-file-archive"
                 }
             }
@@ -910,6 +1000,7 @@
                     "default": true,
                     "description": "Write the per-sample table of lineage groups (`summary/lineage_summary.csv`, plus the groups file used and a list of lineages in no group). `--lineage_summary false` turns it off.",
                     "help_text": "Needs a Freyja dataset with lineages.yml (not a bare barcodes .csv/.feather); with such a dataset the summary is skipped with one warning.",
+                    "hidden": true,
                     "fa_icon": "fas fa-layer-group"
                 },
                 "lineage_groups": {
@@ -918,8 +1009,8 @@
                     "exists": true,
                     "pattern": "^\\S+\\.(csv|tsv|txt)$",
                     "mimetype": "text/csv",
-                    "description": "CSV that defines the lineage groups (columns `group`, `include`, optional `exclude`, `in_total`). Default: the bundled `assets/lineage_groups.csv` (SARS-CoV-2 only; other pathogens have the summary off unless this is given). A copy of the file used is published as `summary/lineage_groups_used.csv`.",
-                    "help_text": "One row per output column; patterns such as `JN.1*` (the lineage and all its descendants), `NB.1.8.1` (exactly that lineage) and `RECOMBINANT*`. Start from the bundled file (or a previous run's `lineage_groups_used.csv`), edit it in Excel and save as CSV UTF-8. Format errors stop the run within minutes; unknown lineages are warnings. See docs/usage.md (Lineage groups).",
+                    "description": "CSV that defines the lineage groups. Default: the bundled `assets/lineage_groups.csv` (SARS-CoV-2).",
+                    "help_text": "CSV that defines the lineage groups (columns `group`, `include`, optional `exclude`, `in_total`). Default: the bundled `assets/lineage_groups.csv` (SARS-CoV-2 only; other pathogens have the summary off unless this is given). A copy of the file used is published as `summary/lineage_groups_used.csv`. One row per output column; patterns such as `JN.1*` (the lineage and all its descendants), `NB.1.8.1` (exactly that lineage) and `RECOMBINANT*`. Start from the bundled file (or a previous run's `lineage_groups_used.csv`), edit it in Excel and save as CSV UTF-8. Format errors stop the run within minutes; unknown lineages are warnings. See docs/usage.md (Lineage groups).",
                     "fa_icon": "fas fa-layer-group"
                 },
                 "lineage_major_threshold": {
@@ -928,6 +1019,7 @@
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Abundance at or above which a lineage is listed as `major` in `lineage_summary.csv` (exactly this value counts as major).",
+                    "hidden": true,
                     "fa_icon": "fas fa-percentage"
                 },
                 "lineage_min_abundance": {
@@ -936,6 +1028,7 @@
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Lineages below this abundance are not listed (the group sums still include them).",
+                    "hidden": true,
                     "fa_icon": "fas fa-percentage"
                 },
                 "lineage_summary_zeros": {
@@ -943,6 +1036,7 @@
                     "default": "blank",
                     "enum": ["blank", "zero"],
                     "description": "How a group with no abundance is written in `lineage_summary.csv`: an empty cell or `0.000000`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-table"
                 },
                 "lineage_summary_decimals": {
@@ -951,12 +1045,14 @@
                     "minimum": 0,
                     "maximum": 12,
                     "description": "Decimals of the abundances in `lineage_summary.csv`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-table"
                 },
                 "lineage_summary_xlsx": {
                     "type": "boolean",
                     "default": true,
                     "description": "Also write `summary/lineage_summary.xlsx`: a formatted Excel workbook of the lineage summary (numbers as numbers, frozen header, filter; the CSV is unchanged).",
+                    "hidden": true,
                     "fa_icon": "fas fa-file-excel"
                 },
                 "lineage_summary_xlsx_decimals": {
@@ -965,6 +1061,7 @@
                     "minimum": 0,
                     "maximum": 6,
                     "description": "Decimals shown for abundances in the workbook (display only; the stored values are the CSV values).",
+                    "hidden": true,
                     "fa_icon": "fas fa-table"
                 },
                 "site_aggregation": {
@@ -973,8 +1070,8 @@
                     "exists": true,
                     "pattern": "^\\S+\\.(csv|tsv|txt)$",
                     "mimetype": "text/csv",
-                    "description": "CSV that groups sites into aggregates (columns `aggregate_name`, `site_name`, optional `weight`); enables `summary/site_aggregates_freyja.tsv` and `site_aggregates_meta.tsv`. Off when not set.",
-                    "help_text": "Per-site Freyja results are combined by a weighted average of the RESULTS (reads are never pooled). Site names are matched to the samplesheet `site` column ignoring case and extra spaces. Format errors stop the run within minutes. See docs/usage.md (Site aggregation).",
+                    "description": "CSV that groups sites into aggregates; enables the site-aggregate summaries. Off when not set.",
+                    "help_text": "CSV that groups sites into aggregates (columns `aggregate_name`, `site_name`, optional `weight`); enables `summary/site_aggregates_freyja.tsv` and `site_aggregates_meta.tsv`. Off when not set. Per-site Freyja results are combined by a weighted average of the RESULTS (reads are never pooled). Site names are matched to the samplesheet `site` column ignoring case and extra spaces. Format errors stop the run within minutes. See docs/usage.md (Site aggregation).",
                     "fa_icon": "fas fa-object-group"
                 },
                 "site_aggregation_period": {
@@ -982,6 +1079,7 @@
                     "default": "week",
                     "enum": ["week", "day"],
                     "description": "Time step of the site aggregates: ISO `week` (Monday to Sunday) or `day`.",
+                    "hidden": true,
                     "fa_icon": "fas fa-calendar-week"
                 },
                 "site_aggregation_weights": {
@@ -989,6 +1087,7 @@
                     "default": "auto",
                     "enum": ["auto", "viral_load", "equal", "site_weight"],
                     "description": "Weights of the sites in an aggregate: `viral_load` (the samplesheet column), `site_weight` (the `weight` column of the sites file), `equal`, or `auto` (the best basis available for every site of that week, recorded per row).",
+                    "hidden": true,
                     "fa_icon": "fas fa-balance-scale"
                 },
                 "site_aggregation_min_sites": {
@@ -996,6 +1095,7 @@
                     "default": 1,
                     "minimum": 1,
                     "description": "Omit aggregate-weeks with fewer contributing sites than this.",
+                    "hidden": true,
                     "fa_icon": "fas fa-sort-numeric-up"
                 }
             }
@@ -1016,8 +1116,8 @@
                     "type": "string",
                     "default": "none",
                     "enum": ["none", "paths", "full"],
-                    "description": "Remove identifying strings from `report_data.json` and `report.html` so the report can be shared: `paths` (file paths, user and host names), `full` (also sample IDs and site names, replaced by `S001`, `SITE1`, ...).",
-                    "help_text": "`full` also writes the private mapping `summary/sample_id_map.csv`: keep it OUT of anything you share with the report. All other files in `summary/` (for example `qc_summary.tsv`) keep the real IDs. In mode `report` the report data are rebuilt from the summary files when this is not `none`.",
+                    "description": "Remove identifying strings from the report so it can be shared: `paths` or `full`.",
+                    "help_text": "Remove identifying strings from `report_data.json` and `report.html` so the report can be shared: `paths` (file paths, user and host names), `full` (also sample IDs and site names, replaced by `S001`, `SITE1`, ...). `full` also writes the private mapping `summary/sample_id_map.csv`: keep it OUT of anything you share with the report. All other files in `summary/` (for example `qc_summary.tsv`) keep the real IDs. In mode `report` the report data are rebuilt from the summary files when this is not `none`.",
                     "fa_icon": "fas fa-user-secret"
                 },
                 "mutations_of_interest": {
@@ -1026,13 +1126,15 @@
                     "exists": true,
                     "pattern": "^\\S+\\.csv$",
                     "mimetype": "text/csv",
-                    "description": "CSV with columns `name,mutation` (e.g. `S:N501Y`, `A23063T`, `C75-`, `A14+C`); frequency and depth per sample go to `summary/mutations_of_interest.tsv`.",
+                    "description": "CSV with columns `name,mutation`; frequency and depth per sample are reported.",
+                    "help_text": "CSV with columns `name,mutation` (e.g. `S:N501Y`, `A23063T`, `C75-`, `A14+C`); frequency and depth per sample go to `summary/mutations_of_interest.tsv`.",
                     "fa_icon": "fas fa-search"
                 },
                 "annotate_variants": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Annotate the called variants with their amino-acid consequences (`bcftools csq` with the GFF3): `samples/<s>/variants/<s>.annotated.tsv` and `summary/annotated_variants.tsv`.",
+                    "description": "Annotate called variants with their amino-acid consequences (`bcftools csq`).",
+                    "help_text": "Annotate the called variants with their amino-acid consequences (`bcftools csq` with the GFF3): `samples/<s>/variants/<s>.annotated.tsv` and `summary/annotated_variants.tsv`.",
                     "fa_icon": "fas fa-dna"
                 }
             }
@@ -1101,15 +1203,16 @@
                 },
                 "help": {
                     "type": ["boolean", "string"],
-                    "description": "Display the help message."
+                    "description": "Display the help message. Give a parameter name for its details: `--help <param>`."
                 },
                 "help_full": {
                     "type": "boolean",
-                    "description": "Display the full detailed help message."
+                    "description": "Display the full help message: every parameter, advanced ones included."
                 },
                 "show_hidden": {
                     "type": "boolean",
-                    "description": "Display hidden parameters in the help message (only works when --help or --help_full are provided)."
+                    "description": "Also show hidden parameters in `--help` (implied by `--help_full`).",
+                    "help_text": "Display hidden parameters in the help message (only works when --help or --help_full are provided)."
                 },
                 "config_profile_name": {
                     "type": "string",

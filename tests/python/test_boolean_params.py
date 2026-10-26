@@ -59,8 +59,12 @@ def schema_booleans():
     return out
 
 
+# `help` is `--help` or `--help <param>` (single-parameter help), so it stays untyped in main.nf on purpose
+UNTYPED_ON_PURPOSE = {"help"}
+
+
 def test_every_config_boolean_is_typed_in_main_nf():
-    missing = set(config_booleans()) - set(main_nf_booleans())
+    missing = set(config_booleans()) - set(main_nf_booleans()) - UNTYPED_ON_PURPOSE
     assert not missing, (
         f"booleans in nextflow.config without a typed declaration in main.nf: {sorted(missing)}"
     )
